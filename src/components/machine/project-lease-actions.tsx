@@ -135,7 +135,7 @@ export function chatNames(info: ProjectInfoHub): Record<string, string> {
 }
 
 /** Chat 类型只影响挂靠目标是否合法：DM 不是合法的挂靠目标。 */
-export function chatKinds(info: ProjectInfoHub): Record<string, "dm" | "group" | "public_channel"> {
+export function chatKinds(info: ProjectInfoHub): Record<string, "dm" | "crew" | "delegation"> {
   return Object.fromEntries(info.chats.map((chat) => [chat.chatId, chat.kind]));
 }
 

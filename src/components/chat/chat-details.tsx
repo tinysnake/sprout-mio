@@ -15,10 +15,10 @@ import type { AppError } from "../../contracts/result";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import {
-  addGroupMemberFn,
+  addCrewMemberFn,
   clearChatTitleFn,
-  removeGroupMemberFn,
-  setChatOwnerFn,
+  removeCrewMemberFn,
+  setCrewLeadFn,
   updateChatTitleFn,
 } from "../../server/functions/chat";
 import { Button } from "../ui/button";
@@ -42,9 +42,9 @@ import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
 
 const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
-  owner_led: "owner_led · 回退 Owner",
-  mention_only: "mention_only · 仅点名",
-  contextual: "contextual · 自动判定",
+  owner_led: "lead 接收",
+  mention_only: "仅点名",
+  contextual: "自动判定",
 };
 
 function memberKey(member: Pick<ChatMember, "memberKind" | "memberId">) {
@@ -72,9 +72,11 @@ export function ChatDetails({
   continuation,
   tabs,
   onClose,
+  crewRail,
   onChanged,
 }: {
   projectId: string;
+  crewRail?: ReactNode;
   session: ChatSession;
   humanUserId: string;
   humanName: string;
@@ -118,19 +120,12 @@ export function ChatDetails({
   // Agent 当 owner 时，`canChangeOwner` 已经包含 d6 的 Project 创建者兜底。
   const governance = session.governance;
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
-  const ownerCandidates =
-    chat.kind === "public_channel"
-      ? currentMembers.filter(
-          (member) =>
-            member.memberKind === "human" && member.memberId === governance.projectCreatedBy,
-        )
-      : currentMembers;
+  const leadCandidates = currentMembers.filter((member) => member.memberKind === "agent");
   const governanceCopy = governanceNote(chat.kind, governance);
   // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
   // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  // 公共频道成员说明默认收起：只留一行结论，规则与入口藏在问号按钮后面。
-  const [membersHelpOpen, setMembersHelpOpen] = useState(false);
+
   const [activityOpen, setActivityOpen] = useState(false);
   const soleDmAgent =
     chat.kind === "dm" ? currentMembers.filter((m) => m.memberKind === "agent") : [];
@@ -195,6 +190,7 @@ export function ChatDetails({
           <Icon as={PanelRightClose} />
         </Button>
       </header>
+      {crewRail}
       <div className={`min-h-0 overflow-y-auto px-5 pt-2 ${activityOpen ? "flex-1 pb-12" : ""}`}>
         {/* DM 只有两位参与者，成员清单没有信息量：把对方的资料整块提到最上面，成员段不再渲染。 */}
         {chat.kind === "dm" && detailMember && (
@@ -251,7 +247,9 @@ export function ChatDetails({
                           : "Human"
                         : (profileNames.get(member.memberId) ?? "Agent"));
                     // 能力判定来自领域层；「所有者不能被移出」是数据事实（chat.owner），不是权限比较。
-                    const canRemove = governance.canChangeMembers && !isOwnerRow;
+                    const isLeadRow =
+                      member.memberKind === "agent" && chat.leadProfileId === member.memberId;
+                    const canRemove = governance.canChangeMembers && !isOwnerRow && !isLeadRow;
                     // Agent 成员行可选中，选中后资料块展示这一位的职位与 persona。
                     const row =
                       member.memberKind === "agent" ? (
@@ -281,6 +279,14 @@ export function ChatDetails({
                             Owner
                           </span>
                         )}
+                        {isLeadRow && (
+                          <span
+                            data-testid="chat-member-lead-badge"
+                            className="rounded-[3px] border border-border px-1 text-[9px] text-muted-foreground"
+                          >
+                            LEAD
+                          </span>
+                        )}
                         {canRemove && (
                           <RemoveMemberButton
                             chatId={chat.id}
@@ -296,42 +302,7 @@ export function ChatDetails({
                   })}
                 </ul>
               )}
-              {chat.kind === "public_channel" && (
-                <div
-                  data-testid="channel-members-readonly"
-                  data-error-code="channel_membership_managed"
-                  className="text-[10px] leading-5 text-muted-foreground"
-                >
-                  <span className="flex items-center gap-1.5">
-                    公共频道成员跟随项目自动同步
-                    <button
-                      type="button"
-                      data-testid="channel-members-help"
-                      aria-label="公共频道成员规则说明"
-                      aria-expanded={membersHelpOpen}
-                      onClick={() => setMembersHelpOpen((open) => !open)}
-                      className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border text-[9px] leading-none hover:border-foreground hover:text-foreground"
-                    >
-                      ?
-                    </button>
-                  </span>
-                  {/* 规则与入口默认不可见，但整段仍留在 DOM 里：它是频道成员治理的唯一说明。
-                    上一句已经在行内说了「跟随项目自动同步」，这里只补真正要做的动作。 */}
-                  <p className={membersHelpOpen ? "pt-1 leading-5" : "hidden"}>
-                    不可独立修改；到{" "}
-                    <Link
-                      to="/projects/$projectId/members"
-                      params={{ projectId }}
-                      data-testid="channel-project-members-link"
-                      className="text-foreground underline decoration-input underline-offset-3 hover:decoration-foreground"
-                    >
-                      Project Members
-                    </Link>{" "}
-                    调整成员。
-                  </p>
-                </div>
-              )}
-              {chat.kind === "group" && (
+              {chat.kind === "crew" && (
                 <div className="flex flex-wrap items-center gap-2">
                   {governance.canChangeMembers ? (
                     <AddMemberDialog
@@ -393,27 +364,19 @@ export function ChatDetails({
                 </dd>
                 <dt className="text-muted-foreground">治理版本</dt>
                 <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
-                {/* 公共频道的名字由 Project 派生，与页头同一句；这里不再复述。 */}
-                {chat.kind !== "public_channel" && (
-                  <>
-                    <dt className="text-muted-foreground">标题</dt>
-                    <dd data-testid="chat-details-title" className="break-words">
-                      {chatDisplayTitle(chat, [agentName])}
-                    </dd>
-                  </>
-                )}
+                <dt className="text-muted-foreground">标题</dt>
+                <dd data-testid="chat-details-title" className="break-words">
+                  {chatDisplayTitle(chat, [agentName])}
+                </dd>
               </dl>
               <div className="flex flex-wrap items-center gap-2">
-                {governance.canChangeOwner && ownerCandidates.length > 0 && (
-                  <OwnerDialog
+                {governance.canChangeLead && leadCandidates.length > 0 && (
+                  <LeadDialog
                     chatId={chat.id}
-                    currentOwnerKey={ownerKey(chat.owner.kind, chat.owner.id)}
+                    currentLeadProfileId={chat.leadProfileId ?? ""}
                     revision={chat.governanceRevision}
-                    members={ownerCandidates}
-                    names={names}
-                    humanUserId={humanUserId}
-                    humanName={humanName}
-                    agentNames={profileNames}
+                    members={leadCandidates}
+                    names={profileNames}
                     note={governanceCopy}
                     onChanged={onChanged}
                   />
@@ -431,7 +394,7 @@ export function ChatDetails({
               </div>
               {/* 治理提示随「变更负责人」入口走：能改的人打开对话框才看到规则；
                   不能改的人没有那个入口，说明留在原处解释为什么。成员段只说成员规则。 */}
-              {!governance.canChangeOwner && governanceCopy && (
+              {!governance.canChangeLead && governanceCopy && (
                 <p
                   data-testid="chat-governance-note"
                   className="text-[10px] leading-5 text-muted-foreground"
@@ -614,7 +577,7 @@ function AddMemberDialog({
     setPending(true);
     setError(null);
     try {
-      const result = await addGroupMemberFn({
+      const result = await addCrewMemberFn({
         data: {
           chatId,
           member: { kind: "agent", id: selected },
@@ -646,7 +609,9 @@ function AddMemberDialog({
       <DialogContent data-testid="chat-member-add-dialog">
         <DialogHeader>
           <DialogTitle>添加成员</DialogTitle>
-          <DialogDescription>只列出尚未加入本群的 Project Agent。</DialogDescription>
+          <DialogDescription>
+            只列出尚未加入本 Crew 的 Project Agent。首个加入者成为 lead。
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
           {agents.length === 0 ? (
@@ -700,7 +665,7 @@ function RemoveMemberButton({
     setPending(true);
     setError(null);
     try {
-      const result = await removeGroupMemberFn({
+      const result = await removeCrewMemberFn({
         data: {
           chatId,
           member: { kind: memberKind, id: memberId },
@@ -769,53 +734,37 @@ function RemoveMemberButton({
   );
 }
 
-function OwnerDialog({
+function LeadDialog({
   chatId,
-  currentOwnerKey,
+  currentLeadProfileId,
   revision,
   members,
   names,
-  humanUserId,
-  humanName,
-  agentNames,
   note,
   onChanged,
 }: {
-  currentOwnerKey: string;
   chatId: string;
+  currentLeadProfileId: string;
   revision: number;
   members: ChatMember[];
   names: Map<string, string>;
-  humanUserId: string;
-  humanName: string;
-  agentNames: Map<string, string>;
   note: string;
   onChanged: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  // 候选里未必有当前 Owner：公共频道的候选只有本 Project 的 Human 创建者，而 Owner 可能是 Agent。
-  // 这时没有「维持原样」这个选项，若仍预选 currentOwnerKey，`selected === currentOwnerKey` 恒真，
-  // 「保存更改」会永久禁用（p6c-member-governance-ui 在这个频道场景上点不动它）。预选第一个候选。
-  const candidateKeys = members.map(memberKey);
-  const currentIsCandidate = candidateKeys.includes(currentOwnerKey);
-  const offeredSelection = currentIsCandidate ? currentOwnerKey : (candidateKeys[0] ?? "");
+  const offeredSelection = currentLeadProfileId || (members[0]?.memberId ?? "");
   const [selected, setSelected] = useState(offeredSelection);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<AppError | null>(null);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const member = members.find((entry) => memberKey(entry) === selected);
-    if (!member || selected === currentOwnerKey || pending) return;
+    if (!selected || selected === currentLeadProfileId || pending) return;
     setPending(true);
     setError(null);
     try {
-      const result = await setChatOwnerFn({
-        data: {
-          chatId,
-          owner: { kind: member.memberKind, id: member.memberId },
-          expectedRevision: revision,
-        },
+      const result = await setCrewLeadFn({
+        data: { chatId, leadProfileId: selected, expectedRevision: revision },
       });
       if (!result.ok) {
         setError(result.error);
@@ -842,18 +791,17 @@ function OwnerDialog({
       }}
     >
       <DialogTrigger
-        data-testid="chat-owner-edit"
-        data-governance-action="owner_change"
+        data-testid="chat-lead-edit"
+        data-governance-action="lead_change"
         render={<Button type="button" variant="secondary" size="sm" />}
       >
-        更改 Owner
+        更改 lead
       </DialogTrigger>
-      <DialogContent data-testid="chat-owner-dialog">
+      <DialogContent data-testid="chat-lead-dialog">
         <DialogHeader>
-          <DialogTitle>更改 Owner</DialogTitle>
+          <DialogTitle>更改 lead</DialogTitle>
         </DialogHeader>
         <form onSubmit={submit} className="space-y-4">
-          {/* 变更负责人是唯一能改它的地方，规则就放在这里，不在面板上重复一遍。 */}
           {note && (
             <p
               data-testid="chat-governance-note"
@@ -863,40 +811,28 @@ function OwnerDialog({
             </p>
           )}
           <select
-            data-testid="chat-owner-select"
+            data-testid="chat-lead-select"
             value={selected}
             onChange={(event) => setSelected(event.target.value)}
             className="min-h-8.5 w-full rounded-control border border-input bg-background px-2.5 text-xs"
           >
-            {members.map((member) => {
-              const key = memberKey(member);
-              const name =
-                names.get(key) ??
-                (member.memberKind === "human"
-                  ? member.memberId === humanUserId
-                    ? humanName || "你"
-                    : "Human"
-                  : (agentNames.get(member.memberId) ?? "Agent"));
-              const kindLabel = member.memberKind === "human" ? "Human" : "Agent";
-              return (
-                <option key={key} value={key}>
-                  {/* 名字本身就是类型时不重复类型，避免出现「Human（Human）」。 */}
-                  {name === kindLabel ? name : `${name}（${kindLabel}）`}
-                  {key === currentOwnerKey ? " · 当前" : ""}
-                </option>
-              );
-            })}
+            {members.map((member) => (
+              <option key={member.memberId} value={member.memberId}>
+                {names.get(member.memberId) ?? "Agent"}
+                {member.memberId === currentLeadProfileId ? " · 当前 lead" : ""}
+              </option>
+            ))}
           </select>
-          {error && <ChatErrorNotice error={error} testId="chat-owner-error" />}
+          {error && <ChatErrorNotice error={error} testId="chat-lead-error" />}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               取消
             </Button>
             <Button
               type="submit"
-              data-testid="chat-owner-submit"
+              data-testid="chat-lead-submit"
               loading={pending}
-              disabled={!selected || selected === currentOwnerKey}
+              disabled={!selected || selected === currentLeadProfileId}
             >
               保存更改
             </Button>

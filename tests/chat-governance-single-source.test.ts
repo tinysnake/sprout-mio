@@ -28,7 +28,7 @@ const agent = {
 };
 
 const scope = {
-  kind: "group" as const,
+  kind: "crew" as const,
   ownerKind: "human" as const,
   ownerId: "usr_owner",
   projectCreatedBy: "usr_creator",
@@ -47,10 +47,10 @@ function allowed(action: (typeof CHAT_ACTIONS)[number], actor: typeof owner): bo
 describe("治理事实与领域断言读同一份判定", () => {
   it("owner 档下所有者与普通成员的结果两处一致", () => {
     const facts = chatGovernanceFacts(scope, member);
-    expect(facts.canChangeOwner).toBe(false);
-    expect(allowed("owner_change", member)).toBe(false);
-    expect(chatGovernanceFacts(scope, owner).canChangeOwner).toBe(true);
-    expect(allowed("owner_change", owner)).toBe(true);
+    expect(facts.canChangeLead).toBe(false);
+    expect(allowed("lead_change", member)).toBe(false);
+    expect(chatGovernanceFacts(scope, owner).canChangeLead).toBe(true);
+    expect(allowed("lead_change", owner)).toBe(true);
   });
 
   it("临时把 title_change 改成 owner 档后，非所有者两处都拒绝", () => {
@@ -80,8 +80,7 @@ describe("治理事实与领域断言读同一份判定", () => {
   it("Agent 在任何档位都不参与治理", () => {
     const facts = chatGovernanceFacts(scope, agent);
     expect(facts.canChangeMembers).toBe(false);
-    expect(facts.canChangeOwner).toBe(false);
-    expect(facts.canChangeWakePolicy).toBe(false);
+    expect(facts.canChangeLead).toBe(false);
     expect(facts.canRenameTitle).toBe(false);
   });
 });
@@ -101,11 +100,6 @@ describe("DM 标题是会话自己的名字", () => {
     } catch {
       throw new Error("DM 在 member 档下应当允许改标题");
     }
-  });
-
-  it("公共频道标题由 Project 派生，任何档位都不给改名", () => {
-    const channelScope = { ...dmScope, kind: "public_channel" as const };
-    expect(chatGovernanceFacts(channelScope, owner).canRenameTitle).toBe(false);
   });
 });
 

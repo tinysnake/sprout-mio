@@ -6,13 +6,13 @@ import { migrateDatabase } from "../src/db/migrate";
 import { runAttentionMigrationDefaults } from "./fixtures/run-attention-migration";
 import { openDatabase, type DatabaseConnection } from "../src/db/connection";
 
-function seed({ sqlite }: DatabaseConnection) {
+function seed({ sqlite }: DatabaseConnection, kind = "crew") {
   sqlite.exec(`
     INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES ('human','Human','migration@webhook.test',0,1,1);
     INSERT INTO project(id,name,created_by) VALUES ('project','Project','human'),('other','Other','human');
     INSERT INTO agent_profile(id,name,created_by) VALUES ('agent','Agent','human');
     INSERT INTO project_member(project_id,agent_profile_id,added_by) VALUES ('project','agent','human');
-    INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('chat','project','group','human','human','human'),('otherchat','other','group','human','human','human');
+    INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES ('chat','project','${kind}','human','human','human'),('otherchat','other','${kind}','human','human','human');
     INSERT INTO chat_member(chat_id,member_kind,member_id) VALUES ('chat','human','human'),('chat','agent','agent');
     INSERT INTO agent_instance(id,agent_profile_id,chat_id,project_id) VALUES ('instance','agent','chat','project');
     INSERT INTO message(id,chat_id,sender_kind,sender_id,body) VALUES ('input','chat','human','human','Human input'),('assistant','chat','agent','agent','Agent result');
@@ -62,7 +62,7 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
     writeFileSync(join(oldFolder, "meta", "_journal.json"), JSON.stringify(journal));
     migrateDatabase(file, oldFolder);
     const before = openDatabase(file);
-    seed(before);
+    seed(before, "group");
     const rows = (connection: DatabaseConnection, table: string) =>
       connection.sqlite.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all();
     const messages = rows(before, "message");
@@ -71,7 +71,8 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
     const tasks = rows(before, "task");
     const triggers = before.sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
-      .all();
+      .all()
+      .filter((row) => (row as { name: string }).name !== "chat_member_no_channel_insert");
     before.sqlite.close();
     try {
       migrateDatabase(file);
@@ -84,6 +85,8 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
             automation_trigger_id: null,
             assistant_event_id: null,
             assistant_proposal_id: null,
+            delegation_id: null,
+            delegation_prompt_for_chat_id: null,
           })),
         );
         expect(rows(after, "agent_run_input")).toEqual(

@@ -1,20 +1,15 @@
 import type { ChatKind, ChatOwnerFacts } from "../../contracts/chat";
 
 /**
- * 右栏治理段的说明文字。判定值全部来自领域层（裁定 d45）：`session.governance` 的
- * `canChangeMembers` / `canChangeOwner` 决定按钮与说法，这里不再抄能力表、也不比身份。
- * 成员规则归成员段，这里只说 Owner 变更的条件。
+ * 右栏治理段的说明文字。判定值全部来自领域层：`session.governance` 的
+ * `canChangeMembers` / `canChangeLead` 决定按钮与说法，这里不再抄能力表、也不比身份。
+ * 成员规则归成员段，这里只说 lead 变更的条件。
  */
 export function governanceNote(kind: ChatKind, facts: ChatOwnerFacts): string {
-  if (kind === "public_channel")
-    return facts.canChangeOwner
-      ? "可将 Owner 更改为 Project 的 Human 创建者。"
-      : "当前身份不能更改 Owner。";
-  if (kind !== "group") return "";
+  if (kind !== "crew") return "";
   if (!facts.canChangeMembers)
-    return `${facts.readOnlyReason ?? "当前身份不能修改成员与 Owner"}。Agent 不参与治理。`;
-  // 成员规则由成员段负责，这里只说 Owner 这件事。
-  return facts.canChangeOwner
-    ? "Owner 变更需要当前 Human owner。Agent 不参与治理。"
-    : "当前身份不能变更 Owner。Agent 不参与治理。";
+    return `${facts.readOnlyReason ?? "当前身份不能修改成员与 lead"}。Agent 不参与治理。`;
+  return facts.canChangeLead
+    ? "lead 变更需要当前 Human owner。Agent 不参与治理。"
+    : "当前身份不能变更 lead。Agent 不参与治理。";
 }

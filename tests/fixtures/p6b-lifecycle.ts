@@ -6,6 +6,7 @@
 // and (for one request) delays original bytes; it never synthesizes runner events,
 // domain results or tool payloads.
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -651,7 +652,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       [sideProjectId, sideOnly],
     ] as const)
       await call("addProjectMemberFn", { projectId: target, agentProfileId: profile.id });
-    const group = await call("createGroupChatFn", {
+    const group = await createCrewFixture(call, environment.DATABASE_URL!, {
       projectId,
       title: "Lifecycle group",
       members: [
@@ -664,7 +665,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     });
     const dm = await call("createDirectChatFn", { projectId, agentProfileId: alpha.id });
     const idleDm = await call("createDirectChatFn", { projectId, agentProfileId: gamma.id });
-    const crossChat = await call("createGroupChatFn", {
+    const crossChat = await createCrewFixture(call, environment.DATABASE_URL!, {
       projectId,
       title: "Lifecycle cross chat",
       members: [
@@ -1152,7 +1153,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     const crossTitle = `Lifecycle cross chat v2 ${stamp()}`;
     await call("updateChatTitleFn", { chatId: crossChat.id, title: crossTitle });
     await sleep(320);
-    await call("removeGroupMemberFn", {
+    await call("removeCrewMemberFn", {
       chatId: group.id,
       member: { kind: "agent", id: alpha.id },
       expectedRevision: (await call("getChatFn", { chatId: group.id })).governanceRevision,

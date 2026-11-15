@@ -112,8 +112,8 @@ const runs = await import("../../src/domain/agent-run");
 const delivery = await import("../../src/domain/continuation-delivery");
 const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject } = await import("../../src/domain/project");
+const { createCrewChat } = await import("./crew-chat");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
-const { createGroupChat } = await import("../../src/domain/chat");
 const { createContinuationScheduler } = await import("../../src/server/continuation-scheduler");
 const ctx = { userId: "usr_p6a_lifecycle", requestId: newId(ID_PREFIXES.request) };
 const count = (table: string, chatId?: string) =>
@@ -165,7 +165,7 @@ function seed(name: string) {
 }
 function group(owner: ReturnType<typeof seed>, title: string) {
   return human(() =>
-    createGroupChat(
+    createCrewChat(
       owner.project.id,
       {
         projectId: owner.project.id,

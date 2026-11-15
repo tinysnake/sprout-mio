@@ -17,6 +17,7 @@ process.env.DATABASE_URL = join(directory, "start.sqlite");
 process.env.SPROUT_PI_ENABLED = "false";
 process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+const { createCrewChat, setChatOwnerCompat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { db, sqlite } = await import("../src/db");
@@ -29,8 +30,7 @@ const runs = await import("../src/domain/agent-run");
 const tasks = await import("../src/domain/task");
 const inputs = await import("../src/domain/task-input");
 const { messageSchema } = await import("../src/contracts/chat");
-const { ensureProjectChannel } = await import("../src/domain/channel");
-const { actorFromContext } = await import("../src/domain/chat-actor");
+
 const ctx: ProjectContext = { userId: "task-start-human", requestId: newId(ID_PREFIXES.request) };
 sqlite
   .prepare(
@@ -46,7 +46,7 @@ function group(
   owner: "agent" | "human" = "agent",
   wakePolicy: "owner_led" | "mention_only" = "owner_led",
 ) {
-  return chats.createGroupChat(
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -150,15 +150,13 @@ afterAll(() => {
 
 describe("explicit Task start and collaboration", () => {
   // Four frozen §6.1 responsibility shapes, each with startNow false/true.
-  for (const shape of ["dm", "agent_group", "human_group", "channel"] as const) {
+  for (const shape of ["dm", "crew"] as const) {
     for (const startNow of [false, true])
       it(`${shape}, startNow=${startNow}: exact run/message/input/notice delta`, () => {
         const targetId =
           shape === "dm"
             ? chats.createDirectChat(project.id, alpha.id, ctx).chat.id
-            : shape === "channel"
-              ? ensureProjectChannel(project.id)
-              : group(shape === "agent_group" ? "agent" : "human", "mention_only").id;
+            : group("agent", "mention_only").id;
         // A previous DM test may leave an active run; exercise both new and reused runs explicitly below.
         const previousActive = runs
           .listAgentRuns(targetId, ctx)
@@ -169,7 +167,7 @@ describe("explicit Task start and collaboration", () => {
           { ...command(detail), targetChatId: targetId, startNow },
           ctx,
         );
-        const isAgent = shape === "dm" || shape === "agent_group";
+        const isAgent = true;
         expect(counts().map((n, i) => n - before[i]!)).toEqual([
           startNow && isAgent && !previousActive ? 1 : 0,
           startNow ? 1 : 0,
@@ -206,122 +204,6 @@ describe("explicit Task start and collaboration", () => {
     expect(again.startDelivery?.runId).toBe(s.runId);
     expect(counts().map((n, i) => n - before[i]!)).toEqual([0, 1, 1, 0]);
   });
-  it("requires explicit @ for Agent collaboration and never wakes from ordinary member replies", () => {
-    const target = group();
-    const s = start(target.id);
-    const owner = agentContext(s.runId);
-    const before = count("agent_run_input");
-    // 正文里的名字不是点名：唤醒只读写时落库的 mention 记录。
-    send(target.id, "Beta naked name", owner);
-    expect(count("agent_run_input")).toBe(before);
-    const wake = send(target.id, "@Beta help", owner);
-    expect(count("agent_run_input")).toBe(before + 1);
-    const memberRun = runs
-      .listAgentRuns(target.id, ctx)
-      .find((r) => r.instanceId !== owner.agent!.instanceId)!;
-    const member = agentContext(memberRun.id);
-    expect(runs.listAgentRunInputs(memberRun.id, ctx)).toMatchObject([{ messageId: wake.id }]);
-    expect(actorFromContext(member)).toMatchObject({
-      kind: "agent",
-      agentProfileId: beta.id,
-      instanceId: memberRun.instanceId,
-      runId: memberRun.id,
-    });
-    expect(chats.getInstance(memberRun.instanceId, ctx)).toMatchObject({
-      agentProfileId: beta.id,
-      chatId: target.id,
-    });
-    const afterWake = count("agent_run_input");
-    send(target.id, `@Alpha @${alpha.id}`, member);
-    expect(count("agent_run_input")).toBe(afterWake + 1);
-    // 按成员 id 写 `@` 不是点名：写时解析只认展示名，路由没有 id 兜底。
-    send(target.id, `@${beta.id} by id`, owner);
-    expect(count("agent_run_input")).toBe(afterWake + 1);
-    // 非 owner Agent 在 Human-owned group 也能通过显式 @ 唤醒目标。
-    const humanOwned = group("human");
-    send(humanOwned.id, "@Beta", ctx);
-    const nonownerRun = runs.listAgentRuns(humanOwned.id, ctx)[0]!;
-    const beforeNonowner = count("agent_run_input");
-    send(humanOwned.id, "@Alpha", agentContext(nonownerRun.id));
-    expect(count("agent_run_input")).toBe(beforeNonowner + 1);
-  });
-  it.each(["mention_only", "owner_led"] as const)(
-    "preserves Human P5a %s routing on explicit mentions",
-    (policy) => {
-      const target = group("agent", policy);
-      send(target.id, "ordinary message");
-      expect(runs.listAgentRuns(target.id, ctx)).toHaveLength(policy === "owner_led" ? 1 : 0);
-      // 裸名字不路由，只有 `@名字` 落成 mention 才换人。
-      send(target.id, "Beta bare name");
-      expect(runs.listAgentRuns(target.id, ctx)).toHaveLength(policy === "owner_led" ? 1 : 0);
-      const named = send(target.id, "@Beta explicit name");
-      const recipient = runs
-        .listAgentRuns(target.id, ctx)
-        .find((r) => chats.getInstance(r.instanceId, ctx).agentProfileId === beta.id)!;
-      expect(runs.listAgentRunInputs(recipient.id, ctx)).toMatchObject([{ messageId: named.id }]);
-    },
-  );
-});
-
-describe("Task input attempt, ACK and handoff boundaries", () => {
-  it.each(["ack", "no_ack", "sync_throw", "async_reject"] as const)(
-    "persists one attempted send across %s and never offers it again",
-    async (mode) => {
-      const s = start();
-      running(s.runId);
-      expect(row(s.runId, s.messageId)).toMatchObject({
-        disposition: "pending",
-        admittedAt: null,
-        deliveredAt: null,
-      });
-      let attempts = 0;
-      const send = () => {
-        attempts++;
-        expect(row(s.runId, s.messageId).admittedAt).toBeInstanceOf(Date);
-        if (mode === "sync_throw") throw new Error("broken pipe");
-        if (mode === "async_reject") return Promise.reject(new Error("lost ACK"));
-        return Promise.resolve();
-      };
-      if (mode === "sync_throw")
-        expect(() => inputs.admitTaskStartInput(s.runId, s.messageId, send)).toThrow("broken pipe");
-      else if (mode === "async_reject")
-        await expect(inputs.admitTaskStartInput(s.runId, s.messageId, send)).rejects.toThrow(
-          "lost ACK",
-        );
-      else await inputs.admitTaskStartInput(s.runId, s.messageId, send);
-      expect(inputs.admitTaskStartInput(s.runId, s.messageId, send)).toBeUndefined();
-      expect(runs.firstPendingRunInput(s.runId, ctx)).toBeUndefined();
-      expect(runs.pendingRunInputs(s.runId, ctx)).toEqual([]);
-      expect(attempts).toBe(1);
-      const admittedAt = row(s.runId, s.messageId).admittedAt;
-      if (mode === "ack") {
-        runs.markRunInputDelivered(s.runId, s.messageId, ctx);
-        expect(row(s.runId, s.messageId)).toMatchObject({
-          disposition: "delivered",
-          admittedAt,
-          deliveredAt: expect.any(Date),
-        });
-      } else {
-        tasks.cancelTask(command(s.detail), ctx);
-        expect(row(s.runId, s.messageId)).toMatchObject({
-          disposition: "pending",
-          admittedAt,
-          deliveredAt: null,
-        });
-      }
-      runs.completeAgentRun(s.runId, "transport boundary only", "stop", ctx);
-      expect(row(s.runId, s.messageId).admittedAt).toEqual(admittedAt);
-      expect(runs.listAgentRuns(s.detail.chat!.id, ctx)).toHaveLength(1);
-      if (mode !== "ack")
-        expect(
-          sqlite
-            .prepare(
-              "SELECT count(*) AS n FROM diagnostic_event WHERE run_id=? AND event='agent_run.task_delivery_unconfirmed'",
-            )
-            .get(s.runId),
-        ).toEqual({ n: 1 });
-    },
-  );
   it("hands off valid unattempted Task and ordinary pending inputs while retaining attempted Task inputs", () => {
     const s = start();
     running(s.runId);
@@ -355,7 +237,7 @@ describe("Task input attempt, ACK and handoff boundaries", () => {
       if (change === "reassign")
         tasks.reassignTask({ ...command(s.detail), targetChatId: group().id }, ctx);
       if (change === "governance")
-        chats.setChatOwner(
+        setChatOwnerCompat(
           s.detail.chat!.id,
           { kind: "human", id: ctx.userId },
           chats.getChat(s.detail.chat!.id, ctx).governanceRevision,
@@ -396,7 +278,7 @@ describe("Task input attempt, ACK and handoff boundaries", () => {
     running(s.runId);
     const ordinary = send(s.detail.chat!.id, "carry ordinary after governance change");
     const current = chats.getChat(s.detail.chat!.id, ctx);
-    chats.setChatOwner(
+    setChatOwnerCompat(
       current.id,
       { kind: "human", id: ctx.userId },
       current.governanceRevision,

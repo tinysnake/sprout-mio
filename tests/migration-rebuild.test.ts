@@ -263,7 +263,7 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
     try {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
-      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex + 1);
       applyRangeInTransaction(sqlite, backfillIndex, backfillIndex + 1);
 
       expect(
@@ -315,7 +315,7 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
     try {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
-      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex + 1);
       sqlite.pragma("foreign_keys = ON");
 
       sqlite
@@ -374,7 +374,7 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
     try {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
-      applyRangeInTransaction(sqlite, multichatIndex, migrations.length);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex + 1);
       sqlite.pragma("foreign_keys = ON");
       const channelId = String(
         (
@@ -409,14 +409,6 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
           .run(),
       ).toThrow(/CHECK constraint failed: chat_kind_check/);
       expect(() =>
-        sqlite
-          .prepare(
-            `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by, archived_at)
-             VALUES ('cnv_archived', 'prj_legacy', 'public_channel', 'human', 'usr_legacy', 'usr_legacy', 9)`,
-          )
-          .run(),
-      ).toThrow(/CHECK constraint failed: chat_public_channel_archived_check/);
-      expect(() =>
         sqlite.prepare(`UPDATE chat SET kind = 'group' WHERE id = 'cnv_legacy'`).run(),
       ).toThrow(/chat_identity_immutable/);
       expect(() =>
@@ -427,18 +419,10 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
       expect(() =>
         sqlite.prepare(`UPDATE chat_member SET added_at = 9 WHERE chat_id = 'cnv_legacy'`).run(),
       ).toThrow(/chat_member_identity_immutable/);
-      expect(() =>
-        sqlite
-          .prepare(
-            `INSERT INTO chat_member (chat_id, member_kind, member_id) VALUES (?, 'human', 'usr_second')`,
-          )
-          .run(channelId),
-      ).toThrow(/public_channel_members_derived/);
-      // 裁定 d12：频道的 delete 触发器是不可达死代码，insert 是唯一的物理底线。
-      // 裁定 d13：它由新迁移 0023 删掉，0021 保持基线原样；这里跑完全部迁移，
-      // chat_member 上的触发器集合必须恰好是 d12 认定的那两道，不多一道孤儿。
+      // 0021/0022 基线：delete 与 insert 两道频道触发器同时存在。
       expect(triggersOn(sqlite, "chat_member")).toEqual([
         "chat_member_identity_immutable",
+        "chat_member_no_channel_delete",
         "chat_member_no_channel_insert",
       ]);
       expect(() =>
@@ -486,9 +470,9 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
     try {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
-      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
-      applyRange(sqlite, backfillIndex, backfillIndex + 1);
-      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex + 1);
+      applyRange(sqlite, backfillIndex, dropTriggerIndex + 1);
+      applyRange(sqlite, backfillIndex, dropTriggerIndex + 1);
       sqlite.pragma("foreign_keys = ON");
 
       const channels = sqlite
@@ -533,11 +517,10 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
       applyRange(sqlite, 0, multichatIndex);
       seedLegacyRows(sqlite);
       // 长期库（data/sprout.sqlite 这类）此刻的样子：0021 按基线建了三道触发器，0022 只回填数据。
-      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex);
-      applyRange(sqlite, backfillIndex, backfillIndex + 1);
+      applyRangeInTransaction(sqlite, multichatIndex, backfillIndex + 1);
+      applyRange(sqlite, backfillIndex, dropTriggerIndex + 1);
       expect(triggersOn(sqlite, "chat_member")).toEqual([
         "chat_member_identity_immutable",
-        "chat_member_no_channel_delete",
         "chat_member_no_channel_insert",
       ]);
       const channelId = String(
@@ -667,18 +650,11 @@ describe("I-P5a 多人 Chat 结构迁移", () => {
       expect(ddl.get("agent_run_input")).toContain(
         "FOREIGN KEY (`message_id`) REFERENCES `message`(`id`)",
       );
-      expect(
-        (
-          sqlite
-            .prepare(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`)
-            .get("chat_public_channel_project_unique") as { sql: string }
-        ).sql,
-      ).toMatch(/WHERE "chat"\."kind" = 'public_channel'/);
       expect(() =>
         sqlite
           .prepare(
             `INSERT INTO chat (id, project_id, kind, owner_kind, owner_id, created_by)
-             VALUES ('cnv_ghost', 'prj_ghost', 'group', 'human', 'usr_ghost', 'usr_ghost')`,
+             VALUES ('cnv_ghost', 'prj_ghost', 'crew', 'human', 'usr_ghost', 'usr_ghost')`,
           )
           .run(),
       ).toThrow(/FOREIGN KEY constraint failed/);

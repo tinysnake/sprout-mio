@@ -109,7 +109,7 @@ describe("对话接续页面事实与 Human 控制", () => {
   });
   it("群组与非 DM 面板保留唤醒判定与对话接续两行", async () => {
     const view = diagnosticFixture("failure");
-    for (const chatKind of ["group" as const, undefined]) {
+    for (const chatKind of ["crew" as const, undefined]) {
       const html = await renderWithRouter(
         createElement(ContinuationPanel, { data: { view, denials: {} }, chatKind }),
       );

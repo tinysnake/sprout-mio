@@ -12,7 +12,7 @@ import {
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { RUN_ATTENTION_SENDER_ID } from "../contracts/run-attention";
 import { appendSystemOwnerRunInput } from "./agent-run";
-import { readChatEffectiveMembers } from "./channel";
+import { readChatEffectiveMembers } from "./chat-members";
 import { retryDelay, signalScheduleChange } from "./chat-schedule";
 import { publishProjectChange } from "./change-feed";
 import { readRunActivity } from "../server/pi-host/run-activity";
@@ -168,10 +168,14 @@ export function sweepRunAttention(now: Date): RunAttentionSweepResult {
             .run();
           row = { ...row, attentionPolicySnapshot: snapshot };
         }
-        const owner =
-          row.attentionAt &&
-          snapshot.target?.kind === "agent" &&
-          snapshot.target.id !== context.profileId
+        const leadId = context.chat.kind === "crew" ? (context.chat.leadProfileId ?? null) : null;
+        const owner = leadId
+          ? leadId === context.profileId
+            ? "self"
+            : "agent"
+          : row.attentionAt &&
+              snapshot.target?.kind === "agent" &&
+              snapshot.target.id !== context.profileId
             ? "agent"
             : context.chat.ownerKind === "human"
               ? "human"
@@ -227,7 +231,13 @@ export function sweepRunAttention(now: Date): RunAttentionSweepResult {
           const messageId = writeNotice(row, false, now);
           const fixed = {
             ...snapshot,
-            target: { kind: "agent" as const, id: context.chat.ownerId },
+            target: {
+              kind: "agent" as const,
+              id:
+                context.chat.kind === "crew"
+                  ? (context.chat.leadProfileId ?? context.chat.ownerId)
+                  : context.chat.ownerId,
+            },
           };
           db.update(agentRun)
             .set({
@@ -289,8 +299,9 @@ function deliverOwnerNotice(id: string, now: Date): boolean {
         !notice ||
         !context ||
         target?.kind !== "agent" ||
-        context.chat.ownerKind !== "agent" ||
-        context.chat.ownerId !== target.id ||
+        (context.chat.kind === "crew"
+          ? context.chat.leadProfileId !== target.id
+          : context.chat.ownerKind !== "agent" || context.chat.ownerId !== target.id) ||
         target.id === context.profileId ||
         !readChatEffectiveMembers(row.chatId, row.projectId).some(
           (member) => member.memberKind === "agent" && member.memberId === target.id,

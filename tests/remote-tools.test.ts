@@ -27,6 +27,8 @@ const free = {
   generation: 0,
   state: "free",
   holderInstanceId: null,
+  ownerKind: null,
+  holderCrewChatId: null,
   changedAt: time,
   pendingMutationId: null,
   escrow: null,
@@ -466,7 +468,58 @@ describe("远端 execution 阻塞等待工具", () => {
 });
 
 describe("远端 Pi 工具边界", () => {
-  it("每个工具强制 Machine，身份不可由参数冒充，合法输入只注入宿主 Project", async () => {
+  it("Crew resource tools preserve intent and inject only the authenticated Project", async () => {
+    const requests: RemoteAgentRequest[] = [];
+    const registered = tools({
+      projectId,
+      request: async (request) => {
+        requests.push(request);
+        return denied;
+      },
+    });
+    const id = crypto.randomUUID();
+    const inputs = {
+      request: {
+        crewChatId: "cnv_11111111",
+        crewEpoch: 1,
+        subjectKind: "delegation",
+        delegationId: "dlg_11111111",
+        attempt: 1,
+        runId: "run_11111111",
+        machineId,
+        membershipEpoch: 1,
+        directoryRealPath: "/workspace",
+        directoryRevision: 1,
+        operations: ["shell"],
+        clientRequestId: id,
+      },
+      approve: { resourceRequestId: id, crewEpoch: 1, expectedRevision: 0 },
+      revoke: { resourceRequestId: id, crewEpoch: 1, expectedRevision: 1 },
+      release: { resourceRequestId: id },
+      takeover: {
+        resourceRequestId: id,
+        target: {
+          subjectKind: "delegation",
+          delegationId: "dlg_11111111",
+          attempt: 1,
+          runId: "run_22222222",
+        },
+        clientRequestId: `${id}-takeover`,
+      },
+    };
+    for (const [op, input] of Object.entries(inputs)) {
+      const tool = registered.get(`sprout_resource_${op}`)!;
+      await tool.execute("probe", input);
+      expect(requests.at(-1)?.call).toEqual({
+        type: "crew_resource",
+        input: { projectId, command: { op, input } },
+      });
+      const before = requests.length;
+      expect((await tool.execute("probe", { ...input, instanceId })).isError).toBe(true);
+      expect(requests).toHaveLength(before);
+    }
+  });
+  it("租约与执行工具强制 Machine，身份不可由参数冒充，合法输入只注入宿主 Project", async () => {
     const requests: RemoteAgentRequest[] = [];
     const registered = tools({
       projectId,
@@ -658,6 +711,8 @@ describe("远端 Pi 工具边界", () => {
       generation: 2,
       state: "held" as const,
       holderInstanceId: instanceId,
+      ownerKind: "instance" as const,
+      holderCrewChatId: null,
       escrow,
     };
     let reply: { lease: typeof lease; escrow: typeof escrow } = { lease, escrow };
@@ -1190,6 +1245,8 @@ const freeLease: LeaseView = {
   generation: 0,
   state: "free",
   holderInstanceId: null,
+  ownerKind: null,
+  holderCrewChatId: null,
   changedAt: time,
   pendingMutationId: null,
   escrow: null,
@@ -1200,6 +1257,8 @@ const escrowedLease: LeaseView = {
   generation: 1,
   state: "held",
   holderInstanceId,
+  ownerKind: "instance",
+  holderCrewChatId: null,
   changedAt: time,
   pendingMutationId: null,
   escrow: {

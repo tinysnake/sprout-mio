@@ -9,6 +9,7 @@ process.env.DATABASE_URL = join(directory, "core.sqlite");
 process.env.SPROUT_PI_ENABLED = "false";
 process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+const { createCrewChat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { sqlite } = await import("../src/db");
@@ -188,7 +189,7 @@ describe("Chat watch digest windows", () => {
   });
   it("finds new activity beyond a page of unchanged active runs", () => {
     const f = fixture();
-    const target = chats.listChats(project.id, ctx).find((chat) => chat.kind === "public_channel")!;
+    const target = chats.listChats(project.id, ctx).find((chat) => chat.kind === "crew")!;
     const watch = observer.setAssistantWatch(
       f.dm.id,
       project.id,
@@ -198,10 +199,20 @@ describe("Chat watch digest windows", () => {
       instant,
       60,
     );
+    sqlite
+      .prepare(
+        "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id) VALUES (?, 'agent', ?)",
+      )
+      .run(target.id, f.worker.id);
     const profiles = [f.worker];
     for (let i = 0; i < 50; i++) {
       const profile = createAgentProfile({ name: `Page worker ${sequence}-${i}` }, ctx);
       addProjectMember(project.id, profile.id, ctx);
+      sqlite
+        .prepare(
+          "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id) VALUES (?, 'agent', ?)",
+        )
+        .run(target.id, profile.id);
       profiles.push(profile);
     }
     const observedRuns = profiles.map((profile, index) => {
@@ -406,7 +417,7 @@ describe("Chat watch digest windows", () => {
   it("labels public channel watch confirmations and active watches without falling back to an Agent name", () => {
     const f = fixture();
     const channel = sqlite
-      .prepare("SELECT id FROM chat WHERE project_id=? AND kind='public_channel'")
+      .prepare("SELECT id FROM chat WHERE project_id=? AND kind='crew' ORDER BY rowid LIMIT 1")
       .get(project.id) as { id: string };
     assistant.captureAssistantFact(
       f.dm.id,
@@ -425,7 +436,7 @@ describe("Chat watch digest windows", () => {
     const pending = assistant
       .assistantPanel(f.dm.id, ctx)
       .decisions.find((e) => e.fact.watchIntent)!;
-    expect(pending.targetLabel).toBe("公共频道（Project 范围）");
+    expect(pending.targetLabel).toBe("Window project");
     observer.setAssistantWatch(f.dm.id, project.id, channel.id, true, ctx, instant, 60, pending.id);
     expect(assistant.assistantPanel(f.dm.id, ctx).watches[0].targetLabel).toBe(pending.targetLabel);
   });
@@ -771,7 +782,7 @@ describe("Chat watch digest windows", () => {
     const f = fixture();
     observer.setAssistantWatch(f.dm.id, project.id, f.target.id, true, ctx, instant, 60);
     for (let i = 0; i < 51; i++) {
-      const group = chats.createGroupChat(
+      const group = createCrewChat(
         project.id,
         {
           projectId: project.id,
@@ -787,9 +798,9 @@ describe("Chat watch digest windows", () => {
       );
       observer.setAssistantWatch(f.dm.id, project.id, group.id, true, ctx, instant, 60);
     }
-    const publicChannel = chats
-      .listChats(project.id, ctx)
-      .find((c) => c.kind === "public_channel")!;
+    const publicChannel = sqlite
+      .prepare("SELECT id FROM chat WHERE project_id=? AND kind='crew' ORDER BY rowid LIMIT 1")
+      .get(project.id) as { id: string };
     observer.setAssistantWatch(f.dm.id, project.id, publicChannel.id, true, ctx, instant, 60);
     const active = assistant.assistantPanel(f.dm.id, ctx).watches;
     expect(active).toHaveLength(53);
@@ -800,13 +811,13 @@ describe("Chat watch digest windows", () => {
     });
     expect(
       active
-        .filter((w) => w.targetKind === "group")
+        .filter((w) => w.targetKind === "crew" && w.targetChatId !== publicChannel.id)
         .map((w) => w.targetLabel)
         .sort(),
     ).toEqual(Array.from({ length: 51 }, (_, i) => `Watched Group ${i}`).sort());
     expect(active.find((w) => w.targetChatId === publicChannel.id)).toMatchObject({
-      targetKind: "public_channel",
-      targetLabel: "公共频道（Project 范围）",
+      targetKind: "crew",
+      targetLabel: "Window project",
     });
   });
   it("enforces the durable global two-job concurrency bound across claims", () => {

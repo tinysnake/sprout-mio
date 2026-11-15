@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { assertCrewExecutionScope } from "../domain/crew-resource";
 import { machineBindings } from "../domain/machine";
 import { applyMcpExchange, McpExchangeError } from "../domain/mcp/exchange";
 import type { WorkerExchangeRemoteInput } from "../contracts/worker";
@@ -775,6 +776,17 @@ export function requestExecution(
           operation = { ...operation, cwd: observation.realPath };
           directoryRevision = root.rootRevision;
         }
+      }
+      try {
+        assertCrewExecutionScope(
+          input,
+          input.authorizationGeneration,
+          ctx,
+          operation,
+          directoryRevision,
+        );
+      } catch {
+        throw new RemoteError("forbidden");
       }
       expireExecutions(input, ctx.now, ctx.bootId);
       if (
@@ -1793,12 +1805,25 @@ export function applyRemoteExchange(
       .all()) {
       if (normalOutput.commands.length >= 8) break;
       const lease = authorityNow(row);
+      let crewScopeValid = true;
+      try {
+        assertCrewExecutionScope(
+          row,
+          row.authorizationGeneration,
+          { instanceId: row.holderInstanceId, runId: row.runId ?? undefined },
+          row.operationJson,
+          row.directoryRevision,
+        );
+      } catch {
+        crewScopeValid = false;
+      }
       let failure:
         | "authorization_revoked"
         | "capability_unavailable"
         | "directory_unavailable"
         | null = null;
       if (
+        !crewScopeValid ||
         !membershipActive(row.projectId, row.machineId) ||
         !lease ||
         lease.state !== "active" ||

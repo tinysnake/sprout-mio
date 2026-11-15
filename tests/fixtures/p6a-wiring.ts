@@ -10,6 +10,7 @@ import type { Evaluation } from "../../src/domain/chat-schedule";
 import type { ContinuationScheduler } from "../../src/server/continuation-scheduler";
 import type { EvaluateWake } from "../../src/domain/continuation-delivery";
 import type { LlmRequest } from "../../src/domain/wake-providers/llm";
+import { createCrewChat } from "./crew-chat";
 
 const directory = resolve(process.env.P6A_EVIDENCE_DIR ?? ".verify/p6a-wiring");
 mkdirSync(directory, { recursive: true });
@@ -95,7 +96,6 @@ try {
   const { createProject, updateProjectWakePolicy, getProject } =
     await import("../../src/domain/project");
   const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
-  const { createGroupChat } = await import("../../src/domain/chat");
   const { createTask, assignTask } = await import("../../src/domain/task");
   const continuation = await import("../../src/domain/chat-continuation");
   const ctx = { userId: "usr_p6a_wiring", requestId: newId(ID_PREFIXES.request) };
@@ -127,7 +127,7 @@ try {
     );
   }
   function group(projectId = project.id) {
-    const chat = createGroupChat(
+    const chat = createCrewChat(
       projectId,
       {
         projectId,

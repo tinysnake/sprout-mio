@@ -441,8 +441,10 @@ try {
   })
   await check('A_chats_unchanged_after_attacks', async () => {
     assert.deepEqual(aAfter.chats.filter((entry) => entry.kind === 'dm').map((entry) => entry.id), [aDm.data.chat.id])
-    assert.equal(aAfter.chats.filter((entry) => entry.kind === 'public_channel').length, 1)
-    return { chats: aAfter.chats.length, dm: 1, channels: 1 }
+    assert.equal(aAfter.chats.filter((entry) => entry.kind === 'crew').length, 1)
+    assert.equal(aAfter.chats.filter((entry) => entry.kind === 'public_channel').length, 0)
+    assert.deepEqual(aAfter.chats.map((entry) => entry.id).sort(), aSnapshot.chats.map((entry) => entry.id).sort())
+    return { chats: aAfter.chats.length, dm: 1, crews: 1, channels: 0 }
   })
 
   writeFileSync(join(directory, 'k2-state.json'), JSON.stringify({
@@ -469,7 +471,8 @@ try {
     assert.equal(count('SELECT count(*) AS count FROM agent_instance WHERE agent_profile_id = ? AND project_id = ?', aProfile.data.id, bProject.data.id), 0)
     assert.equal(count('SELECT count(*) AS count FROM project_member WHERE project_id = ? AND agent_profile_id = ?', bProject.data.id, aProfile.data.id), 0)
     assert.equal(count("SELECT count(*) AS count FROM chat WHERE project_id = ? AND kind = 'dm'", bProject.data.id), 1)
-    assert.equal(count("SELECT count(*) AS count FROM chat WHERE project_id = ? AND kind = 'public_channel'", bProject.data.id), 1)
+    assert.equal(count("SELECT count(*) AS count FROM chat WHERE project_id = ? AND kind = 'crew'", bProject.data.id), 1)
+    assert.equal(count("SELECT count(*) AS count FROM chat WHERE project_id = ? AND kind = 'public_channel'", bProject.data.id), 0)
     assert.equal(count('SELECT count(*) AS count FROM message WHERE chat_id = ?', aDm.data.chat.id), aMessages.length)
     assert.equal(count("SELECT count(*) AS count FROM message WHERE body LIKE '%K2-forbidden%' AND chat_id = ?", aDm.data.chat.id), 0)
     assert.equal(count("SELECT count(*) AS count FROM project_profile WHERE default_branch LIKE 'k2-forbidden%'"), 0)

@@ -68,6 +68,8 @@ describe("超时未处理的租约不会显示成空闲", () => {
     generation: 6,
     state: "held" as const,
     holderInstanceId: escrow.escrowedByInstanceId,
+    ownerKind: "instance" as const,
+    holderCrewChatId: null,
     changedAt: escrow.escrowedAt,
     pendingMutationId: null,
     escrow,

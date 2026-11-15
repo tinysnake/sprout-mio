@@ -2,15 +2,15 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequestHeaders } from "@tanstack/react-start/server";
 import { z } from "zod";
 import {
-  addGroupMemberInput,
+  addCrewMemberInput,
   chatIdInput,
   clearChatTitleInput,
   createDirectChatInput,
-  createGroupChatInput,
   listMessagesInput,
-  removeGroupMemberInput,
+  removeCrewMemberInput,
   sendMessageInput,
-  setChatOwnerInput,
+  setCrewLeadInput,
+  setCrewModeInput,
   updateChatTitleInput,
 } from "../../contracts/chat";
 import type {
@@ -320,32 +320,17 @@ export const clearChatTitleFn = createServerFn({ method: "POST" })
     clearChatTitleBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-/** 建群：成员、所有者与唤醒策略的边界校验在服务端完成，Agent 行动者由领域层回 forbidden。 */
-export async function createGroupChatBoundary(
+/** 加 Crew 成员：成员资格与 Agent 属本项目由领域层核对，Agent 行动者回 forbidden。 */
+export async function addCrewMemberBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
 ): Promise<ChatResult<Chat>> {
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
-    const parsed = createGroupChatInput.safeParse(raw);
+    const parsed = addCrewMemberInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return ok(
-      deps.createGroupChat(parsed.data.projectId, parsed.data, humanActor(context)),
-      requestId,
-    );
-  });
-}
-
-export async function addGroupMemberBoundary(
-  raw: unknown,
-  headers: Headers,
-  requestId: string,
-): Promise<ChatResult<Chat>> {
-  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
-    const parsed = addGroupMemberInput.safeParse(raw);
-    if (!parsed.success) return invalidInput(parsed.error, requestId);
-    return ok(
-      deps.addGroupMember(
+      deps.addCrewMember(
         parsed.data.chatId,
         parsed.data.member,
         parsed.data.expectedRevision,
@@ -356,16 +341,16 @@ export async function addGroupMemberBoundary(
   });
 }
 
-export async function removeGroupMemberBoundary(
+export async function removeCrewMemberBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
 ): Promise<ChatResult<Chat>> {
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
-    const parsed = removeGroupMemberInput.safeParse(raw);
+    const parsed = removeCrewMemberInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return ok(
-      deps.removeGroupMember(
+      deps.removeCrewMember(
         parsed.data.chatId,
         parsed.data.member,
         parsed.data.expectedRevision,
@@ -376,18 +361,19 @@ export async function removeGroupMemberBoundary(
   });
 }
 
-export async function setChatOwnerBoundary(
+/** 改任 lead：过期版本一律 conflict，新 lead 必须是当前有效 Agent 成员。 */
+export async function setCrewLeadBoundary(
   raw: unknown,
   headers: Headers,
   requestId: string,
 ): Promise<ChatResult<Chat>> {
   return chatBoundary<Chat>(headers, requestId, (deps, context) => {
-    const parsed = setChatOwnerInput.safeParse(raw);
+    const parsed = setCrewLeadInput.safeParse(raw);
     if (!parsed.success) return invalidInput(parsed.error, requestId);
     return ok(
-      deps.setChatOwner(
+      deps.setCrewLead(
         parsed.data.chatId,
-        parsed.data.owner,
+        parsed.data.leadProfileId,
         parsed.data.expectedRevision,
         humanActor(context),
       ),
@@ -396,26 +382,48 @@ export async function setChatOwnerBoundary(
   });
 }
 
-export const createGroupChatFn = createServerFn({ method: "POST" })
+export const addCrewMemberFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    createGroupChatBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    addCrewMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-export const addGroupMemberFn = createServerFn({ method: "POST" })
+export const removeCrewMemberFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    addGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    removeCrewMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-export const removeGroupMemberFn = createServerFn({ method: "POST" })
+export async function setCrewModeBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<Chat>> {
+  return chatBoundary<Chat>(headers, requestId, (deps, context) => {
+    const parsed = setCrewModeInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    const updated = deps.setCrewMode(
+      parsed.data.chatId,
+      parsed.data.mode,
+      parsed.data.expectedRevision,
+      humanActor(context),
+    );
+    if (parsed.data.mode === "stopped")
+      void import("../../domain/delegation").then((mod) =>
+        mod.cancelCrewDelegations(parsed.data.chatId, "Crew 已停止", context),
+      );
+    return ok(updated, requestId);
+  });
+}
+
+export const setCrewModeFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    removeGroupMemberBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    setCrewModeBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
-export const setChatOwnerFn = createServerFn({ method: "POST" })
+export const setCrewLeadFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
-    setChatOwnerBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+    setCrewLeadBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );

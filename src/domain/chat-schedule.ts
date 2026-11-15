@@ -50,8 +50,9 @@ export type Evaluation = {
 export type ChatFacts = {
   id: string;
   project_id: string;
-  kind: "dm" | "group" | "public_channel";
+  kind: "dm" | "crew";
   owner_kind: "agent" | "human";
+  lead_profile_id: string | null;
   owner_id: string;
   created_by: string;
   archived_at: number | null;
@@ -237,8 +238,8 @@ export function responsibleRecipient(
           "SELECT member_id AS id FROM chat_effective_member WHERE chat_id=? AND member_kind='agent'",
           chatId,
         )
-      : { id: chat.owner_id };
-  const kind = chat.kind === "dm" ? "agent" : chat.owner_kind;
+      : { id: chat.lead_profile_id ?? chat.owner_id };
+  const kind = chat.kind === "dm" || chat.lead_profile_id ? "agent" : chat.owner_kind;
   if (
     !owner ||
     !one(

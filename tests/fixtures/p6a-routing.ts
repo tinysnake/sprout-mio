@@ -162,9 +162,18 @@ for (const fixture of cases) {
 }
 
 const baseline = cases.find((fixture) => fixture.id === "w06")!;
-const input = baseline.input!;
+// CR1 后 contextual 判定器不参与 Crew 消息路由；这里保留纯函数的多候选、预算和
+// provider 错误边界覆盖，输入显式构造，不再把旧 Group 快照当作生产 Crew 契约。
+const modelFacts: WakeSnapshotFacts = {
+  ...baseline.facts,
+  chat: { ...baseline.facts.chat, wakePolicy: "contextual" },
+};
+const modelPrepared = prepareWakeEvaluation(modelFacts, new Date(baseline.now));
+assert.equal(modelPrepared.kind, "model");
+if (modelPrepared.kind !== "model") throw new Error("expected dormant evaluator input");
+const input = modelPrepared.input;
 const beforeRules = assertions;
-const clone = (): WakeSnapshotFacts => structuredClone(baseline.facts);
+const clone = (): WakeSnapshotFacts => structuredClone(modelFacts);
 const mentionFacts = clone();
 const target = mentionFacts.members[1];
 const mentionedBody = `@${target.profileName} 请处理`;
@@ -363,6 +372,11 @@ console.log(`PASS candidate rules and Unicode budgets: ${assertions - beforeRule
 for (const provider of ["llm", "jev"] as const) {
   const before = assertions;
   const request = forProvider(input, provider);
+  const selected = request.candidates.map((candidate) => recipientKey(candidate.recipient));
+  const success = await evaluateWake(request, judgesFor(request, selected));
+  equal(success.result.selectedRecipients.map(recipientKey), selected);
+  equal(success.result.errorCode, null);
+  equal(effects(), { runs: 0, messages: 0, inputs: 0 });
   const errors =
     provider === "jev"
       ? [

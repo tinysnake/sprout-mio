@@ -22,7 +22,7 @@ import { existsSync, rmSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { and, eq } from "drizzle-orm";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import {
   projectMemberRemovalBlockedErrorSchema,
@@ -52,15 +52,13 @@ import {
 } from "../../src/domain/agent";
 import { abortAgentRun } from "../../src/domain/agent-run";
 import {
-  addGroupMember,
+  addCrewMember,
   chatGovernanceScope,
   createDirectChat,
-  createGroupChat,
   ensureInstance,
   getChat,
   listMessages,
   sendMessage,
-  setChatOwner,
 } from "../../src/domain/chat";
 import type { ChatActor } from "../../src/domain/chat-actor";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities";
@@ -77,7 +75,7 @@ import {
   revokeRemoteToolGrant,
 } from "../../src/server/remote-agent-gateway";
 import * as runtime from "../../src/server/runtime";
-
+import { createCrewChat, setChatOwnerCompat, crewInput } from "./crew-chat";
 const started = performance.now();
 let assertions = 0;
 let step = "启动";
@@ -149,9 +147,9 @@ addProjectMember(project.id, agentA.id, ctx);
 addProjectMember(project.id, agentB.id, ctx);
 const human: ChatActor = { kind: "human", userId: creator, ctx };
 const dm = createDirectChat(project.id, agentA.id, ctx).chat;
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P6c 组",
     initialOwner: { kind: "human", id: creator },
@@ -166,10 +164,17 @@ const group = createGroupChat(
 const channelRow = db
   .select()
   .from(chat)
-  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew")))
   .get();
 if (!channelRow) throw new Error("createProject 必须派生出一个 public_channel");
 const channelId = channelRow.id;
+for (const agent of [agentA, agentB])
+  addCrewMember(
+    channelId,
+    { kind: "agent", id: agent.id },
+    getChat(channelId, ctx).governanceRevision,
+    human,
+  );
 const instanceAGroup = ensureInstance(group.id, agentA.id, ctx);
 const instanceADm = ensureInstance(dm.id, agentA.id, ctx);
 const instanceBGroup = ensureInstance(group.id, agentB.id, ctx);
@@ -305,10 +310,18 @@ function seedHeldLease(
   holderInstanceId: string,
 ) {
   db.insert(machineLease)
-    .values({ ...machine, generation: 1, state: "held", holderInstanceId, changedAt: new Date() })
+    .values({
+      ownerKind: "instance",
+      ...machine,
+      generation: 1,
+      state: "held",
+      holderInstanceId,
+      changedAt: new Date(),
+    })
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "active",
@@ -330,6 +343,7 @@ function seedFencingHandoff(
 ) {
   db.insert(machineLease)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "fencing",
@@ -339,6 +353,7 @@ function seedFencingHandoff(
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...machine,
       generation: 1,
       state: "draining",
@@ -371,14 +386,8 @@ seedHeldLease(machineHeld, instanceAGroup.id);
 const machineHandoff = makeMachine("P6c 交接中");
 const handoffId = seedFencingHandoff(machineHandoff, instanceBGroup.id, instanceAGroup.id);
 const handoff = { mutationId: handoffId };
-// owner 职责：群 owner 走真实路径，频道 owner 是没有产品入口的遗留行（见文件头边界 b）。
-setChatOwner(
-  group.id,
-  { kind: "agent", id: agentA.id },
-  getChat(group.id, ctx).governanceRevision,
-  human,
-);
-db.update(chat).set({ ownerKind: "agent", ownerId: agentA.id }).where(eq(chat.id, channelId)).run();
+// Crew lead 职责已在建 fixture 时初始化；owner 始终是 Human 创建者。
+db.update(chat).set({ leadProfileId: agentA.id }).where(eq(chat.id, channelId)).run();
 
 try {
   // ─────────────────────────────────────────────────────────── 不变量 1
@@ -425,9 +434,7 @@ try {
   );
   equal(
     ownerFacts.items.map((item) => item.chat.chatKind),
-    ascend(group.id, channelId)[0] === group.id
-      ? ["group", "public_channel"]
-      : ["public_channel", "group"],
+    ["crew", "crew"],
     "owner_duties 的 chatKind 必须如实反映 Group / Public Channel",
   );
   equal(
@@ -518,13 +525,13 @@ try {
   equal(afterLeases[1], taskFacts, "结束租约不许连带改变 dm_assigned_tasks 的内容");
   pass("invariant.2.leases-cleared", { kinds: kinds(afterLeases) });
 
-  setChatOwner(
+  setChatOwnerCompat(
     group.id,
-    { kind: "human", id: creator },
+    { kind: "agent", id: agentB.id },
     getChat(group.id, ctx).governanceRevision,
     human,
   );
-  db.update(chat).set({ ownerKind: "human", ownerId: creator }).where(eq(chat.id, channelId)).run();
+  db.update(chat).set({ leadProfileId: agentB.id }).where(eq(chat.id, channelId)).run();
   const afterOwners = collect();
   equal(
     kinds(afterOwners),
@@ -610,14 +617,10 @@ try {
     null,
     "重新加入后既有 DM 必须取消归档",
   );
-  equal(
-    membership(group.id),
-    undefined,
-    "重新加入只恢复 Public Channel 与 DM：普通 Group 成员身份不自动恢复（设计 §2 冻结语义）",
-  );
+  equal(membership(group.id), undefined, "重新加入恢复 DM，不自动恢复 Crew 成员身份");
   check(
-    effective(channelId).some((row) => row.memberId === agentA.id),
-    "重新加入后该 Agent 必须重新成为 Public Channel 的有效成员",
+    !effective(channelId).some((row) => row.memberId === agentA.id),
+    "重新加入 Project 不自动恢复初始 Crew 成员身份",
   );
   equal(messageIds(dm.id), dmMessagesAfterRemoval, "重新加入不许复制或丢失 DM 历史消息");
   equal(messageIds(group.id), groupMessagesAfterRemoval, "重新加入不许复制或丢失 Group 历史消息");
@@ -799,125 +802,36 @@ try {
   pass("invariant.3.handoff-target", { relation: "handoff_target", clearedBy: "force_reclaim" });
 
   // ─────────────────────────────────────────────────────────── 不变量 6
-  at("不变量 6：Public Channel 换 owner");
-  const channel = getChat(channelId, ctx);
-  equal(channel.owner, { kind: "human", id: creator }, "频道 owner 必须已经回到 Project 创建者");
-  check(
-    chatGovernanceFacts(chatGovernanceScope(channel), human).canChangeOwner === true,
-    "Project 创建者必须看到频道换 owner 的入口（canChangeOwner=true）",
-  );
-  const agentActor: ChatActor = {
-    kind: "agent",
-    agentProfileId: agentA.id,
-    instanceId: instanceAGroup.id,
-    runId: runAGroup,
-    ctx,
-  };
-  check(
-    chatGovernanceFacts(chatGovernanceScope(channel), agentActor).canChangeOwner === false,
-    "Agent 不得看到频道换 owner 的入口（canChangeOwner=false）",
-  );
-  const beforeAgentOwner = snapshot();
-  let agentOwnerError: unknown;
-  try {
-    setChatOwner(
-      channelId,
+  at("不变量 6：Crew lead 治理与 Human owner 不变");
+  for (const crewId of [group.id, channelId]) {
+    addCrewMember(
+      crewId,
       { kind: "agent", id: agentA.id },
-      getChat(channelId, ctx).governanceRevision,
+      getChat(crewId, ctx).governanceRevision,
       human,
     );
-  } catch (error) {
-    agentOwnerError = error;
+    const before = getChat(crewId, ctx);
+    setChatOwnerCompat(crewId, { kind: "agent", id: agentA.id }, before.governanceRevision, human);
+    const after = getChat(crewId, ctx);
+    equal(after.leadProfileId, agentA.id, "Human 可以将 lead 移交给有效 Agent 成员");
+    equal(after.owner, { kind: "human", id: creator }, "Crew owner 始终是 Human 创建者");
+    check(after.governanceRevision > before.governanceRevision, "lead 移交推进治理版本");
+    setChatOwnerCompat(crewId, { kind: "agent", id: agentB.id }, after.governanceRevision, human);
   }
-  check(
-    agentOwnerError !== undefined,
-    "把 Public Channel 的 owner 换成 Agent 必须被拒（实际产品契约是 forbidden，而 brief 举例的 task_assignment_invalid 并未出现）",
-  );
-  equal(
-    {
-      code: (agentOwnerError as { code?: string }).code,
-      message: (agentOwnerError as Error).message,
-    },
-    { code: "forbidden", message: "Public Channel 的新所有者必须是本 Project 的 Human" },
-    "换成 Agent 的拒绝必须是既有治理错误 forbidden，文案说明新所有者必须是 Human",
-  );
-  equal(snapshot(), beforeAgentOwner, "被拒的换 owner 请求必须零写入");
-  let otherHumanError: unknown;
-  try {
-    setChatOwner(
-      channelId,
-      { kind: "human", id: otherHuman },
-      getChat(channelId, ctx).governanceRevision,
-      human,
-    );
-  } catch (error) {
-    otherHumanError = error;
-  }
-  equal(
-    (otherHumanError as { code?: string } | undefined)?.code,
-    "forbidden",
-    "换成非创建者 Human 必须被拒（只有本 Project 创建者那个 Human 能成为新 owner）",
-  );
-  equal(snapshot(), beforeAgentOwner, "被拒的非创建者换 owner 也必须零写入");
-  const revisionBeforeCreator = getChat(channelId, ctx).governanceRevision;
-  setChatOwner(channelId, { kind: "human", id: creator }, revisionBeforeCreator, human);
-  equal(
-    getChat(channelId, ctx).owner,
-    { kind: "human", id: creator },
-    "创建者作为新 owner 必须成功",
-  );
-  equal(
-    getChat(channelId, ctx).governanceRevision,
-    revisionBeforeCreator + 1,
-    "成功的换 owner 必须推进一版治理版本",
-  );
   const dmChat = getChat(dm.id, ctx);
-  check(
-    chatGovernanceFacts(chatGovernanceScope(dmChat), human).canChangeOwner === false,
-    "DM 没有换 owner 入口：Human 创建者的 canChangeOwner 必须恒为 false",
+  equal(
+    chatGovernanceFacts(chatGovernanceScope(dmChat), human).canChangeLead,
+    false,
+    "DM 没有 lead 治理入口",
   );
-  let dmOwnerError: unknown;
+  let dmLeadError: unknown;
   try {
-    setChatOwner(dm.id, { kind: "human", id: creator }, dmChat.governanceRevision, human);
+    setChatOwnerCompat(dm.id, { kind: "agent", id: agentA.id }, dmChat.governanceRevision, human);
   } catch (error) {
-    dmOwnerError = error;
+    dmLeadError = error;
   }
-  equal(
-    (dmOwnerError as { code?: string } | undefined)?.code,
-    "forbidden",
-    "DM 的换 owner 命令必须被拒",
-  );
-  // 对比：普通 Group 允许 Agent 当 owner（频道才是特例）。
-  // 重新加入不恢复 Group 成员身份，所以先把 A 加回群里（真实路径），再换 owner。
-  addGroupMember(
-    group.id,
-    { kind: "agent", id: agentA.id },
-    getChat(group.id, ctx).governanceRevision,
-    human,
-  );
-  setChatOwner(
-    group.id,
-    { kind: "agent", id: agentA.id },
-    getChat(group.id, ctx).governanceRevision,
-    human,
-  );
-  equal(
-    getChat(group.id, ctx).owner,
-    { kind: "agent", id: agentA.id },
-    "普通 Group 允许把 owner 换成 Agent",
-  );
-  setChatOwner(
-    group.id,
-    { kind: "human", id: creator },
-    getChat(group.id, ctx).governanceRevision,
-    human,
-  );
-  pass("invariant.6.channel-owner", {
-    agentOwner: "forbidden",
-    otherHuman: "forbidden",
-    creator: "ok",
-    dmCanChangeOwner: false,
-  });
+  equal((dmLeadError as { code?: string })?.code, "forbidden", "DM 拒绝 lead 移交");
+  pass("invariant.6.crew-lead", { owner: "human", leadTransfer: "ok", dmLead: "forbidden" });
 
   // ─────────────────────────────────────────────────────────── 不变量 8
   at("不变量 8：事务被中断后重启一致");

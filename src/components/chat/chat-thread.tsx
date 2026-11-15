@@ -1,3 +1,4 @@
+import { clearCrewReturn, crewReturnAnchor } from "./crew-return-anchor";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
@@ -76,6 +77,9 @@ export type ChatHistory = {
   /** 视口上方内容变化的次数：变了就得把滚动位置按不变量还原。 */
   aboveShift: number;
   onLoadOlder: () => void;
+  /** 恢复阅读位置专用：保留窗口往前读，不按当前视口淘汰旧页。 */
+  onLoadOlderForRestore: () => void;
+  onEndRestore: () => void;
   onLoadNewer: () => void;
   /** 整体换回最新一页：丢过尾巴之后靠它回到真尾巴。 */
   onResetToLatest: () => void;
@@ -186,7 +190,7 @@ export function ChatThread({
   /** 输入区上方的待处理条；组件自身负责边框与内边距，无内容时不渲染。 */
   assistantPending?: ReactNode;
   displayTitle?: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   kind?: ChatKind;
   senderNames?: ReadonlyMap<string, string>;
   knownSenders?: ReadonlySet<string>;
@@ -207,7 +211,7 @@ export function ChatThread({
   /** 上一次落定后的视口：上方内容变化时据此把位置还原回去。 */
   const viewport = useRef<ViewportAnchor | null>(null);
   const anchorPage = useRef(-1);
-  const [atBottom, setAtBottom] = useState(true);
+  const [atBottom, setAtBottom] = useState(() => crewReturnAnchor(chat.id) === undefined);
   const [newSinceScroll, setNewSinceScroll] = useState(false);
   const count = messages.ok ? messages.data.length : 0;
   const active = runState.ok ? isRunActive(runState.data) : false;
@@ -217,7 +221,7 @@ export function ChatThread({
       ? `${runState.data.active.length} 个 Agent 进行中`
       : runStatusLabel(runState.data)
     : "";
-  const first = useRef(true);
+  const first = useRef(crewReturnAnchor(chat.id) === undefined);
   const oldestId = messages.ok ? (messages.data[0]?.id ?? null) : null;
   const newestId = messages.ok ? (messages.data.at(-1)?.id ?? null) : null;
   // 头部那条消息换了，说明变的是上方（往前插页、卸载上方页），不是尾巴来了新消息。
@@ -323,14 +327,56 @@ export function ChatThread({
     };
   }, [aboveShift]);
 
+  // 返回锚点可能落在窗口之外：往前读到它为止。每读一页都必须让首条消息前进，
+  // 否则（没有更早、读取失败、服务端返回重复页）立即退回保存的 scrollTop，绝不空转。
+  const restoreLoad = useRef<{
+    key: string;
+    oldest: string | null;
+    pages: number;
+    stalled: number;
+  } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = crewReturnAnchor(chat.id);
+    const element = scroll.current;
+    if (!anchor || !element) return;
+    const target = Array.from(element.querySelectorAll<HTMLElement>("[data-message-id]")).find(
+      (item) => item.dataset.messageId === anchor.messageId,
+    );
+    const oldest = messages.ok ? (messages.data[0]?.id ?? null) : null;
+    if (anchor.messageId && !target) {
+      const key = `${chat.id}:${anchor.messageId}`;
+      const attempt = restoreLoad.current?.key === key ? restoreLoad.current : null;
+      if (history?.loadingOlder) return;
+      const stalled = attempt !== null && oldest === attempt.oldest ? attempt.stalled + 1 : 0;
+      // 首页加载与新消息可能和恢复请求交错；同一游标允许重试两轮，仍无进展就回退。
+      if (history?.hasOlder && (attempt?.pages ?? 0) < 20 && stalled < 3) {
+        restoreLoad.current = { key, oldest, pages: (attempt?.pages ?? 0) + 1, stalled };
+        history.onLoadOlderForRestore();
+        return;
+      }
+    }
+    restoreLoad.current = null;
+    history?.onEndRestore();
+    element.scrollTop = target
+      ? element.scrollTop +
+        target.getBoundingClientRect().top -
+        element.getBoundingClientRect().top -
+        anchor.offset
+      : anchor.scrollTop;
+    setAtBottom(false);
+    // 程序化设 scrollTop 不一定触发 scroll 事件；主动报告目标所在页，
+    // 否则窗口 anchor 仍停在最新页，下一次 live/loader 更新会把刚恢复的页裁掉。
+    const page = visiblePage(element);
+    if (page !== null) {
+      viewport.current = measureViewport(element);
+      anchorPage.current = page;
+      history?.reportAnchor(page);
+    }
+    clearCrewReturn(chat.id);
+  }, [chat.id, messages, history, history?.loadingOlder, history?.hasOlder]);
+
   const title = displayTitle ?? chatDisplayName(chat, agentName);
-  const subline =
-    subtitle ??
-    (effectiveKind === "public_channel"
-      ? "Public Channel"
-      : effectiveKind === "group"
-        ? "Group"
-        : `DM · 你与${agentName}`);
+  const subline = subtitle ?? (effectiveKind === "crew" ? "Crew" : `DM · 你与${agentName}`);
 
   return (
     <section data-testid="chat-pane" className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -422,6 +468,7 @@ export function ChatThread({
         ) : !runState.ok ? (
           <>
             <MessageList
+              projectId={chat.projectId}
               messages={messages.data}
               breaks={history?.breaks}
               profile={profile}
@@ -437,6 +484,7 @@ export function ChatThread({
         ) : (
           <>
             <MessageList
+              projectId={chat.projectId}
               messages={messages.data}
               breaks={history?.breaks}
               profile={profile}

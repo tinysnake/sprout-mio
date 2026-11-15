@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export no_proxy=localhost,127.0.0.1
+export no_proxy='*'
 export NO_PROXY="$no_proxy"
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import { networkInterfaces } from 'node:os'
 import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import net from 'node:net'
@@ -15,13 +16,15 @@ const directory = resolve('.verify/h-project-agents')
 mkdirSync(directory, { recursive: true })
 const port = Number(process.env.SPROUT_VERIFY_PROJECT_AGENTS_PORT ?? 3142)
 const databaseUrl = join(directory, 'project-agents.sqlite')
-const base = `http://localhost:${port}`
+const host = Object.values(networkInterfaces()).flat().find(address => address?.family === 'IPv4' && !address.internal)?.address
+assert(host, 'LAN IPv4 address required for verification server')
+const base = `http://${host}:${port}`
 const environment = {
   ...process.env,
   DATABASE_URL: databaseUrl,
   APP_ORIGIN: base,
   PORT: String(port),
-  NITRO_PORT: String(port),
+  NITRO_PORT: String(port), HOST: '0.0.0.0', NITRO_HOST: '0.0.0.0',
   NODE_ENV: 'production',
   BETTER_AUTH_SECRET: randomBytes(32).toString('base64url'),
 }

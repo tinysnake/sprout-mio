@@ -72,7 +72,7 @@ sqlite
   .run(project.id, machineId, ctx.userId, base, base);
 sqlite
   .prepare(
-    "INSERT INTO machine_lease (project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,?)",
+    "INSERT INTO machine_lease (project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,?)",
   )
   .run(project.id, machineId, instance.id, base);
 const CAPABILITY = JSON.stringify({

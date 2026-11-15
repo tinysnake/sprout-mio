@@ -224,9 +224,9 @@ try {
   });
   const governance = () => f.chats.getChat(f.chat.id, f.ctx).governanceRevision;
   const addThird = () =>
-    f.chats.addGroupMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
+    f.chats.addCrewMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
   const removeThird = () =>
-    f.chats.removeGroupMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
+    f.chats.removeCrewMember(f.chat.id, { kind: "agent", id: third.id }, governance(), actor);
   addThird();
   const firstDetectAt = clock + 30_000;
   await repeatChannel.tick(firstDetectAt);

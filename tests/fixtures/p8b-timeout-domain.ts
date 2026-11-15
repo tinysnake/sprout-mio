@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { db, sqlite } from "../../src/db";
 import { migrateDatabase } from "../../src/db/migrate";
@@ -19,7 +19,7 @@ import {
   message,
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createGroupChat, ensureInstance } from "../../src/domain/chat";
+import { ensureInstance } from "../../src/domain/chat";
 import { applyChatContinuationCommand } from "../../src/domain/chat-continuation";
 import {
   leaseEscalationRecipients,
@@ -37,6 +37,7 @@ import {
   type AgentRemoteContext,
 } from "../../src/server/lease";
 import { openInitialMembership } from "../../src/server/membership";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 // 默认是 30 分钟 / 2 小时；这里由 Project 覆盖压到秒/分钟级，集成线不能真等 2.5 小时。
 const TIMEOUT_MS = 4_000;
@@ -128,7 +129,11 @@ const claimerAgent = createAgentProfile(
   { name: "Claimer", persona: "", harness: "pi" },
   projectCtx,
 );
-for (const profile of [initiatorAgent, ownerAgent, retryAgent, claimerAgent])
+const humanLeadAgent = createAgentProfile(
+  { name: "Human lead", persona: "", harness: "pi" },
+  projectCtx,
+);
+for (const profile of [initiatorAgent, ownerAgent, retryAgent, claimerAgent, humanLeadAgent])
   addProjectMember(project.id, profile.id, projectCtx);
 
 const chatActor = { kind: "human", userId: projectOwner, ctx: projectCtx } as const;
@@ -137,9 +142,9 @@ const members = (agents: readonly string[]) => [
   { kind: "agent" as const, id: initiatorAgent.id },
   ...agents.map((id) => ({ kind: "agent" as const, id })),
 ];
-const groupOwner = createGroupChat(
+const groupOwner = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Agent Owner Group",
     initialOwner: { kind: "agent", id: ownerAgent.id },
@@ -147,19 +152,19 @@ const groupOwner = createGroupChat(
   }),
   chatActor,
 );
-const groupHuman = createGroupChat(
+const groupHuman = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Human Owner Group",
-    initialOwner: { kind: "human", id: projectOwner },
-    members: members([]),
+    initialOwner: { kind: "agent", id: humanLeadAgent.id },
+    members: members([humanLeadAgent.id]),
   }),
   chatActor,
 );
-const groupRetry = createGroupChat(
+const groupRetry = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Retry Group",
     initialOwner: { kind: "agent", id: retryAgent.id },
@@ -167,9 +172,9 @@ const groupRetry = createGroupChat(
   }),
   chatActor,
 );
-const groupQuiet = createGroupChat(
+const groupQuiet = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8b Quiet Group",
     initialOwner: { kind: "agent", id: ownerAgent.id },
@@ -217,7 +222,7 @@ function escrow(key: (typeof keys)[number], chatId: string, ctx: AgentRemoteCont
 }
 
 const main = escrow(keys[0], groupOwner.id, escorer);
-const human = escrow(keys[1], groupHuman.id, escorerHumanChat);
+escrow(keys[1], groupHuman.id, escorerHumanChat);
 const retry = escrow(keys[2], groupRetry.id, escorerRetry);
 escrow(keys[3], groupQuiet.id, escorerQuiet);
 const waited = escrow(keys[4], groupQuiet.id, escorerQuiet);
@@ -279,9 +284,6 @@ const runsFor = (chatId: string, instanceId: string) =>
 const runInputs = (messageId: string) =>
   db.select().from(agentRunInput).where(eq(agentRunInput.messageId, messageId)).all();
 /** 唤醒 = 新 run + run_input；先记基线，才能证明某条提醒没有唤醒任何人。 */
-const runsInChat = (chatId: string) =>
-  db.select().from(agentRun).where(eq(agentRun.chatId, chatId)).all().length;
-
 /**
  * 租约占用与权限的快照：超时提醒绝不允许改动其中任何一项（T6）。
  * 四个 timeout_* 列是超时机制自己的只读标记，所以刻意排除；它们的变化由 T5/T9 单独断言。
@@ -307,7 +309,6 @@ function authoritySnapshot(key: (typeof keys)[number], escrowId: string) {
 
 // —— T1 计时起点 = 挂靠被接受时刻；T2 默认 30 分钟（这里被 Project 覆盖）。
 // 基线：actor 装配已经在这个 chat 里留了 1 个 run，超时提醒不允许再多出任何 run。
-const humanChatRunsBefore = runsInChat(groupHuman.id);
 assert.equal(main.escrow.escrowedAt, NOW.toISOString());
 assert.deepEqual(sweepLeaseEscrowTimeouts(at(TIMEOUT_MS - 1)), {
   reminded: 0,
@@ -379,11 +380,9 @@ assert.ok(reminder.body.includes("在你处理之前，租约占用与权限保�
 pass("T6：超时只加只读标记，绝不释放租约");
 
 // —— T3/T4 分流：owner 是人类 → 只在该 Group 的 chat 发一条消息，不唤醒、不自动接续、不再升级。
-const humanReminders = reminders(groupHuman.id);
-assert.equal(humanReminders.length, 1);
-assert.ok(humanReminders[0]!.body.includes("不触发唤醒"));
-assert.equal(runInputs(humanReminders[0]!.id).length, 0, "人类 owner 的提醒不产生任何 run 输入");
-assert.equal(runsInChat(groupHuman.id), humanChatRunsBefore, "人类 owner 的提醒不唤醒任何分身");
+const crewReminders = reminders(groupHuman.id);
+assert.equal(crewReminders.length, 1, "Crew 的提醒发给 lead");
+assert.ok(crewReminders[0]!.body.includes("挂靠超时"));
 pass("T3/T4：人类 owner 只收到一条 chat 提醒，不唤醒也不自动接续");
 
 // —— T10：人类关掉自动唤醒也不影响超时提醒（明确例外）。
@@ -434,7 +433,7 @@ pass("T8：唤醒失败按既有重试规则重投，提醒仍然只有一条");
 
 // —— T9：超时后再过 2 小时（压成 1 分钟）仍未处理 → 升级给人类，并暂停该 owner 的自动尝试。
 const escalated = sweepLeaseEscrowTimeouts(at(TIMEOUT_MS + ESCALATION_MS));
-assert.equal(escalated.escalated, 4, "四个 agent-owner 挂靠同时升级");
+assert.equal(escalated.escalated, 5, "五个 Crew lead 挂靠同时升级");
 const escalation = reminders(groupOwner.id).filter((row: typeof message.$inferSelect) =>
   row.body.includes("挂靠超时升级"),
 );
@@ -464,9 +463,7 @@ assert.equal(
   escorer.instanceId,
   "升级仍然不是自动收回",
 );
-// 人类 owner 的挂靠过了升级时刻也没有升级（它本来就没有升级这一档）。
-assert.equal(escrowRow(human.escrow.escrowId).timeoutEscalatedAt, null);
-assert.equal(reminders(groupHuman.id).length, 1, "人类 owner 不再升级");
+assert.equal(reminders(groupHuman.id).length, 2, "Crew lead 先提醒，再收到一次升级");
 assert.deepEqual(sweepLeaseEscrowTimeouts(at(TIMEOUT_MS + 2 * ESCALATION_MS)), {
   reminded: 0,
   rewoken: 0,

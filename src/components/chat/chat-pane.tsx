@@ -84,6 +84,8 @@ export function ChatPane({
     loadingNewer: room.loadingNewer,
     aboveShift: room.aboveShift,
     onLoadOlder: room.loadOlder,
+    onLoadOlderForRestore: room.loadOlderForRestore,
+    onEndRestore: room.endRestore,
     onLoadNewer: room.loadNewer,
     onResetToLatest: room.resetToLatest,
     resetError: room.resetError,
@@ -333,7 +335,21 @@ export function ChatPane({
           }}
           inputRef={input}
           displayTitle={displayTitle}
-          subtitle={sessionSubtitle(session)}
+          subtitle={
+            chat.kind === "delegation" && chat.parentCrewChatId ? (
+              <Link
+                to="/projects/$projectId/chats/$chatId"
+                params={{ projectId, chatId: chat.parentCrewChatId }}
+                search={{ info: undefined }}
+                data-testid="delegation-parent-link"
+                className="underline underline-offset-2"
+              >
+                返回 Crew 主对话
+              </Link>
+            ) : (
+              sessionSubtitle(session)
+            )
+          }
           kind={session.kind}
           senderNames={senderNames}
           knownSenders={knownSenders}

@@ -101,6 +101,13 @@ beforeAll(() => {
       const jobTooLong = await agents.updateAgentProfileBoundary({ agentProfileId: profileId, jobTitle: "字".repeat(41) }, userA.headers, "req_a6");
       const seeded = await agents.listAgentProfilesBoundary(userA.headers, "req_a7");
       const seededAmenda = seeded.ok ? seeded.data.find((profile) => profile.name === "Amenda") : undefined;
+      const leadCtx = { userId: userA.userId, requestId: 'req_lead' };
+      const chatDomain = await import('./src/domain/chat.ts');
+      await agents.addProjectMemberBoundary({ projectId, agentProfileId: seededAmenda.id }, userA.headers, 'req_lead_member');
+      const crew = chatDomain.listChats(projectId, leadCtx).find(chat => chat.kind === 'crew');
+      const leadActor = { kind: 'human', userId: userA.userId, ctx: leadCtx };
+      const enrolled = chatDomain.addCrewMember(crew.id, { kind: 'agent', id: seededAmenda.id }, crew.governanceRevision, leadActor);
+      chatDomain.setCrewLead(crew.id, seededAmenda.id, enrolled.governanceRevision, leadActor);
       const removed = await agents.removeProjectMemberBoundary({ projectId, agentProfileId: profileId }, userA.headers, "req_m3");
       const afterRemove = await agents.removeProjectMemberBoundary({ projectId, agentProfileId: profileId }, userA.headers, "req_m4");
       const { sqlite } = await import("./src/db/index.ts");

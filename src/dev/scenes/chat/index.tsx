@@ -41,6 +41,7 @@ function chat(id: string, title: string, updatedAt: string): Chat {
     id,
     projectId: PROJECT_ID,
     kind: "dm",
+    crewEpoch: 0,
     title,
     owner: { kind: "human", id: "usr_demo" },
     wakePolicy: "owner_led",
@@ -61,7 +62,8 @@ const chats: Chat[] = [
       demoEscrowTargets.group.title,
       "2026-06-17T10:12:00.000Z",
     ),
-    kind: "group",
+    kind: "crew",
+    leadProfileId: profiles[1]!.id,
   },
 ];
 
@@ -644,6 +646,7 @@ function MessagesScene() {
       </div>
       <div className="rounded-container border border-border bg-background p-5">
         <MessageList
+          projectId={PROJECT_ID}
           messages={visibleMessages}
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           humanName={HUMAN}
@@ -652,7 +655,7 @@ function MessagesScene() {
           state={state}
           messages={visibleMessages}
           onRestoreDraft={setDraft}
-          chatKind={scene === "group" ? "group" : "dm"}
+          chatKind={scene === "group" ? "crew" : "dm"}
           agentNames={agentNames}
           onStopRun={(runId) => setStoppedRuns((ids) => [...ids, runId])}
         />

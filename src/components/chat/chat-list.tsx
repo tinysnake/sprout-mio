@@ -14,12 +14,10 @@ import type { ChatAgent } from "./chat-loader";
 
 export type { ChatAgent };
 
-/** 三种真实会话类型都可以筛选；未知类型不会被静默排除。 */
 const CHAT_TYPES = [
   { id: "all", label: "全部" },
   { id: "dm", label: "DM" },
-  { id: "group", label: "Group" },
-  { id: "public_channel", label: "Public Channel" },
+  { id: "crew", label: "Crew" },
 ] as const;
 type ChatFilter = (typeof CHAT_TYPES)[number]["id"];
 
@@ -59,7 +57,6 @@ export function chatListName(
 ): string {
   const aggregate = aggregates?.get(chat.id);
   if (aggregate) return aggregate.displayTitle;
-  if (chat.kind === "public_channel") return "公共频道（Project 范围）";
   return chatDisplayName(chat, chatAgentName(chat.id, chatAgents, names));
 }
 
@@ -81,6 +78,11 @@ export function filterChats(
       Boolean(chat.title?.toLowerCase().includes(needle))
     );
   });
+}
+
+/** 聊天列表只列人类可进入的对话；委派子对话从 Crew 右栏进入，不重复占一行。 */
+export function chatListChats(chats: Chat[]): Chat[] {
+  return chats.filter((chat) => chat.kind !== "delegation");
 }
 
 /**
@@ -119,9 +121,13 @@ export function ChatListPanel({
     () => new Map((aggregates ?? []).map((entry) => [entry.chatId, entry])),
     [aggregates],
   );
-  const searched = filterChats(chats, chatAgents, names, query, aggregateMap);
+  const listed = chatListChats(chats);
+  const searched = filterChats(listed, chatAgents, names, query, aggregateMap);
   const typed = filter === "all" ? searched : searched.filter((chat) => chat.kind === filter);
-  const pending = (aggregates ?? []).filter((entry) => entry.activeRunIds.length > 0);
+  const visibleIds = new Set(listed.map((chat) => chat.id));
+  const pending = (aggregates ?? []).filter(
+    (entry) => visibleIds.has(entry.chatId) && entry.activeRunIds.length > 0,
+  );
   const shown = pendingOnly
     ? typed.filter((chat) => (aggregateMap.get(chat.id)?.activeRunIds.length ?? 0) > 0)
     : typed;
@@ -187,7 +193,7 @@ export function ChatListPanel({
             </button>
           )}
         </p>
-        {chats.length === 0 ? (
+        {listed.length === 0 ? (
           <p
             data-testid="chats-empty"
             className="px-2 py-3 text-xs leading-6 text-muted-foreground"
@@ -210,12 +216,7 @@ export function ChatListPanel({
               const aggregate = aggregateMap.get(chat.id);
               // 最近活动取 Chat 更新与最新 run 时间的较晚者，不等于右栏的最后消息时间。
               const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
-              const kindLabel =
-                chat.kind === "group"
-                  ? "Group"
-                  : chat.kind === "public_channel"
-                    ? "全体成员可参与"
-                    : chatSubtitleLabel(chat, agentName);
+              const kindLabel = chat.kind === "crew" ? "Crew" : chatSubtitleLabel(chat, agentName);
               const subtitle =
                 !selected && aggregate?.activeRunIds.length
                   ? `${kindLabel} · ${aggregate.activeRunIds.length} 个活动 run`

@@ -1,7 +1,7 @@
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
-import { agentProfile, diagnosticEvent, project, projectMember } from "../db/schema";
-import { ensureProjectChannel } from "./channel";
+import { agentProfile, chatMember, diagnosticEvent, project, projectMember } from "../db/schema";
+import { ensureProjectCrew, initializeCrewLead } from "./chat";
 
 /**
  * 默认 Agent 的固定内容。model 与 effort 留空，运行时沿用宿主 Pi 的默认值，
@@ -23,7 +23,7 @@ export type BootstrapResult = {
 };
 
 /**
- * 注册成功后调用。Project、它的公共频道、默认 Agent profile 和成员关系在同一个事务里写入，
+ * 注册成功后调用。Project、它的 Crew、默认 Agent profile 和成员关系在同一个事务里写入，
  * 任一步失败整体回滚，不留只有 Project 没有成员的半成品。
  *
  * 调用方是 better-auth 的 create.after 钩子，此时注册事务已经提交，这里另开事务不构成嵌套。
@@ -69,9 +69,13 @@ export function createDefaultProjectForHuman(
       .values({ projectId, agentProfileId, addedBy: userId, addedAt: at })
       .run();
 
-    // 注册时建的 Project 与手动新建的一样带着自己的公共频道；频道成员随 Project 成员派生，
-    // 所以这里不写任何 chat_member 行。
-    ensureProjectChannel(projectId);
+    // 注册时的默认 Agent 是第一个 Project Agent，因此同时成为 Crew 的 lead。
+    const crewId = ensureProjectCrew(projectId);
+    db.insert(chatMember)
+      .values({ chatId: crewId, memberKind: "agent", memberId: agentProfileId })
+      .onConflictDoNothing()
+      .run();
+    initializeCrewLead(crewId, agentProfileId);
 
     db.insert(diagnosticEvent)
       .values({

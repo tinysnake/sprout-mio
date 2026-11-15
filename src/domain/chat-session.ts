@@ -1,5 +1,4 @@
 import type { ChatActiveRun, ChatSession } from "../contracts/chat";
-import { PUBLIC_CHANNEL_DISPLAY_TITLE } from "../contracts/chat";
 import type { ProjectContext } from "./access";
 import { getAgentProfile } from "./agent";
 import { listAgentRunInputs, listAgentRuns } from "./agent-run";
@@ -21,7 +20,7 @@ import {
  * Project 成员，Project 级移除后立即消失；分身行按裁定保留，`activeRun` 才代表它此刻在跑。
  *
  * 形状按 kind 分形（`ChatSession`）：DM 与改造前的 `ChatDetail` 逐字段一致，只多出判别字段
- * `kind`；群与频道各带自己的成员与分身集合，不共用 DM 的 `{ chat, instance }`。
+ * `kind`；Crew 带自己的成员与分身集合，不共用 DM 的 `{ chat, instance }`。
  */
 export function getChatSession(chatId: string, ctx: ProjectContext): ChatSession {
   const chat = getChat(chatId, ctx);
@@ -45,16 +44,7 @@ export function getChatSession(chatId: string, ctx: ProjectContext): ChatSession
       ...(active ? { activeRun: active } : {}),
     };
   });
-  if (chat.kind === "group")
-    return { kind: "group", chat, members, instances: participants, governance };
-  return {
-    kind: "public_channel",
-    chat,
-    displayTitle: PUBLIC_CHANNEL_DISPLAY_TITLE,
-    members,
-    instances: participants,
-    governance,
-  };
+  return { kind: "crew", chat, members, instances: participants, governance };
 }
 
 /**

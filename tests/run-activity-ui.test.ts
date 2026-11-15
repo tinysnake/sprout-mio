@@ -115,7 +115,7 @@ describe("群组按 Agent 展示运行状态", () => {
     createElement(RunStatusPanel, {
       state: group,
       messages: [],
-      chatKind: "group",
+      chatKind: "crew",
       agentNames: names,
       onStopRun: () => undefined,
     }),
@@ -140,7 +140,7 @@ describe("群组按 Agent 展示运行状态", () => {
       createElement(RunStatusPanel, {
         state: singleState,
         messages: [],
-        chatKind: "group",
+        chatKind: "crew",
       }),
     );
     expect(single).toContain("Agent 运行状态：");
@@ -159,7 +159,7 @@ describe("群组按 Agent 展示运行状态", () => {
       createElement(RunStatusPanel, {
         state: group,
         messages: [],
-        chatKind: "group",
+        chatKind: "crew",
         agentNames: names,
       }),
     );
@@ -438,6 +438,7 @@ describe("已结束 run 的工作记录", () => {
   };
   const html = renderToStaticMarkup(
     createElement(MessageList, {
+      projectId: "prj_test",
       messages: [human, assistant],
       profile: null,
       humanName: "Human",
@@ -485,6 +486,7 @@ describe("已结束 run 的工作记录", () => {
     };
     const html = renderToStaticMarkup(
       createElement(MessageList, {
+        projectId: "prj_test",
         messages: [source],
         profile: {
           ok: true,
@@ -523,6 +525,7 @@ describe("已结束 run 的工作记录", () => {
     const render = (message: Message) =>
       renderToStaticMarkup(
         createElement(MessageList, {
+          projectId: "prj_test",
           messages: [message],
           profile: null,
           humanName: "Human",
@@ -536,6 +539,7 @@ describe("已结束 run 的工作记录", () => {
   it("human 消息不承接 run 记录", () => {
     const humanOnly = renderToStaticMarkup(
       createElement(MessageList, {
+        projectId: "prj_test",
         messages: [human],
         profile: null,
         humanName: "Human",
@@ -548,6 +552,7 @@ describe("已结束 run 的工作记录", () => {
   it("持久化记录提供归属时不再声称“未关联 run”", () => {
     const html = renderToStaticMarkup(
       createElement(MessageList, {
+        projectId: "prj_test",
         messages: [assistant],
         profile: null,
         humanName: "Human",

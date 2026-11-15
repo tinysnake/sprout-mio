@@ -14,7 +14,7 @@ const { agentRun } = await import("../src/db/schema");
 const { newId, ID_PREFIXES } = await import("../src/contracts/ids");
 const { createProject } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
-const { createDirectChat, createGroupChat, ensureInstance } = await import("../src/domain/chat");
+const { createDirectChat, ensureInstance } = await import("../src/domain/chat");
 const { transitionAgentRun, completeAgentRun } = await import("../src/domain/agent-run");
 const tasks = await import("../src/domain/task");
 const { captureTurnContext } = await import("../src/domain/turn-context");
@@ -109,7 +109,7 @@ function heldLease(f: ReturnType<typeof fixture>) {
     .run(f.project.id, machineId, ctx.userId);
   sqlite
     .prepare(
-      "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,1)",
+      "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,1)",
     )
     .run(f.project.id, machineId, f.instance.id);
   return machineId;
@@ -139,18 +139,6 @@ describe("Task Info Hub real SQLite aggregates", () => {
     ).detail;
     const extra = tasks.addTaskChecklistItem({ ...input(checked), body: "removed" }, ctx).detail;
     tasks.removeTaskChecklistItem({ ...input(extra), itemId: extra.checklist[1]!.id }, ctx);
-    const humanChat = createGroupChat(
-      f.project.id,
-      {
-        projectId: f.project.id,
-        title: "Human responsibility",
-        wakePolicy: "owner_led",
-        members: [{ kind: "human", id: ctx.userId }],
-        initialOwner: { kind: "human", id: ctx.userId },
-      },
-      { kind: "human", userId: ctx.userId, ctx },
-    );
-    const humanTask = f.assign(f.create(), humanChat.id);
     const done = tasks.completeTask(
       { ...input(f.assign(f.create())), appendRecord: { body: "finished body" } },
       ctx,
@@ -160,7 +148,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
       .prepare("UPDATE task SET updated_at=created_at+1000, revision=revision+1 WHERE project_id=?")
       .run(f.project.id);
     const hub = projectInfoHubSchema.parse(f.hub());
-    expect(hub.tasks.counts).toEqual({ proposed: 1, assigned: 3, finished: 1, canceled: 1 });
+    expect(hub.tasks.counts).toEqual({ proposed: 1, assigned: 2, finished: 1, canceled: 1 });
     expect(hub.tasks.items.map((item) => item.taskId)).toEqual(
       [...hub.tasks.items]
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || a.taskId.localeCompare(b.taskId))
@@ -175,9 +163,6 @@ describe("Task Info Hub real SQLite aggregates", () => {
       responsibility: { kind: "agent", agentProfileId: f.profile.id, instanceId: f.instance.id },
       context: { activeRunIds: [f.run.id], relation: "same_chat", taskRunBinding: false },
     });
-    expect(
-      hub.tasks.items.find((item) => item.taskId === humanTask.task.id)?.responsibility,
-    ).toEqual({ kind: "human", userId: ctx.userId });
     expect(
       hub.tasks.items.find((item) => item.taskId === proposed.task.id)?.context.activeRunIds,
     ).toEqual([]);
@@ -296,7 +281,7 @@ describe("Task Info Hub real SQLite aggregates", () => {
       .all(f.project.id);
     sqlite
       .prepare(
-        "UPDATE machine_lease SET generation=2,state='free',holder_instance_id=NULL,changed_at=2 WHERE machine_id=?",
+        "UPDATE machine_lease SET generation=2,state='free',owner_kind=NULL,holder_instance_id=NULL,changed_at=2 WHERE machine_id=?",
       )
       .run(machineId);
     const after = f.hub();

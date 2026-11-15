@@ -1,3 +1,5 @@
+import { coordinateCrewResource } from "./crew-resource-coordinator";
+import { CrewResourceError } from "../domain/crew-resource";
 import { assistantCallSchema } from "../contracts/assistant";
 import { assistantPrincipal, dispatchAssistantCall } from "../domain/assistant";
 import { readRunActivity } from "./pi-host/run-activity";
@@ -20,6 +22,7 @@ import {
   agentInstance,
   agentProfile,
   agentRun,
+  chat,
   chatEffectiveMember,
   project,
   projectMember,
@@ -29,6 +32,15 @@ import type { ProjectContext } from "../domain/access";
 import { getInfoHub } from "../domain/info-hub";
 import { getChatContinuation } from "../domain/chat-continuation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
+import {
+  blockDelegation,
+  cancelDelegation,
+  completeDelegation,
+  dispatchDelegation,
+  listCrewDelegations,
+  sendDelegationInput,
+} from "../domain/delegation";
+import { crewMutateResponseSchema, delegationMutateResponseSchema } from "../contracts/delegation";
 import { listMessages, sendMessage } from "../domain/chat";
 import { getChatSession } from "../domain/chat-session";
 import { hashCredential } from "../domain/machine";
@@ -39,8 +51,10 @@ import {
   claimLease,
   escrowLease,
   getLease,
+  grantLease,
   handoffLease,
   releaseLease,
+  revokeLeaseGrant,
 } from "./lease";
 import type { AgentRemoteContext } from "./lease";
 import {
@@ -275,11 +289,21 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         }
         if (assistant.success) throw new RemoteError("not_found");
         switch (parsed.call.type) {
+          case "crew_resource":
+            try {
+              return coordinateCrewResource(parsed.call.input.command, actorContext);
+            } catch (error) {
+              if (error instanceof CrewResourceError)
+                throw new RemoteError(error.code === "invalid" ? "validation_failed" : error.code);
+              throw error;
+            }
           case "info_hub_get":
           case "chat_continuation_get":
           case "task_get":
           case "task_list":
           case "task_mutate":
+          case "delegation_mutate":
+          case "crew_mutate":
           case "chat_get":
           case "chat_send": {
             const { instance } = actor(actorContext.runId);
@@ -317,6 +341,67 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
               case "task_mutate": {
                 const { projectId: _projectId, action, ...input } = call.input;
                 return taskMutateResponseSchema.parse(mutateTask(action, input, projectContext));
+              }
+              case "crew_mutate": {
+                const input = call.input;
+                if (input.action === "dispatch") {
+                  const dispatched = dispatchDelegation(
+                    {
+                      chatId,
+                      workerProfileId: input.workerProfileId,
+                      resources: input.resources,
+                      request: input.request,
+                      clientRequestId: input.clientRequestId ?? newId(ID_PREFIXES.request),
+                    },
+                    projectContext,
+                  );
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...dispatched,
+                  });
+                }
+                if (input.action === "input")
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...sendDelegationInput(input.delegationId, input.text, projectContext),
+                  });
+                if (input.action === "cancel")
+                  return crewMutateResponseSchema.parse({
+                    projectId,
+                    chatId,
+                    ...cancelDelegation(
+                      { delegationId: input.delegationId, reason: input.reason },
+                      projectContext,
+                    ),
+                  });
+                return crewMutateResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  view: listCrewDelegations(chatId, projectContext),
+                });
+              }
+              case "delegation_mutate": {
+                const delegationInput = call.input;
+                const result =
+                  delegationInput.action === "complete"
+                    ? completeDelegation(
+                        delegationInput.delegationId,
+                        { summary: delegationInput.summary, artifact: delegationInput.artifact },
+                        projectContext,
+                      )
+                    : blockDelegation(
+                        delegationInput.delegationId,
+                        { summary: delegationInput.summary, reason: delegationInput.reason },
+                        projectContext,
+                      );
+                return delegationMutateResponseSchema.parse({
+                  projectId,
+                  chatId,
+                  delegationId: result.delegationId,
+                  status: result.status,
+                });
               }
               case "chat_get":
                 return chatGetResponseSchema.parse({
@@ -365,6 +450,13 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
             // 这里只把已验证的身份交出去，落盘与 hold 由 mcp-relay 自己开合事务。
             return { hold: parseMcpExchange(parsed.call.input), context: actorContext };
           case "lease_mutate": {
+            const chatKind = db
+              .select({ kind: chat.kind })
+              .from(chat)
+              .where(eq(chat.id, actorContext.chatId))
+              .get()?.kind;
+            if (chatKind === "crew" || chatKind === "delegation")
+              throw new RemoteError("forbidden");
             const input = parsed.call.input;
             switch (input.action) {
               case "acquire":
@@ -373,6 +465,10 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                 return releaseLease(input, actorContext);
               case "handoff":
                 return handoffLease(input, actorContext);
+              case "grant":
+                return grantLease(input, actorContext);
+              case "revoke_grant":
+                return revokeLeaseGrant(input, actorContext);
               case "escrow":
                 return escrowLease(input, actorContext);
               case "claim":

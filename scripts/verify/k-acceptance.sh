@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export no_proxy=localhost,127.0.0.1
+export no_proxy='*'
 export NO_PROXY="$no_proxy"
 node --input-type=module <<'JS'
 import assert from 'node:assert/strict'
@@ -11,15 +11,18 @@ import Database from 'better-sqlite3'
 import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import net from 'node:net'
+import { networkInterfaces } from 'node:os'
 
 const directory = resolve('.verify/k-acceptance')
 mkdirSync(directory, { recursive: true })
 const port = Number(process.env.SPROUT_VERIFY_ACCEPTANCE_PORT ?? 3145)
-const base = `http://localhost:${port}`
+const host = Object.values(networkInterfaces()).flat().find(address => address?.family === 'IPv4' && !address.internal)?.address
+assert(host, 'LAN IPv4 address required for verification server')
+const base = `http://${host}:${port}`
 const database = join(directory, 'acceptance.sqlite')
 const environment = {
   ...process.env, DATABASE_URL: database, APP_ORIGIN: base, PORT: String(port),
-  NITRO_PORT: String(port), NODE_ENV: 'production',
+  NITRO_PORT: String(port), HOST: '0.0.0.0', NITRO_HOST: '0.0.0.0', NODE_ENV: 'production',
   BETTER_AUTH_SECRET: randomBytes(32).toString('base64url'),
   BASE_URL: base, ACCEPTANCE_DIRECTORY: directory,
   // 页面必须如实反映本进程实际的宿主开关，而不是假设某一个取值：CI 显式关宿主，本机默认开。

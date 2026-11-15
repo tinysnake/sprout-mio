@@ -172,7 +172,7 @@ export async function verifyAssistantBrowser({
   const placement = await page.evaluate(() => {
     const panel = document.querySelector('[data-testid="assistant-composer-panel"]');
     const history = document.querySelector('[data-testid="message-history"]');
-    const composer = document.querySelector("textarea")?.closest("form");
+    const composer = document.querySelector('[data-testid="message-input"]')?.closest("form");
     const top = panel?.getBoundingClientRect().top;
     if (history) history.scrollTop = 0;
     return {
@@ -192,11 +192,11 @@ export async function verifyAssistantBrowser({
   await page.waitForFunction(
     () =>
       document.querySelector('[data-testid="assistant-composer-panel"]') !== null &&
-      document.querySelector("textarea") !== null,
+      document.querySelector('[data-testid="message-input"]') !== null,
   );
   const mobilePlacement = await page.evaluate(() => {
     const panel = document.querySelector('[data-testid="assistant-composer-panel"]');
-    const composer = document.querySelector("textarea");
+    const composer = document.querySelector('[data-testid="message-input"]');
     return {
       panelBottom: panel ? panel.getBoundingClientRect().bottom : null,
       composerTop: composer ? composer.getBoundingClientRect().top : null,
@@ -803,13 +803,13 @@ export async function verifyAssistantBrowser({
   pass(
     "Human rejects a pending watch request: card disappears, no watch starts, and it stays gone",
   );
-  const publicChannel = db
-    .prepare("SELECT id FROM chat WHERE project_id=? AND kind='public_channel'")
-    .get(project.id);
-  assert(publicChannel, "project has a public channel");
+  const initialCrew = db
+    .prepare("SELECT id,title FROM chat WHERE project_id=? AND kind='crew' AND id<>?")
+    .get(project.id, group.id);
+  assert(initialCrew?.title, "project has its named initial Crew");
   for (const [watchId, targetChatId, intervalSeconds] of [
-    ["watch-public-fixture", publicChannel.id, 60],
-    ["watch-group-fixture", group.id, 90],
+    ["watch-project-crew-fixture", initialCrew.id, 60],
+    ["watch-added-crew-fixture", group.id, 90],
   ])
     writable
       .prepare(
@@ -826,29 +826,21 @@ export async function verifyAssistantBrowser({
       );
   await page.reload({ waitUntil: "networkidle" });
   await page.getByTestId("assistant-watch-menu").click();
-  await page
-    .getByTestId("assistant-watch-list")
-    .getByText("公共频道（Project 范围）", { exact: true })
-    .waitFor();
-  await page
-    .getByTestId("assistant-watch-list")
-    .getByText("Webhook group", { exact: true })
-    .waitFor();
-  await page
-    .getByTestId("assistant-watch-list")
-    .getByText(`群组 · ${project.name}`, { exact: true })
-    .waitFor();
-  await page
-    .getByTestId("assistant-watch-list")
-    .getByText(`公共频道 · ${project.name}`, { exact: true })
-    .waitFor();
+  const watchList = page.getByTestId("assistant-watch-list");
+  await watchList.getByText(initialCrew.title, { exact: true }).waitFor();
+  await watchList.getByText("Webhook group", { exact: true }).waitFor();
+  await until(
+    async () =>
+      (await watchList.getByText(`Crew · ${project.name}`, { exact: true }).count()) === 2,
+    "both Crew watches retain their type and Project",
+  );
   assert.equal(
-    await page.getByTestId("assistant-watch-list").getByText("Amenda", { exact: true }).count(),
+    await watchList.getByText("Amenda", { exact: true }).count(),
     0,
-    "a titleless public channel watch must not fall back to a member name",
+    "a named Crew watch must not fall back to a member name",
   );
   await page.keyboard.press("Escape");
-  pass("public channel and group watches show display name, type, and project in the header menu");
+  pass("DM and both Crew watches show display name, type, and project in the header menu");
   writable
     .prepare(
       "INSERT INTO assistant_event (id,assistant_chat_id,event_key,fact,created_at,attempts) VALUES (?,?,?,?,?,0)",

@@ -47,6 +47,10 @@ export function useChatWindow({
   bodies: ReadonlyMap<string, string>;
   /** 顶部自动加载与"加载更早"按钮共用；失败时窗口不动，下次滚动还会再试。 */
   loadOlder: () => void;
+  /** 恢复阅读位置专用：保留窗口往前读，不按当前视口淘汰旧页。 */
+  loadOlderForRestore: () => void;
+  /** 结束恢复：之后重新按视口淘汰页。 */
+  endRestore: () => void;
   /** 底部自动加载与"加载更新"按钮共用；只在尾巴被卸载后才可能为真。 */
   loadNewer: () => void;
   /** 丢过尾巴之后整体换回最新一页，回到真尾巴。 */
@@ -68,6 +72,8 @@ export function useChatWindow({
   const [resetError, setResetError] = useState<AppError | null>(null);
   const [loadError, setLoadError] = useState<AppError | null>(null);
   const loadingOlderRef = useRef(false);
+  /** 恢复锚点期间不按视口淘汰页，否则刚读到的旧页会被立刻丢掉。 */
+  const restoringRef = useRef(false);
   const loadingNewerRef = useRef(false);
   const loadingLatestRef = useRef(false);
 
@@ -77,14 +83,22 @@ export function useChatWindow({
   useEffect(() => {
     if (!page.ok) return;
     const next = page.data;
-    setState((prev) => settle(prev === null ? fromWindow(next) : mergeNewest(prev, next)));
+    setState((prev) =>
+      prev === null
+        ? fromWindow(next)
+        : restoringRef.current
+          ? mergeNewest(prev, next)
+          : settle(mergeNewest(prev, next)),
+    );
   }, [page]);
 
   // 增量读已经排在 loader 前面把新消息拿到过：先接到尾巴，重读到达时再按 id 合并。
   useEffect(() => {
     if (live === null || !live.messages.ok) return;
     const fresh = live.messages.data;
-    setState((prev) => (prev === null ? prev : settle(appendNew(prev, fresh))));
+    setState((prev) =>
+      prev === null ? prev : restoringRef.current ? appendNew(prev, fresh) : settle(appendNew(prev, fresh)),
+    );
   }, [live]);
 
   // 正文按 id 攒着：正文很短，攒住它比"运行状态面板恰好需要一条已卸载的消息"更便宜。
@@ -129,6 +143,40 @@ export function useChatWindow({
         setLoadingOlder(false);
       });
   }, [chatId, before]);
+
+  /**
+   * 恢复阅读位置时往前读：保留既有窗口，不按当前视口淘汰刚读到的旧页。
+   * 只在目标消息尚未进入窗口时使用，恢复完成后由正常翻页重新收敛。
+   */
+  const loadOlderForRestore = useCallback(() => {
+    if (loadingOlderRef.current || before === null) return;
+    restoringRef.current = true;
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+    setLoadError(null);
+    void listMessagesFn({ data: { chatId, before, limit: CHAT_MESSAGE_PAGE_SIZE } })
+      .then((result) => {
+        if (!result.ok) {
+          setLoadError(result.error);
+          return;
+        }
+        setState((prev) => {
+          if (prev === null || !stillAtEdge(prev, { before })) return prev;
+          const next = prependOlder(prev, result.data);
+          // 恢复期间不触发 aboveShift 的“钉住视口”：那会把视口锁在当前底部，
+          // 等目标消息进来后反而把刚读到的旧页挤掉。
+          return { ...next, aboveShift: prev.aboveShift };
+        });
+      })
+      .finally(() => {
+        loadingOlderRef.current = false;
+        setLoadingOlder(false);
+      });
+  }, [chatId, before]);
+
+  const endRestore = useCallback(() => {
+    restoringRef.current = false;
+  }, []);
 
   const loadNewer = useCallback(() => {
     if (loadingNewerRef.current || after === null) return;
@@ -194,6 +242,8 @@ export function useChatWindow({
     aboveShift: state?.aboveShift ?? 0,
     bodies,
     loadOlder,
+    loadOlderForRestore,
+    endRestore,
     loadNewer,
     resetToLatest,
     resetError,

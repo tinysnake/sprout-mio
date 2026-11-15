@@ -175,23 +175,23 @@ async function assertHostState(page, runFacts, expected) {
   );
   return { runFacts, hostStatus: expected, heading };
 }
-/**
- * 会话详情里的最后消息时间必须等于渲染出的最后一条消息的时间。回执由 run 追加，读取会撞上
- * 中间态，所以最多等两秒收敛；事实与渲染真正不一致时永远收敛不了，照样变红。
- * 两侧都取 `<time>` 的 dateTime 属性（面板显示的是聊天时间标签，真值仍是 ISO）。
- */
+/** 连续发言合并后只有首条消息有时间标签；用最后一条已渲染消息的 ID 关联持久化时间。 */
 async function assertLatestMessageTimeMatchesRendered(page) {
   let last = null;
+  const chatId = await test(page, "chat-details").getAttribute("data-chat-id");
   for (let attempt = 0; attempt < 20; attempt++) {
+    const { value } = await call(
+      page.context(),
+      "listMessagesFn",
+      { chatId },
+      "latest-message-time",
+    );
+    assert.equal(value.ok, true, JSON.stringify(value));
+    const latest = value.data.messages.at(-1);
+    const renderedId = await test(page, "message-item").last().getAttribute("data-message-id");
     last = {
-      fact:
-        (await page
-          .locator('[data-testid="inspector-message-latest-at"]')
-          .getAttribute("datetime")) ?? "（还没有消息）",
-      rendered: await page.evaluate(() => {
-        const nodes = [...document.querySelectorAll('[data-testid="message-created-at"]')];
-        return nodes[nodes.length - 1]?.getAttribute("datetime") ?? "（还没有消息）";
-      }),
+      fact: await test(page, "inspector-message-latest-at").getAttribute("datetime"),
+      rendered: latest?.id === renderedId ? latest.createdAt : `消息尚未收敛：${renderedId}`,
     };
     if (last.fact === last.rendered) return last;
     await page.waitForTimeout(100);

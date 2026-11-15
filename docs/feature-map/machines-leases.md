@@ -9,6 +9,7 @@
 - `machine-bindings` 设置根目录和项目绑定，刷新后保持，项目间相互隔离。
 - `lease-lifecycle` 分身经 Agent 工具获取、释放、移交租约；界面呈现持有者与待处理状态，人类只有可见性与强制收回。
 - `lease-generation` 旧代次操作被拒绝，远端执行遵守当前租约。
+- `crew-resource` worker 提交绑定 delegation/attempt/run 的资源需求，当前 lead 批准后按 Project × Machine FIFO 获配；Crew 为 owner，grant 绑定实际执行者及目录/操作范围，获配前 queued run 不 admission。stop/终态冻结与排空、孤立 held 恢复、Human force reclaim 的未确认排空均持久化，详见 [Crew 核心](../crew-core.md#执行资源)。CR3 通过 `sprout_resource_*` 工具与 gateway 使用，CR4 UI 尚未实现；单测入口为 `tests/crew-resource.test.ts`。
 - `lease-entry` Machine 管理页与 Info Hub 事实及管理链接一致。
 - `lease-escrow` 分身把租约原地挂靠到 Group、由 Group 内分身领取、发起者撤销；人类只有可见性与强制收回。
 - `lease-wait` 分身申请租约遇阻时在工具里阻塞等待（`sprout_lease_wait`），到点拿到失败与原因自行决定是否结束当前 run。等待对持有者完全不可见，既不抢占也不释放。

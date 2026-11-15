@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { leaseViewSchema } from "../../src/contracts/lease";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { db, sqlite } from "../../src/db";
 import { migrateDatabase } from "../../src/db/migrate";
 import {
@@ -18,7 +18,7 @@ import {
   remoteExecution,
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, ensureInstance } from "../../src/domain/chat";
+import { createDirectChat, ensureInstance } from "../../src/domain/chat";
 import { createMachine, hashCredential, saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
 import type { AgentRemoteContext } from "../../src/server/lease";
@@ -36,6 +36,7 @@ import {
   releaseLease,
 } from "../../src/server/lease";
 import { openInitialMembership } from "../../src/server/membership";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const humanId = "p8a-human";
 type AuthorizationRow = typeof leaseAuthorization.$inferSelect;
@@ -127,6 +128,7 @@ sqlite
 // —— 两个 Project：本 Project 一个 Group + 一个 DM + 一个 Public Channel；另一个 Project 一个 Group。
 const project = createProject({ name: "P8a" }, projectCtx);
 const other = createProject({ name: "P8a-other" }, projectCtx);
+const leadAgent = createAgentProfile({ name: "Lead", persona: "", harness: "pi" }, projectCtx);
 const holderAgent = createAgentProfile({ name: "Holder", persona: "", harness: "pi" }, projectCtx);
 const claimerAgent = createAgentProfile(
   { name: "Claimer", persona: "", harness: "pi" },
@@ -140,32 +142,39 @@ const foreignAgent = createAgentProfile(
   { name: "Foreign", persona: "", harness: "pi" },
   projectCtx,
 );
-for (const profile of [holderAgent, claimerAgent, outsiderAgent])
+const otherLeadAgent = createAgentProfile(
+  { name: "Other lead", persona: "", harness: "pi" },
+  projectCtx,
+);
+for (const profile of [leadAgent, holderAgent, claimerAgent, outsiderAgent])
   addProjectMember(project.id, profile.id, projectCtx);
 addProjectMember(other.id, foreignAgent.id, projectCtx);
+addProjectMember(other.id, otherLeadAgent.id, projectCtx);
 
-const group = createGroupChat(
+const group = createCrewChat(
   project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: project.id,
     title: "P8a Group",
-    initialOwner: { kind: "human", id: humanId },
+    initialOwner: { kind: "agent", id: leadAgent.id },
     members: [
       { kind: "human", id: humanId },
+      { kind: "agent", id: leadAgent.id },
       { kind: "agent", id: holderAgent.id },
       { kind: "agent", id: claimerAgent.id },
     ],
   }),
   { kind: "human", userId: humanId, ctx: projectCtx },
 );
-const groupOther = createGroupChat(
+const groupOther = createCrewChat(
   other.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: other.id,
     title: "P8a Other Group",
-    initialOwner: { kind: "human", id: humanId },
+    initialOwner: { kind: "agent", id: otherLeadAgent.id },
     members: [
       { kind: "human", id: humanId },
+      { kind: "agent", id: otherLeadAgent.id },
       { kind: "agent", id: foreignAgent.id },
     ],
   }),
@@ -176,8 +185,13 @@ const outsiderDm = createDirectChat(project.id, outsiderAgent.id, projectCtx);
 const channel = db
   .select()
   .from(chat)
-  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+  .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew")))
   .get()!;
+sqlite
+  .prepare(
+    "INSERT OR IGNORE INTO chat_member(chat_id,member_kind,member_id,added_at) VALUES (?,'agent',?,1)",
+  )
+  .run(channel.id, claimerAgent.id);
 
 const machineCtx = { userId: humanId, bootId: boot(), requestId: req(), now: at() };
 const enrolled = createMachine({ name: "P8a Machine" }, machineCtx);
@@ -364,6 +378,8 @@ assert.equal(leaseRow().state, "held");
 assert.deepEqual(executions(), executionSnapshot, "挂靠不改变任何执行行（进程状态）");
 assert.equal(mutationCount(), mutationBaseline, "挂靠不写 lease_mutation 收据");
 assert.deepEqual(authorityNow(key), {
+  ownerKind: "instance",
+  ownerCrewChatId: null,
   generation: 2,
   holderInstanceId: holder.instanceId,
   state: "escrowed",
@@ -398,7 +414,7 @@ expectCode(
   "挂靠期间发起者不能释放（lease_not_holder）",
 );
 expectCode(
-  "lease_not_holder",
+  "forbidden",
   () =>
     handoffLease(
       {

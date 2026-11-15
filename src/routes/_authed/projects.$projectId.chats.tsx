@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { CrewRailFactsContext, type CrewRailFacts } from "../../components/chat/crew-rail-live";
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
@@ -29,6 +31,7 @@ import { SidePaneTabs } from "../../components/workspace/side-pane-tabs";
 import { WorkspaceSidePanel } from "../../components/workspace/workspace-side-panel";
 import { WorkspacePreviewPane } from "../../components/workspace/workspace-preview-pane";
 import type { ChatDetailLoaderData, ChatsLoaderData } from "../../components/chat/chat-loader";
+import { CrewRail } from "../../components/chat/crew-rail";
 import { ChatDetails } from "../../components/chat/chat-details";
 import { ChatWorkspace } from "../../components/layout/chat-workspace";
 import { ChatDraftProvider } from "../../components/chat/chat-drafts";
@@ -101,19 +104,17 @@ function ChatsLayout() {
   const members = loader.members.ok ? loader.members.data : [];
   const chat = detail?.loaderData as ChatDetailLoaderData | undefined;
   const selected = chat?.ok ? chat : undefined;
+  const [crewFacts, setCrewFacts] = useState<CrewRailFacts | null>(null);
+  useEffect(() => setCrewFacts(null), [selected]);
+  const crewDelegations =
+    crewFacts && crewFacts.chatId === chatId ? crewFacts.result : selected?.crewDelegations;
   const activity =
     selected && loader.infoHub.ok
       ? loader.infoHub.data.chats.find((entry) => entry.chatId === selected.session.chat.id)
       : undefined;
   const newChat =
     loader.members.ok && loader.profiles.ok && human ? (
-      <NewChatDialog
-        projectId={projectId}
-        members={members}
-        profiles={profiles}
-        humanUserId={human.userId}
-        humanName={human.name}
-      />
+      <NewChatDialog projectId={projectId} members={members} profiles={profiles} />
     ) : undefined;
   const machineFactsError = !loader.infoHub.ok
     ? loader.infoHub.error
@@ -148,107 +149,121 @@ function ChatsLayout() {
       // transport 是真实 server function；页面只声明 scope，不自己拼请求。
       refresh={(input, signal) => unwrapRefreshResult(refreshInfoHubFn({ data: input, signal }))}
     >
-      <ChatDraftProvider>
-        <ChatWorkspace
-          selected={Boolean(chatId)}
-          inspectorOpen={!diagnostic && open}
-          inspectorPersistent
-          list={
-            <>
-              {!loader.chats.ok && (
-                <div className="shrink-0 p-3">
-                  <ResultError error={loader.chats.error} testId="chats-error" />
+      <CrewRailFactsContext.Provider value={setCrewFacts}>
+        <ChatDraftProvider>
+          <ChatWorkspace
+            selected={Boolean(chatId)}
+            inspectorOpen={!diagnostic && open}
+            inspectorPersistent
+            list={
+              <>
+                {!loader.chats.ok && (
+                  <div className="shrink-0 p-3">
+                    <ResultError error={loader.chats.error} testId="chats-error" />
+                  </div>
+                )}
+                {!loader.members.ok && (
+                  <div className="shrink-0 p-3">
+                    <ResultError error={loader.members.error} testId="members-load-error" />
+                  </div>
+                )}
+                {!loader.profiles.ok && (
+                  <div className="shrink-0 p-3">
+                    <ResultError error={loader.profiles.error} testId="profiles-error" />
+                  </div>
+                )}
+                {!loader.infoHub.ok && (
+                  <div className="shrink-0 p-3">
+                    <ResultError error={loader.infoHub.error} testId="chat-activity-error" />
+                  </div>
+                )}
+                {loader.chats.ok && (
+                  <ChatListLive
+                    projectId={projectId}
+                    chats={loader.chats.data}
+                    chatAgents={loader.chatAgents}
+                    profiles={profiles}
+                    selectedChatId={chatId}
+                    newChatAction={newChat}
+                    infoHub={loader.infoHub}
+                  />
+                )}
+                {/* 轮询提示固定在列表底部并常驻一行高度：网络波动时列表内容不抖动。 */}
+                <div
+                  data-testid="chat-list-polling-footer"
+                  className="flex h-7 shrink-0 items-center overflow-hidden px-4 [&:not(:empty)]:border-t [&:not(:empty)]:border-border"
+                >
+                  <InfoHubPollingStatus />
                 </div>
-              )}
-              {!loader.members.ok && (
-                <div className="shrink-0 p-3">
-                  <ResultError error={loader.members.error} testId="members-load-error" />
-                </div>
-              )}
-              {!loader.profiles.ok && (
-                <div className="shrink-0 p-3">
-                  <ResultError error={loader.profiles.error} testId="profiles-error" />
-                </div>
-              )}
-              {!loader.infoHub.ok && (
-                <div className="shrink-0 p-3">
-                  <ResultError error={loader.infoHub.error} testId="chat-activity-error" />
-                </div>
-              )}
-              {loader.chats.ok && (
-                <ChatListLive
+              </>
+            }
+            chat={
+              chatId && (search.file || search.files) ? (
+                <WorkspacePreviewPane
                   projectId={projectId}
-                  chats={loader.chats.data}
-                  chatAgents={loader.chatAgents}
-                  profiles={profiles}
-                  selectedChatId={chatId}
-                  newChatAction={newChat}
-                  infoHub={loader.infoHub}
-                />
-              )}
-              {/* 轮询提示固定在列表底部并常驻一行高度：网络波动时列表内容不抖动。 */}
-              <div
-                data-testid="chat-list-polling-footer"
-                className="flex h-7 shrink-0 items-center overflow-hidden px-4 [&:not(:empty)]:border-t [&:not(:empty)]:border-border"
-              >
-                <InfoHubPollingStatus />
-              </div>
-            </>
-          }
-          chat={
-            chatId && (search.file || search.files) ? (
-              <WorkspacePreviewPane
-                projectId={projectId}
-                chatId={chatId}
-                inspectorOpen={open}
-                filesOpen={filesOpen}
-                onToggleInspector={() => setOpen(!open)}
-                onToggleFiles={toggleFiles}
-              >
+                  chatId={chatId}
+                  inspectorOpen={open}
+                  filesOpen={filesOpen}
+                  onToggleInspector={() => setOpen(!open)}
+                  onToggleFiles={toggleFiles}
+                >
+                  <Outlet />
+                </WorkspacePreviewPane>
+              ) : (
                 <Outlet />
-              </WorkspacePreviewPane>
-            ) : (
-              <Outlet />
-            )
-          }
-          inspector={
-            selected && !diagnostic && chatId && search.pane === "files" ? (
-              <WorkspaceSidePanel
-                projectId={projectId}
-                chatId={chatId}
-                onClose={() => setOpen(false)}
-              />
-            ) : selected && !diagnostic ? (
-              <ChatDetailsLive
-                projectId={projectId}
-                session={selected.session}
-                humanUserId={human?.userId ?? ""}
-                humanName={human?.name ?? ""}
-                members={selected.members}
-                profile={selected.profile}
-                tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
-                info={selected.info}
-                turnContext={selected.turnContext}
-                activity={activity}
-                projectMembers={members}
-                projectProfiles={profiles}
-                machineFacts={machineFacts}
-                machineFactsError={machineFactsError}
-                continuation={
-                  selected.continuation.ok
-                    ? {
-                        view: selected.continuation.data.view,
-                        denials: selected.continuation.data.denials,
-                      }
-                    : undefined
-                }
-                onClose={() => setOpen(false)}
-                onChanged={() => void router.invalidate()}
-              />
-            ) : undefined
-          }
-        />
-      </ChatDraftProvider>
+              )
+            }
+            inspector={
+              selected && !diagnostic && chatId && search.pane === "files" ? (
+                <WorkspaceSidePanel
+                  projectId={projectId}
+                  chatId={chatId}
+                  onClose={() => setOpen(false)}
+                />
+              ) : selected && !diagnostic ? (
+                <ChatDetailsLive
+                  projectId={projectId}
+                  session={selected.session}
+                  humanUserId={human?.userId ?? ""}
+                  humanName={human?.name ?? ""}
+                  members={selected.members}
+                  profile={selected.profile}
+                  tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
+                  info={selected.info}
+                  turnContext={selected.turnContext}
+                  activity={activity}
+                  projectMembers={members}
+                  projectProfiles={profiles}
+                  machineFacts={machineFacts}
+                  machineFactsError={machineFactsError}
+                  continuation={
+                    selected.continuation.ok
+                      ? {
+                          view: selected.continuation.data.view,
+                          denials: selected.continuation.data.denials,
+                        }
+                      : undefined
+                  }
+                  crewRail={
+                    crewDelegations?.ok ? (
+                      <CrewRail
+                        key={projectId}
+                        projectId={projectId}
+                        session={selected.session}
+                        data={crewDelegations.data}
+                      />
+                    ) : crewDelegations ? (
+                      <ResultError error={crewDelegations.error} testId="crew-rail-error" />
+                    ) : undefined
+                  }
+                  onClose={() => setOpen(false)}
+                  onChanged={() => void router.invalidate()}
+                />
+              ) : undefined
+            }
+          />
+        </ChatDraftProvider>
+      </CrewRailFactsContext.Provider>
     </InfoHubLiveProvider>
   );
 }

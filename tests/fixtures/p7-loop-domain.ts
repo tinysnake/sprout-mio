@@ -6,6 +6,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { hostname, cpus, totalmem } from "node:os";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const mode = process.argv[2];
 const phase = process.argv[3];
@@ -73,7 +74,7 @@ if (mode === "restart" && !phase) {
   const workers = await import("../../src/server/worker-gateway");
   const { requestExecution } = await import("../../src/server/remote");
   const { createProject } = await import("../../src/domain/project");
-  const { createGroupChatInput } = await import("../../src/contracts/chat");
+
   const { WORKER_STALE_AFTER_MS } = await import("../../src/contracts/worker");
   const { WORKER_RECOVERY_GRACE_MS } = await import("../../src/server/lease");
   const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
@@ -155,9 +156,9 @@ if (mode === "restart" && !phase) {
         agents.addProjectMember(project.id, profile.id, ctx);
       const dmA = chats.createDirectChat(project.id, profileA.id, ctx).chat;
       const dmB = chats.createDirectChat(project.id, profileB.id, ctx).chat;
-      const group = chats.createGroupChat(
+      const group = createCrewChat(
         project.id,
-        createGroupChatInput.parse({
+        crewInput({
           projectId: project.id,
           title: "P7 group",
           initialOwner: { kind: "agent", id: profileA.id },
@@ -185,6 +186,7 @@ if (mode === "restart" && !phase) {
           send(chatId, "P7 fixture input");
           current = active(chatId, profile.id);
         }
+        assert(current, `fixture input must open a run for ${profile.name} in ${chatId}`);
         if (current.status === "queued")
           runs.transitionAgentRun(
             current.id,
@@ -278,26 +280,21 @@ if (mode === "restart" && !phase) {
         process.send?.({ seeded: true });
         await new Promise(() => {});
       } else {
-        // Naming both Agents is the only way `owner_led` fans out to both: the policy wakes the
-        // owner by default and every named Agent when the body names one.
-        const first = send(
-          group.id,
-          `P7 fanout handoff request @${profileA.name} @${profileB.name}`,
-        );
+        const first = send(group.id, `P7 Crew lead request @${profileA.name} @${profileB.name}`);
         const groupA = running(group.id, profileA);
-        const groupB = running(group.id, profileB);
+        assert.equal(active(group.id, profileB.id), undefined, "Crew members do not fan out runs");
         const links = all(
           "SELECT r.instance_id, x.message_id FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE x.message_id=?",
           first.id,
         );
-        assert.deepEqual(
-          links.map((value) => value.instance_id).sort(byCodeUnit),
-          [groupA.instanceId, groupB.instanceId].sort(byCodeUnit),
-        );
-        assert.equal(links.length, 2, "F5a group fanout exactly once per Agent");
+        assert.deepEqual(links.map((value) => value.instance_id).sort(byCodeUnit), [
+          groupA.instanceId,
+        ]);
+        assert.equal(links.length, 1, "F5a Crew input reaches only the lead, even with mentions");
         const actorA = running(dmA.id, profileA);
         send(dmA.id, "P7 private DM secret");
         const actorB = running(dmB.id, profileB);
+        const handoffTarget = actorB;
         const otherCtx = {
           ...ctx,
           agent: {
@@ -425,7 +422,7 @@ if (mode === "restart" && !phase) {
             () =>
               leases.acquireLease(
                 { ...m1.key, action: "acquire", expectedGeneration: 1, requestId: req() },
-                groupB,
+                handoffTarget,
               ),
             fails("lease_conflict"),
             "F6a second Agent cannot acquire the held Machine lease",
@@ -451,7 +448,7 @@ if (mode === "restart" && !phase) {
               action: "handoff",
               expectedGeneration: 1,
               requestId: req(),
-              targetInstanceId: groupB.instanceId,
+              targetInstanceId: handoffTarget.instanceId,
             },
             groupA,
           );
@@ -464,8 +461,12 @@ if (mode === "restart" && !phase) {
           const fence = m1.exchange().remote.fences[0];
           assert(fence);
           m1.exchange({ fenceAcks: [{ ...fence, dispatchSession: m1.session }] });
-          const lease = leases.getLease(m1.key, groupB).lease;
-          assert.equal(lease.holderInstanceId, groupB.instanceId, "F5a handoff changes holder");
+          const lease = leases.getLease(m1.key, handoffTarget).lease;
+          assert.equal(
+            lease.holderInstanceId,
+            handoffTarget.instanceId,
+            "F5a handoff changes holder",
+          );
           assert.equal(lease.generation, 2);
           assert.equal(
             row(
@@ -513,22 +514,23 @@ if (mode === "restart" && !phase) {
           );
           assert.equal(
             leases.getLease(m1.key, groupA).lease.holderInstanceId,
-            groupB.instanceId,
+            handoffTarget.instanceId,
             "F5a the handoff receipt names the new holder for both Agents",
           );
           const identifiers = all(
-            "SELECT id, run_id, instance_id FROM remote_tool_grant WHERE chat_id=? AND revoked_at IS NULL",
+            "SELECT id, run_id, instance_id FROM remote_tool_grant WHERE chat_id IN (?,?) AND revoked_at IS NULL",
             group.id,
+            dmB.id,
           );
           assert.equal(
             new Set(identifiers.map((value) => value.instance_id)).size,
             2,
             "F5a each participant holds its own grant identity",
           );
-          pass("F5a group fanout and completed handoff", {
+          pass("F5a Crew lead and completed handoff to DM peer", {
             group: group.id,
             oldHolder: groupA.instanceId,
-            holder: groupB.instanceId,
+            holder: handoffTarget.instanceId,
             mutationId: pending.mutationId,
             executionId: execution.executionId,
           });
@@ -733,12 +735,11 @@ if (mode === "restart" && !phase) {
             ).n,
             1,
           );
-          // Fan-out is one run per named Agent; the same fan-out repeated eight times must not
-          // duplicate runs, only inputs.
+          // Crew messages merge into its lead's existing run, including mentions of other members.
           const simultaneous = row(
             "SELECT COUNT(*) n FROM agent_run WHERE status IN ('queued','running')",
           ).n;
-          assert(simultaneous >= 4, "F9e several runs are genuinely in flight at once");
+          assert.equal(simultaneous, 3, "F9e two DM runs and one Crew lead run are in flight");
           const groupRunsBefore = row(
             "SELECT COUNT(*) n FROM agent_run WHERE chat_id=?",
             group.id,
@@ -748,28 +749,28 @@ if (mode === "restart" && !phase) {
             group.id,
           ).n;
           for (let index = 0; index < 8; index++)
-            send(group.id, `P7 fanout repeat ${index} @${profileA.name} @${profileB.name}`);
+            send(group.id, `P7 lead repeat ${index} @${profileA.name} @${profileB.name}`);
           assert.equal(
             row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", group.id).n,
             groupRunsBefore,
-            "F9e repeated fan-out never opens extra runs",
+            "F9e repeated Crew input never opens extra runs",
           );
           assert.equal(
             row(
               "SELECT COUNT(*) n FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id WHERE r.chat_id=?",
               group.id,
             ).n,
-            groupInputsBefore + 16,
-            "F9e eight fan-outs land once per named Agent",
+            groupInputsBefore + 8,
+            "F9e eight Crew inputs land once each in the same lead run",
           );
-          pass("F9e measured instance admission and fan-out bounds", {
+          pass("F9e measured instance admission and Crew lead bounds", {
             activeRunsPerInstance: 1,
             simultaneousInFlightRuns: simultaneous,
             appendedInputs: 32,
             overflow: "SQLITE_CONSTRAINT_UNIQUE",
-            fanoutPerMessage: 2,
+            fanoutPerMessage: 1,
             fanoutMessages: 8,
-            fanoutInputs: 16,
+            fanoutInputs: 8,
             machine: {
               hostname: hostname(),
               platform: process.platform,

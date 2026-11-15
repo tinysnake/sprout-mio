@@ -5,7 +5,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w01",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["no_reply"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -72,14 +72,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "群里人类确认后只是等结果",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -165,14 +165,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "群里人类确认后只是等结果",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -200,18 +200,18 @@
         "recentMessageCharacters": 103,
         "characterBudget": 24000
       },
-      "snapshotHash": "b4a588cbcb86c13e8a732a5f23fed693eeff1094fc1b2d23150fae8a98ae7655"
+      "snapshotHash": "0f7a7bb77e58103a4c300ee576ece54a74bb845c86c1af03dc456a31c5b47c26"
     },
     "expected": {
-      "preparation": "model",
+      "preparation": "rule",
       "candidates": ["agent:agent_1"],
-      "selected": [],
+      "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -220,7 +220,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w06",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["multi_agent"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -276,14 +276,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "不点名，但两类工作各自落在明确职责上",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_2"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -375,14 +375,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "不点名，但两类工作各自落在明确职责上",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_2"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -394,18 +394,6 @@
           "instanceId": "ins_bea4202f",
           "personaSummary": "阿迁（数据库迁移）",
           "responsibility": "0026 迁移脚本的本机验证",
-          "activeRun": null,
-          "latestRun": null,
-          "externalWork": []
-        },
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_3"
-          },
-          "instanceId": "ins_09172f9d",
-          "personaSummary": "阿检（回归与门禁）",
-          "responsibility": "L3 回归与门禁",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
@@ -422,18 +410,18 @@
         "recentMessageCharacters": 69,
         "characterBudget": 24000
       },
-      "snapshotHash": "6f9e7449ba87c3ba9e8739cb0fe2931301feca69394d356d9e9c816706e11c15"
+      "snapshotHash": "e51d770daad1b6cdeb09b59da491eb83191204d0c31512d7cb8add9ab5d812b0"
     },
     "expected": {
-      "preparation": "model",
-      "candidates": ["agent:agent_2", "agent:agent_3"],
-      "selected": ["agent:agent_2", "agent:agent_3"],
+      "preparation": "rule",
+      "candidates": ["agent:agent_2"],
+      "selected": ["agent:agent_2"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -442,7 +430,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w12",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["handoff"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -509,14 +497,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "owner 已转给他人，无点名问进度只找新 owner",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -637,14 +625,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "owner 已转给他人，无点名问进度只找新 owner",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -656,18 +644,6 @@
           "instanceId": "ins_339b6785",
           "personaSummary": "阿检（回归与门禁）",
           "responsibility": "接手后的 429 修复推进",
-          "activeRun": null,
-          "latestRun": null,
-          "externalWork": []
-        },
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_2"
-          },
-          "instanceId": "ins_41a8f298",
-          "personaSummary": "阿界（订阅与限流接口）",
-          "responsibility": "原负责人，手上的窗口改动已交回",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
@@ -702,18 +678,18 @@
         "recentMessageCharacters": 55,
         "characterBudget": 24000
       },
-      "snapshotHash": "4454bd2b7da375f4b86f36f8e36bf640dabf751712cd2cc838dad967543df5ec"
+      "snapshotHash": "1af4b16e4ecbc7a2c4cfffc8f9f1be5f1c3ca856b3edf0018cd4ecd8ccbb5859"
     },
     "expected": {
-      "preparation": "model",
-      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "preparation": "rule",
+      "candidates": ["agent:agent_1"],
       "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -722,7 +698,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w13",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["supplement"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -778,14 +754,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "工作中追加约束：429 不许加重试",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -901,14 +877,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "工作中追加约束：429 不许加重试",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -927,18 +903,6 @@
             "pendingInputs": 0,
             "attemptedInputs": 1
           },
-          "latestRun": null,
-          "externalWork": []
-        },
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_2"
-          },
-          "instanceId": "ins_470e69dd",
-          "personaSummary": "阿检（回归与门禁）",
-          "responsibility": "L3 回归",
-          "activeRun": null,
           "latestRun": null,
           "externalWork": []
         }
@@ -972,18 +936,18 @@
         "recentMessageCharacters": 78,
         "characterBudget": 24000
       },
-      "snapshotHash": "20d874525be21b3d5c694bd874aa40460d0222939b1deecc86c194152a7bb0bf"
+      "snapshotHash": "3e6d43aa0a1397bff46106e2b05f3d21b61c0359cea6cd9e9d1a74277846adb2"
     },
     "expected": {
-      "preparation": "model",
-      "candidates": ["agent:agent_1", "agent:agent_2"],
+      "preparation": "rule",
+      "candidates": ["agent:agent_1"],
       "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -992,7 +956,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w17",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["wrap_up"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -1059,14 +1023,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "讨论收尾并给出结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -1169,14 +1133,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "讨论收尾并给出结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -1188,18 +1152,6 @@
           "instanceId": "ins_7ba9b7b9",
           "personaSummary": "阿界（订阅与限流接口）",
           "responsibility": "唤醒判定的接入评估",
-          "activeRun": null,
-          "latestRun": null,
-          "externalWork": []
-        },
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_2"
-          },
-          "instanceId": "ins_6e62f5b9",
-          "personaSummary": "阿检（回归与门禁）",
-          "responsibility": "样本与门禁",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
@@ -1216,18 +1168,18 @@
         "recentMessageCharacters": 113,
         "characterBudget": 24000
       },
-      "snapshotHash": "edfc15e531a12a087007ca249cbc6f68816710bf29887823ff7898e13f9231ba"
+      "snapshotHash": "2a9f44253e9ea9a420c47e3879a37fb77cac48bc2b442fa44b2397789ac5690f"
     },
     "expected": {
-      "preparation": "model",
-      "candidates": ["agent:agent_1", "agent:agent_2"],
-      "selected": [],
+      "preparation": "rule",
+      "candidates": ["agent:agent_1"],
+      "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -1236,7 +1188,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w20",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "Human owner 提醒改为设计 §1 的周期 owner 判定；原文保留在最近消息"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["human_owner_reminder"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -1282,14 +1234,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Human owner 的群里有人问进度",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_2"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -1320,8 +1272,8 @@
           "assignmentRevision": 1,
           "chatId": "cnv_31e06f7d",
           "responsibility": {
-            "kind": "human",
-            "id": "human_0"
+            "kind": "agent",
+            "id": "agent_2"
           },
           "checklistTotal": 1,
           "checklistChecked": 0,
@@ -1372,25 +1324,25 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Human owner 的群里有人问进度",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_2"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
         {
           "recipient": {
-            "kind": "human",
-            "id": "human_0"
+            "kind": "agent",
+            "id": "agent_2"
           },
-          "instanceId": null,
-          "personaSummary": "Human owner",
-          "responsibility": "处理当前 Chat 中需要人类回应的事项",
+          "instanceId": "ins_31bcb190",
+          "personaSummary": "阿迁（数据库迁移）",
+          "responsibility": "0026 迁移脚本",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
@@ -1406,8 +1358,8 @@
           "assignmentRevision": 1,
           "chatId": "cnv_31e06f7d",
           "responsibility": {
-            "kind": "human",
-            "id": "human_0"
+            "kind": "agent",
+            "id": "agent_2"
           },
           "checklistTotal": 1,
           "checklistChecked": 0,
@@ -1425,12 +1377,12 @@
         "recentMessageCharacters": 48,
         "characterBudget": 24000
       },
-      "snapshotHash": "69343eefd87d50cf9654221483771cada6b4765c09d767d2adc993d2bf83c5ec"
+      "snapshotHash": "3f420a8f5ed92bc2edc956fa2550dfbdc4d97baaf0eeaaf42172563a477aa71d"
     },
     "expected": {
       "preparation": "model",
-      "candidates": ["human:human_0"],
-      "selected": ["human:human_0"],
+      "candidates": ["agent:agent_2"],
+      "selected": ["agent:agent_2"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
@@ -1445,7 +1397,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w22",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["finished_task"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -1474,14 +1426,7 @@
         "createdAt": "2025-12-31T23:59:59.000Z",
         "truncated": false
       },
-      "mentions": [
-        {
-          "memberKind": "agent",
-          "memberId": "agent_2",
-          "start": 0,
-          "end": 3
-        }
-      ],
+      "mentions": [],
       "latestReadableMessageId": "msg_956e0bcc",
       "recentMessages": [
         {
@@ -1519,14 +1464,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类 @ 另一名成员收尾",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -1647,39 +1592,31 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类 @ 另一名成员收尾",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
         {
           "recipient": {
             "kind": "agent",
-            "id": "agent_2"
+            "id": "agent_1"
           },
-          "instanceId": "ins_1b751518",
-          "personaSummary": "阿检（回归与门禁）",
-          "responsibility": "验收记录与回归证据",
+          "instanceId": "ins_03aed2f9",
+          "personaSummary": "阿迁（数据库迁移）",
+          "responsibility": "0026 迁移脚本，已完成",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
         }
       ],
-      "mentions": [
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_2"
-          },
-          "explicit": true
-        }
-      ],
+      "mentions": [],
       "tasks": [],
       "truncation": {
         "originalMessageCount": 3,
@@ -1690,12 +1627,12 @@
         "recentMessageCharacters": 76,
         "characterBudget": 24000
       },
-      "snapshotHash": "2f1cfe1bc533ac7d4ea003a76d4b3b4aa98cf0b27a5fc9eef925aee1fb945005"
+      "snapshotHash": "4b2c7afe3c2c5f68362623f5da49e755b92b2656d449b5b756468682e927cee2"
     },
     "expected": {
       "preparation": "rule",
-      "candidates": ["agent:agent_2"],
-      "selected": ["agent:agent_2"],
+      "candidates": ["agent:agent_1"],
+      "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
@@ -1710,7 +1647,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w23",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["finished_task"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -1766,14 +1703,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类只是确认结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -1883,14 +1820,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished，人类只是确认结论",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "candidates": [
@@ -1902,18 +1839,6 @@
           "instanceId": "ins_33670c86",
           "personaSummary": "阿迁（数据库迁移）",
           "responsibility": "0026 迁移脚本，已完成",
-          "activeRun": null,
-          "latestRun": null,
-          "externalWork": []
-        },
-        {
-          "recipient": {
-            "kind": "agent",
-            "id": "agent_2"
-          },
-          "instanceId": "ins_48758a8f",
-          "personaSummary": "阿检（回归与门禁）",
-          "responsibility": "L3 回归",
           "activeRun": null,
           "latestRun": null,
           "externalWork": []
@@ -1930,18 +1855,18 @@
         "recentMessageCharacters": 46,
         "characterBudget": 24000
       },
-      "snapshotHash": "9744b73004773256fd1fcbe4cbdf058adf1c49d71ad96e936c5ee4ad097becbb"
+      "snapshotHash": "7815a3d6b906015002a12e526860f5ed715ca9a7247d3030ecd0ab5dcf182809"
     },
     "expected": {
-      "preparation": "model",
-      "candidates": ["agent:agent_1", "agent:agent_2"],
-      "selected": [],
+      "preparation": "rule",
+      "candidates": ["agent:agent_1"],
+      "selected": ["agent:agent_1"],
       "sideEffects": {
         "runs": 0,
         "messages": 0,
         "inputs": 0
       },
-      "providerCalls": 1
+      "providerCalls": 0
     }
   },
   {
@@ -1950,7 +1875,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w24",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["unassigned_task"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -1996,14 +1921,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "没有 Task 的群被周期检查触发",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
-          "kind": "human",
-          "id": "human_0"
+          "kind": "agent",
+          "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [
@@ -2063,7 +1988,7 @@
       "path": "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       "id": "w25",
       "sha256": "5adb5fe30f5d2b31e04bf17633d21a4a10ac56637c708177d7b811a33734c27d",
-      "adaptation": "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照"
+      "adaptation": "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照"
     },
     "covers": ["unassigned_task"],
     "now": "2026-01-01T00:00:00.000Z",
@@ -2098,14 +2023,14 @@
         }
       ],
       "chat": {
-        "kind": "group",
+        "kind": "crew",
         "goal": "Task 已 finished 的群被周期检查触发",
         "collaboration": "按职责协作；确认、等待和收尾无需回复",
         "owner": {
           "kind": "agent",
           "id": "agent_1"
         },
-        "wakePolicy": "contextual",
+        "wakePolicy": "owner_led",
         "governanceRevision": 1
       },
       "members": [

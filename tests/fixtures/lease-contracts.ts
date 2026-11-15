@@ -96,6 +96,7 @@ try {
     seq: 0,
   });
   const lease = {
+    owner_kind: "instance",
     project_id: "a",
     machine_id: "machine",
     generation: 1,
@@ -112,6 +113,7 @@ try {
   );
   console.log("PASS N1/N2 same Project × Machine duplicate rejected; distinct Projects coexist");
   const authorization = {
+    owner_kind: "instance",
     project_id: "a",
     machine_id: "machine",
     generation: 1,
@@ -174,7 +176,7 @@ try {
   rollback(() => {
     sqlite
       .prepare(
-        "UPDATE machine_lease SET state = 'free', holder_instance_id = NULL, generation = 2 WHERE project_id = 'b'",
+        "UPDATE machine_lease SET state = 'free', owner_kind = NULL, holder_instance_id = NULL, generation = 2 WHERE project_id = 'b'",
       )
       .run();
     insert("lease_authorization", {
@@ -182,6 +184,7 @@ try {
       project_id: "b",
       generation: 2,
       state: "free",
+      owner_kind: null,
       holder_instance_id: null,
       reason: "release",
     });

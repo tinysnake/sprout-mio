@@ -49,6 +49,7 @@ const address = server.address();
 if (!address || typeof address === "string") throw new Error("HTTP address missing");
 process.env.APP_ORIGIN = `http://127.0.0.1:${address.port}`;
 process.env.PORT = String(address.port);
+const { createCrewChat } = await import("./fixtures/crew-chat");
 const { config } = await import("../src/lib/config");
 const { startRuntime, shutdownRuntime, machineRuntimeContext } =
   await import("../src/server/runtime");
@@ -86,7 +87,7 @@ const beta = createAgentProfile({ name: "Beta", persona: "", harness: "pi" }, ct
 for (const profile of [alpha, beta]) addProjectMember(project.id, profile.id, ctx);
 const human = { kind: "human" as const, userId: ctx.userId, ctx };
 function group() {
-  return chats.createGroupChat(
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -124,6 +125,20 @@ chats.sendMessage(
 const ownerRun = runs
   .listAgentRuns(target.id, ctx)
   .find((r) => chats.getInstance(r.instanceId, ctx).agentProfileId === alpha.id)!;
+// Crew 只把人类消息交给 lead，beta 作为普通成员的 run 直接落库模拟一个 worker。
+const betaInstance = chats.ensureInstance(target.id, beta.id, ctx);
+sqlite
+  .prepare(
+    "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,started_at,session_id) VALUES (?,?,?,?,?,'queued',NULL,?)",
+  )
+  .run(
+    newId(ID_PREFIXES.run),
+    betaInstance.id,
+    target.id,
+    project.id,
+    ctx.requestId,
+    betaInstance.id,
+  );
 const memberRun = runs
   .listAgentRuns(target.id, ctx)
   .find((r) => chats.getInstance(r.instanceId, ctx).agentProfileId === beta.id)!;
@@ -281,9 +296,10 @@ describe("run-scoped Agent Task/Chat tools", () => {
     ).n;
     await data("sprout_chat_send", { body: "@Beta collaborate via gateway" });
     await data("sprout_chat_send", { body: "@Alpha member response via gateway" }, true);
+    // Crew 里 Agent 之间的消息不再级联唤醒，只有 Human 消息进入 lead。
     expect(
       (sqlite.prepare("SELECT count(*) AS n FROM agent_run_input").get() as { n: number }).n,
-    ).toBe(beforeCollaboration + 2);
+    ).toBe(beforeCollaboration);
     const forged: RemoteAgentRequest = {
       version: 2,
       call: { type: "task_list", input: { projectId: newId(ID_PREFIXES.project) } },

@@ -6,7 +6,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { chromium } from "playwright";
 import { infoHubRefreshInputSchema } from "../../src/contracts/info-hub-query";
-import { projectFixture } from "../../src/dev/scenes/info-hub/fixtures";
+import { projectFixture } from "./p6b-info-hub";
 
 // Shared product components, frozen read fixtures, real stylesheet and browser/CDP.
 // This does not claim a production server refresh or Agent route integration.
@@ -20,12 +20,17 @@ const server = await createServer({
   resolve: { tsconfigPaths: true },
   cacheDir: "node_modules/.vite-p6b-pages",
   optimizeDeps: { entries: ["src/dev/scenes/info-hub/index.tsx"] },
-  server: { host: "127.0.0.1", port: 0, hmr: false },
+  server: { host: "0.0.0.0", port: 0, hmr: false },
   plugins: [
     tailwindcss(),
     react(),
     {
       name: "p6b-browser-fixture",
+      enforce: "pre",
+      resolveId(source, importer) {
+        if (source === "./fixtures" && importer === resolve("src/dev/scenes/info-hub/index.tsx"))
+          return resolve("tests/fixtures/p6b-info-hub.ts");
+      },
       configureServer(dev) {
         dev.middlewares.use(async (request, response, next) => {
           try {

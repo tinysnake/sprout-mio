@@ -55,6 +55,8 @@ if (suite === "integration") {
 }
 const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
+// 此 helper 会加载 config；必须在 host 开关与临时 HTTP 端口设置后再导入。
+const { createCrewChat, setChatOwnerCompat } = await import("./crew-chat");
 const { sqlite } = await import("../../src/db");
 const schedule = await import("../../src/domain/chat-schedule");
 const delivery = await import("../../src/domain/continuation-delivery");
@@ -83,7 +85,7 @@ const { newId, ID_PREFIXES } = await import("../../src/contracts/ids");
 const { createProject, updateProjectWakePolicy, getProject } =
   await import("../../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../../src/domain/agent");
-const { createGroupChat, sendMessage, setChatOwner } = await import("../../src/domain/chat");
+const { sendMessage, ensureInstance } = await import("../../src/domain/chat");
 const task = await import("../../src/domain/task");
 const ctx = { userId: "usr_p6a_schedule", requestId: newId(ID_PREFIXES.request) };
 sqlite
@@ -117,8 +119,8 @@ function ok(value: unknown, label: string) {
   assertions++;
   assert.ok(value, label);
 }
-function group(human = false) {
-  return createGroupChat(
+function group() {
+  return createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -128,9 +130,7 @@ function group(human = false) {
         { kind: "human", id: ctx.userId },
         ...profiles.map((p) => ({ kind: "agent" as const, id: p.id })),
       ],
-      initialOwner: human
-        ? { kind: "human", id: ctx.userId }
-        : { kind: "agent", id: profiles[0].id },
+      initialOwner: { kind: "agent", id: profiles[0].id },
     },
     { kind: "human", userId: ctx.userId, ctx },
   );
@@ -691,48 +691,76 @@ try {
       "reissue preserves the original attempted fact",
     );
     // Keep the explicit reissue pending while other independent Chat cases run.
-    const reminder = group(true);
-    assigned(reminder.id);
-    await check(reminder.id);
-    const human = schedule.one<DeliveryRow>(
+    const leadChat = group();
+    equal(leadChat.owner, { kind: "human", id: ctx.userId }, "Crew ownership remains Human");
+    assigned(leadChat.id);
+    await check(leadChat.id);
+    const leadDelivery = schedule.one<DeliveryRow>(
       "SELECT * FROM continuation_delivery WHERE chat_id=?",
-      reminder.id,
+      leadChat.id,
     )!;
+    const leadInstance = ensureInstance(leadChat.id, profiles[0].id, ctx);
     equal(
-      [human.state, human.run_id, human.instance_id],
-      ["presented", null, null],
-      "Human owner only gets reminder",
+      [
+        leadDelivery.state,
+        leadDelivery.run_id,
+        leadDelivery.instance_id,
+        leadDelivery.recipient_kind,
+        leadDelivery.recipient_id,
+      ],
+      ["pending", null, leadInstance.id, "agent", profiles[0].id],
+      "Crew continuation addresses the lead instance while Human remains owner",
     );
-    ok(
-      continuation.getChatContinuation(project.id, reminder.id, ctx).view.remindedHuman,
-      "Human reminder is visible in read view",
+    equal(
+      continuation.getChatContinuation(project.id, leadChat.id, ctx).view.remindedHuman,
+      false,
+      "Crew lead delivery does not create a Human reminder",
     );
     sendMessage(
-      reminder.id,
+      leadChat.id,
       { senderKind: "human", senderId: ctx.userId, body: "@Beta 一次显式操作" },
       ctx,
     );
+    const leadRun = schedule.one<{ id: string; instance_id: string }>(
+      "SELECT id,instance_id FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
+      leadChat.id,
+    )!;
     equal(
-      continuation.getChatContinuation(project.id, reminder.id, ctx).view.activeRunIds,
-      [],
-      "Human responsibility view never claims an Agent run for its reminder",
+      leadRun.instance_id,
+      leadInstance.id,
+      "mentioning a worker still queues only the Crew lead",
+    );
+    delivery.bindPendingDeliveries(atDue(leadChat.id));
+    equal(
+      [
+        drow(leadDelivery.id).state,
+        drow(leadDelivery.id).run_id,
+        drow(leadDelivery.id).instance_id,
+      ],
+      ["bound", leadRun.id, leadInstance.id],
+      "pending continuation reuses the lead run instead of starting the mentioned worker",
+    );
+    equal(
+      continuation.getChatContinuation(project.id, leadChat.id, ctx).view.activeRunIds,
+      [leadRun.id],
+      "continuation view exposes the responsible lead run",
     );
     equal(
       schedule.one<{ n: number }>(
         "SELECT count(*) AS n FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
-        reminder.id,
+        leadChat.id,
       )!.n,
       1,
-      "an independent explicit Agent run remains real",
+      "Crew input queues exactly one run for the lead",
     );
-    control(reminder.id, "abort", new Date());
+    control(leadChat.id, "abort", new Date());
     equal(
       schedule.one<{ n: number }>(
         "SELECT count(*) AS n FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
-        reminder.id,
+        leadChat.id,
       )!.n,
       0,
-      "Chat abort stops every live run even when the responsible owner is Human",
+      "Chat abort stops the Crew lead run",
     );
     const changing = group();
     let changingWork = assigned(changing.id);
@@ -758,7 +786,7 @@ try {
       "SELECT * FROM continuation_delivery WHERE chat_id=?",
       ownerChanged.id,
     )!;
-    setChatOwner(
+    setChatOwnerCompat(
       ownerChanged.id,
       { kind: "agent", id: profiles[1].id },
       ownerChanged.governanceRevision,
@@ -1010,17 +1038,36 @@ try {
     );
     equal(count("message"), 0, "control and automatic checks never forge Human messages");
     // Run-scoped abort: two Agent runs in one Chat, only the named one stops.
-    const scoped = group(true);
+    const scoped = group();
     sendMessage(
       scoped.id,
       { senderKind: "human", senderId: ctx.userId, body: "@Alpha @Beta 各自确认一次" },
       ctx,
     );
+    equal(
+      schedule.all(
+        "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running')",
+        scoped.id,
+      ).length,
+      1,
+      "Human 消息只启动 Crew lead",
+    );
+    const workerInstance = ensureInstance(scoped.id, profiles[1]!.id, ctx);
+    const workerRun = newId(ID_PREFIXES.run);
+    schedule.write(
+      "INSERT INTO agent_run(id,instance_id,chat_id,project_id,request_id,status,session_id) VALUES(?,?,?,?,?,'queued',?)",
+      workerRun,
+      workerInstance.id,
+      scoped.id,
+      project.id,
+      ctx.requestId,
+      workerInstance.id,
+    );
     const live = schedule.all<{ id: string }>(
       "SELECT id FROM agent_run WHERE chat_id=? AND status IN ('queued','running') ORDER BY rowid",
       scoped.id,
     );
-    equal(live.length, 2, "two named Agents open two live runs");
+    equal(live.length, 2, "显式造 worker run 后核对 run-scoped abort 隔离");
     const scopedBefore = schedule.controlFor(scoped.id);
     const scopedView = control(scoped.id, "abort", now, live[0].id);
     const scopedAfter = schedule.controlFor(scoped.id);
@@ -1146,6 +1193,7 @@ try {
   }
   if (suite === "integration") {
     const runtime = await import("../../src/server/runtime");
+    equal(runtime.piHostSnapshot().enabled, false, "fixture alone executes the gateway runs");
     await runtime.startRuntime();
     gateway = (await import("../../src/server/remote-agent-gateway")).remoteAgentResponse;
     const chat = group();

@@ -39,7 +39,7 @@ function input(
   return {
     chat: {
       id: "cnv_1",
-      kind: "group",
+      kind: "crew",
       wakePolicy: "mention_only",
       ownerKind: "human",
       ownerId: "usr_1",
@@ -258,7 +258,7 @@ function facts(
       },
     ],
     chat: {
-      kind: "group",
+      kind: "crew",
       goal: "一起推进",
       collaboration: "按职责协作",
       owner: overrides.owner ? recipientOf(overrides.owner) : recipientOf(HUMAN),

@@ -1,5 +1,6 @@
 // Task admission through production HTTP, the real Pi SDK/runner and a real Worker.
 import assert from "node:assert/strict";
+import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import {
@@ -585,11 +586,14 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     facts.chatId = chatId;
     db = new Database(environment.DATABASE_URL!, { readonly: true });
     db.pragma("busy_timeout = 5000");
-    const otherChat = await call("createGroupChatFn", {
+    const otherChat = await createCrewFixture(call, environment.DATABASE_URL!, {
       projectId: project.id,
       title: "Private other Chat",
-      members: [{ kind: "human", id: account.user.id }],
-      initialOwner: { kind: "human", id: account.user.id },
+      members: [
+        { kind: "human", id: account.user.id },
+        { kind: "agent", id: agent.id },
+      ],
+      initialOwner: { kind: "agent", id: agent.id },
       wakePolicy: "owner_led",
     });
     const foreignDetail = await call("createTaskFn", {
@@ -666,7 +670,7 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       requestId: newId(ID_PREFIXES.request),
       command: `printf '${marker}\\n'`,
       cwd: join(root, project.id),
-      waitMs: 1000,
+      blockMs: 1000,
     };
     const tasks: any[] = [];
     for (const name of ["FIRST", "STEER", "CANCEL"]) {

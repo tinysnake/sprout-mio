@@ -10,6 +10,7 @@ process.env.DATABASE_URL = join(directory, "core.sqlite");
 process.env.SPROUT_PI_ENABLED = "false";
 process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+const { createCrewChat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { sqlite } = await import("../src/db");
@@ -31,7 +32,7 @@ const agent = createAgentProfile({ name: "Agent", persona: "", harness: "pi" }, 
 addProjectMember(project.id, agent.id, ctx);
 const at = (value: string) => new Date(`2026-11-08T${value}Z`);
 function rule(expression = "* * * * *") {
-  const chat = chats.createGroupChat(
+  const chat = createCrewChat(
     project.id,
     {
       projectId: project.id,
@@ -427,12 +428,13 @@ it("gates cron initial prompt and cross-rule active steer at the real transport 
       if (first.decision !== "accepted") throw new Error("expected accepted");
       const runId = inputFor(first.messageId).run_id;
       let second: ReturnType<typeof trial> | undefined;
+      // Crew 的自动化目标跟着 lead 走；撤掉 lead 会让进行中的自动化输入失效。
       const revoke = () =>
-        chats.setChatOwner(current.action.chatId!, { kind: "human", id: ctx.userId }, 0, {
-          kind: "human",
-          userId: ctx.userId,
-          ctx,
-        });
+        sqlite
+          .prepare(
+            "UPDATE chat SET lead_profile_id=NULL, crew_epoch=crew_epoch+1, governance_revision=governance_revision+1 WHERE id=?",
+          )
+          .run(current.action.chatId!);
       class Transport extends PiSessionProcess {
         override async open(config: Parameters<InstanceType<typeof PiSessionProcess>["open"]>[0]) {
           const snapshot = await super.open(config);

@@ -8,6 +8,7 @@ process.env.DATABASE_URL = join(directory, "core.sqlite");
 process.env.SPROUT_PI_ENABLED = "false";
 process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
 process.env.SPROUT_PI_DATA_DIR = join(directory, "pi");
+const { createCrewChat, setChatOwnerCompat } = await import("./fixtures/crew-chat");
 const { migrateDatabase } = await import("../src/db/migrate");
 migrateDatabase();
 const { sqlite } = await import("../src/db");
@@ -555,7 +556,7 @@ describe("native assistant authority and durable work", () => {
     const other = createAgentProfile({ name: "Group second worker" }, ctx);
     addProjectMember(project.id, other.id, ctx);
     const actor = { kind: "human" as const, userId: ctx.userId, ctx };
-    let group = chats.createGroupChat(
+    let group = createCrewChat(
       project.id,
       {
         projectId: project.id,
@@ -576,13 +577,8 @@ describe("native assistant authority and durable work", () => {
       "Pinned concrete operation",
       instant,
     );
-    group = chats.setChatOwner(
-      group.id,
-      { kind: "human", id: ctx.userId },
-      group.governanceRevision,
-      actor,
-    );
-    expect(() => assistant.confirmAssistantProposal(pinned.id, dm.id, ctx, instant)).toThrow();
+    const pinnedReceipt = assistant.confirmAssistantProposal(pinned.id, dm.id, ctx, instant);
+    expect(pinnedReceipt.messageId).toBeTruthy();
     const explicit = proposalRecord(
       source,
       { kind: "group_agent", projectId: project.id, chatId: group.id, agentProfileId: other.id },
@@ -601,7 +597,17 @@ describe("native assistant authority and durable work", () => {
         .get(receipt.messageId),
     ).toEqual({ n: 1 });
     expect(input.instance_id).toBe(explicit.instanceId);
-    group = chats.setChatOwner(
+    expect(() =>
+      setChatOwnerCompat(group.id, { kind: "agent", id: worker.id }, group.governanceRevision, {
+        kind: "human",
+        userId: ctx.userId,
+        ctx,
+      }),
+    ).toThrowError(expect.objectContaining({ code: "project_member_removal_blocked" }));
+    for (const run of runs.listAgentRuns(group.id, ctx))
+      if (["queued", "running"].includes(run.status))
+        runs.transitionAgentRun(run.id, "aborted", { stopReason: "human_stop" }, ctx);
+    group = setChatOwnerCompat(
       group.id,
       { kind: "agent", id: worker.id },
       group.governanceRevision,
@@ -773,7 +779,7 @@ describe("native assistant authority and durable work", () => {
     const now = new Date();
     const secondWorker = createAgentProfile({ name: "Second watched worker" }, ctx);
     addProjectMember(project.id, secondWorker.id, ctx);
-    const group = chats.createGroupChat(
+    const group = createCrewChat(
       project.id,
       {
         projectId: project.id,
@@ -871,7 +877,7 @@ describe("native assistant authority and durable work", () => {
     const staleHelper = createAgentProfile({ name: "Revoked source", purpose: "assistant" }, ctx);
     const freshHelper = createAgentProfile({ name: "Valid source", purpose: "assistant" }, ctx);
     const targetWorker = createAgentProfile({ name: "Queued scan worker" }, ctx);
-    for (const profile of [staleHelper, freshHelper, targetWorker])
+    for (const profile of [targetWorker, staleHelper, freshHelper])
       addProjectMember(lane.id, profile.id, ctx);
     const stale = chats.createDirectChat(lane.id, staleHelper.id, ctx).chat;
     const fresh = chats.createDirectChat(lane.id, freshHelper.id, ctx).chat;
@@ -954,17 +960,17 @@ describe("native assistant authority and durable work", () => {
         )
         .all(helper.id),
     ).toEqual([]);
+    const crew = createCrewChat(
+      project.id,
+      { projectId: project.id, members: [{ kind: "human", id: ctx.userId }] },
+      { kind: "human", userId: ctx.userId, ctx },
+    );
     expect(() =>
-      chats.createGroupChat(
-        project.id,
-        {
-          projectId: project.id,
-          members: [{ kind: "agent", id: helper.id }],
-          initialOwner: { kind: "agent", id: helper.id },
-          wakePolicy: "owner_led",
-        },
-        { kind: "human", userId: ctx.userId, ctx },
-      ),
-    ).toThrow();
+      chats.addCrewMember(crew.id, { kind: "agent", id: helper.id }, crew.governanceRevision, {
+        kind: "human",
+        userId: ctx.userId,
+        ctx,
+      }),
+    ).toThrow("Assistant 只能加入 Human DM");
   });
 });

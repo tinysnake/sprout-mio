@@ -22,6 +22,7 @@ ensure_worker_artifact
 [ -f .output/server/index.mjs ] || node scripts/verify/prepare.mjs server
 node --input-type=module <<'NODE'
 import assert from 'node:assert/strict';
+import { createCrewFixture } from './tests/fixtures/crew-live.mjs';
 import { spawn, spawnSync } from 'node:child_process';
 /** 第三层 runner 是进程组组长：命令 pid 自己的 pgid 才是要收的组。 */
 const processGroupOf = (pid) => { const r = spawnSync('ps', ['-o', 'pgid=', '-p', String(pid)], {encoding:'utf8'}); const g = Number(r.stdout.trim()); return Number.isSafeInteger(g) && g > 1 ? g : null; };
@@ -150,7 +151,7 @@ async function deniedLease({ role, chatId, action, parameters, code }) {
 }
 async function deniedShell({ role, chatId, generation, code, marker, label }) {
   const requestId = reqId();
-  const parameters = { machineId, authorizationGeneration: generation, requestId, command: `printf blocked > '${marker}'`, waitMs: 1000 };
+  const parameters = { machineId, authorizationGeneration: generation, requestId, command: `printf blocked > '${marker}'`, blockMs: 1000 };
   const body = `Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify(parameters)}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`;
   await settled(chatId);
   armTool(role, body, 'sprout_remote_shell', parameters);
@@ -163,8 +164,8 @@ async function deniedShell({ role, chatId, generation, code, marker, label }) {
 }
 async function allowedShell({ role, chatId, generation, holder, marker, label }) {
   const requestId = reqId();
-  const parameters = { machineId, authorizationGeneration: generation, requestId, command: `printf ${label} > '${marker}'`, waitMs: 1000 };
-  const body = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${generation}, requestId ${requestId}. command: ${JSON.stringify(parameters.command)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
+  const parameters = { machineId, authorizationGeneration: generation, requestId, command: `printf ${label} > '${marker}'`, blockMs: 1000 };
+  const body = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${generation}, requestId ${requestId}. command: ${JSON.stringify(parameters.command)}. blockMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
   await settled(chatId);
   armTool(role, body, 'sprout_remote_shell', parameters);
   const { entries } = await sendAndSettle(chatId, body);
@@ -205,7 +206,7 @@ try {
   chatA = directA.chat?.id ?? directA.id;
   const directQ = await call('createDirectChatFn', {projectId:projectB, agentProfileId:profileA.id});
   chatQ = directQ.chat?.id ?? directQ.id;
-  const group = await call('createGroupChatFn', {projectId, title:'挂靠目标 Group', members:[{kind:'human',id:humanId},{kind:'agent',id:profileB.id}], initialOwner:{kind:'agent',id:profileB.id}, wakePolicy:'owner_led'});
+  const group = await createCrewFixture(call, env.DATABASE_URL, {projectId, title:'挂靠目标 Crew', members:[{kind:'human',id:humanId},{kind:'agent',id:profileB.id}], initialOwner:{kind:'agent',id:profileB.id}, wakePolicy:'owner_led'});
   chatG = group.chat?.id ?? group.id;
   const enrollment = await call('createMachineFn', {name:'Escrow Mac'});
   machineId = enrollment.detail.machine.id;
@@ -233,8 +234,8 @@ try {
   // 1b) 进程延续的前提：持有者通过真实工具启动一个长进程，记录 pid。
   const pidRequestId = reqId();
   const longCommand = 'sleep 900';
-  const startBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${held1.generation}, requestId ${pidRequestId}. command: ${JSON.stringify(longCommand)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
-  const startResult = await toolRun({ role:'operator', chatId:chatA, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:held1.generation, requestId:pidRequestId, command:longCommand, waitMs:1000}, body:startBody });
+  const startBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${held1.generation}, requestId ${pidRequestId}. command: ${JSON.stringify(longCommand)}. blockMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
+  const startResult = await toolRun({ role:'operator', chatId:chatA, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:held1.generation, requestId:pidRequestId, command:longCommand, blockMs:1000}, body:startBody });
   assert.equal(startResult.details?.error, undefined, 'the holder starts a long process through the real tool');
   const longExecution = await until(async () => (await call('listProjectExecutionsFn', { projectId, machineId, limit:100 })).find(e => e.requestId === pidRequestId && e.result?.kind === 'shell' && e.result.pid), 'long process pid', 180000);
   const longPid = longExecution.result.pid;
@@ -310,8 +311,8 @@ try {
   const listNote = { count: listed.length, truncated: listExecution.result.truncated, containsPid: listed.some(item => item.pid === longPid) };
   const viewRequestId = reqId();
   const viewCommand = `ps -p ${longPid} -o pid=,comm=`;
-  const viewBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${claimed.generation}, requestId ${viewRequestId}. command: ${JSON.stringify(viewCommand)}. waitMs: 2000. Do not use the local bash tool. Do not release the lease.`;
-  const viewResult = await toolRun({ role:'nonHolder', chatId:chatG, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:claimed.generation, requestId:viewRequestId, command:viewCommand, waitMs:2000}, body:viewBody });
+  const viewBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${claimed.generation}, requestId ${viewRequestId}. command: ${JSON.stringify(viewCommand)}. blockMs: 2000. Do not use the local bash tool. Do not release the lease.`;
+  const viewResult = await toolRun({ role:'nonHolder', chatId:chatG, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:claimed.generation, requestId:viewRequestId, command:viewCommand, blockMs:2000}, body:viewBody });
   assert.equal(viewResult.details?.error, undefined, 'the claimant inspects the inherited process');
   const viewExecution = await executionFor(viewRequestId, 'claimant process view result');
   assert(viewExecution.result.stdout.includes(String(longPid)), `the claimant sees pid ${longPid} through a real shell`);

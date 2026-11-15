@@ -3,7 +3,7 @@ import type { AutomationAction } from "../contracts/automation";
 import { db } from "../db";
 import { agentProfile, chatEffectiveMember, projectMember } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
-import { getChat, createDirectChat, ChatError } from "./chat";
+import { getChat, createDirectChat, readCrewLeadId, ChatError } from "./chat";
 import { controlFor } from "./chat-schedule";
 
 export function validateAutomationDmAgent(
@@ -48,10 +48,11 @@ export function resolveAutomationTarget(
     if (current.archivedAt) return { reason: "chat_archived" };
     if ((action.kind === "dm_agent") !== (current.kind === "dm"))
       return { reason: "target_kind_mismatch" };
-    if (controlFor(current.id).mode !== "enabled") return { reason: "chat_stopped" };
-    if (action.kind === "group_owner" && current.owner.kind !== "agent")
-      return { reason: "owner_is_not_agent" };
-    const agentProfileId = action.kind === "group_owner" ? current.owner.id : action.agentProfileId;
+    if (current.control === "stopped" || controlFor(current.id).mode !== "enabled")
+      return { reason: "chat_stopped" };
+    const crewLeadId = current.kind === "crew" ? readCrewLeadId(current.id) : undefined;
+    if (current.kind === "crew" && !crewLeadId) return { reason: "crew_lead_missing" };
+    const agentProfileId = action.kind === "dm_agent" ? action.agentProfileId : crewLeadId!;
     const participant = db
       .select()
       .from(chatEffectiveMember)

@@ -76,7 +76,7 @@ try {
   const { newId, ID_PREFIXES } = await import("./src/contracts/ids.ts");
   const { createProject, updateProjectWakePolicy } = await import("./src/domain/project.ts");
   const { createAgentProfile, addProjectMember } = await import("./src/domain/agent.ts");
-  const { createGroupChat } = await import("./src/domain/chat.ts");
+  const { createCrewChat } = await import("./tests/fixtures/crew-chat.ts");
   const task = await import("./src/domain/task.ts");
   const schedule = await import("./src/domain/chat-schedule.ts");
   const delivery = await import("./src/domain/continuation-delivery.ts");
@@ -93,7 +93,7 @@ try {
   const command = (chatId, action, runId) => continuation.applyChatContinuationCommand({ projectId: project.id, chatId, action, ...(runId === undefined ? {} : { runId }), expectedRevision: schedule.controlFor(chatId).revision, requestId: newId(ID_PREFIXES.request) }, ctx, new Date());
   const state = (runId) => schedule.one("SELECT status FROM agent_run WHERE id=?", runId).status;
   function group() {
-    return createGroupChat(project.id, { projectId: project.id, title: "Control test", wakePolicy: "owner_led", members: [{ kind: "human", id: ctx.userId }, ...profiles.map((p) => ({ kind: "agent", id: p.id }))], initialOwner: { kind: "agent", id: profiles[0].id } }, { kind: "human", userId: ctx.userId, ctx });
+    return createCrewChat(project.id, { projectId: project.id, title: "Control test", wakePolicy: "owner_led", members: [{ kind: "human", id: ctx.userId }, ...profiles.map((p) => ({ kind: "agent", id: p.id }))], initialOwner: { kind: "agent", id: profiles[0].id } }, { kind: "human", userId: ctx.userId, ctx });
   }
   function assign(chatId) {
     const created = task.createTask({ projectId: project.id, title: "Continue" }, ctx).detail;

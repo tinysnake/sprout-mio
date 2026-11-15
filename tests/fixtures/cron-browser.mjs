@@ -182,7 +182,6 @@ export async function verifyCronBrowser({
   foreign,
   dm,
   group,
-  humanId,
   base,
   directory,
   ids,
@@ -514,31 +513,51 @@ export async function verifyCronBrowser({
     name: "Owner cron",
     action: { kind: "group_owner", chatId: group.id },
   });
-  await call("setChatOwnerFn", {
+  const stopped = await call("setCrewModeFn", {
     chatId: group.id,
-    owner: { kind: "human", id: humanId },
+    mode: "stopped",
     expectedRevision: group.governanceRevision,
   });
   assert.equal(
-    (await call("trialCronFn", { ruleId: ownerRule.id, eventId: "human-owner" })).reason,
-    "owner_is_not_agent",
+    (await call("trialCronFn", { ruleId: ownerRule.id, eventId: "stopped-crew" })).reason,
+    "chat_stopped",
   );
+  await call("setCrewModeFn", {
+    chatId: group.id,
+    mode: "active",
+    expectedRevision: stopped.governanceRevision,
+  });
   const explicitRule = await call("createCronRuleFn", apiDraft);
-  fixture.arm("chatMentioned", {
+  fixture.arm("chatOwner", {
+    isolated: true,
+    expectedContextIds: [group.id],
     expectedUserPrefix: "{",
     steps: [],
-    reply: "CRON_EXPLICIT_HUMAN_OWNER_REPLY",
+    reply: "CRON_CREW_LEAD_REPLY",
   });
-  const explicit = await call("trialCronFn", {
-    ruleId: explicitRule.id,
-    eventId: "explicit-human-owner",
-  });
+  const explicit = await call("trialCronFn", { ruleId: explicitRule.id, eventId: "crew-lead" });
   assert.equal(explicit.decision, "accepted");
   await until(
-    () => db.prepare("SELECT id FROM message WHERE body='CRON_EXPLICIT_HUMAN_OWNER_REPLY'").get(),
-    "explicit group Agent Pi reply under Human owner",
+    () => db.prepare("SELECT id FROM message WHERE body='CRON_CREW_LEAD_REPLY'").get(),
+    "Crew lead Pi reply",
   );
-  pass("owner Human skips only owner action; explicit Group Agent still uses actual Pi runner");
+  assert.equal(
+    db
+      .prepare(
+        "SELECT i.agent_profile_id FROM agent_run_input x JOIN agent_run r ON r.id=x.run_id JOIN agent_instance i ON i.id=r.instance_id WHERE x.message_id=?",
+      )
+      .get(explicit.messageId).agent_profile_id,
+    alpha.id,
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) AS n FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id WHERE r.chat_id=? AND i.agent_profile_id=?",
+      )
+      .get(group.id, beta.id).n,
+    0,
+  );
+  pass("Crew cron starts only lead and stopped Crew skips automation");
   const original = db.prepare("SELECT * FROM agent_run WHERE id=?").get(trial.runId);
   assert(original && typeof original.id === "string");
   const historicalRunId = `${original.id.slice(0, -1)}${original.id.endsWith("0") ? "1" : "0"}`;

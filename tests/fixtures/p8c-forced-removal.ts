@@ -5,7 +5,7 @@
  * scenario 也因此拿到干净的库（见 scripts/verify/p8c-removal.sh）。
  */
 import { and, eq } from "drizzle-orm";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { projectMemberRemovalOutcomeSchema } from "../../src/contracts/project-member-removal";
 import type { ProjectMemberRemovalBlockers } from "../../src/contracts/project-member-removal";
@@ -28,13 +28,7 @@ import {
   forceRemoveProjectMember,
   removeProjectMember,
 } from "../../src/domain/agent";
-import {
-  createDirectChat,
-  createGroupChat,
-  ensureInstance,
-  getChat,
-  setChatOwner,
-} from "../../src/domain/chat";
+import { createDirectChat, ensureInstance, getChat } from "../../src/domain/chat";
 import { saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
 import { mutateTask } from "../../src/domain/task";
@@ -51,6 +45,7 @@ import {
   snapshot,
 } from "./p6c-member-fixture";
 import type { Fixture } from "./p6c-member-fixture";
+import { createCrewChat, setChatOwnerCompat, crewInput } from "./crew-chat";
 
 type LeaseKey = { projectId: string; machineId: string };
 
@@ -117,10 +112,18 @@ const diagnosticRows = (projectId: string, event: string) =>
 
 function insertHeldLease(key: LeaseKey, holderInstanceId: string) {
   db.insert(machineLease)
-    .values({ ...key, generation: 1, state: "held", holderInstanceId, changedAt: new Date() })
+    .values({
+      ownerKind: "instance",
+      ...key,
+      generation: 1,
+      state: "held",
+      holderInstanceId,
+      changedAt: new Date(),
+    })
     .run();
   db.insert(leaseAuthorization)
     .values({
+      ownerKind: "instance",
       ...key,
       generation: 1,
       state: "active",
@@ -179,7 +182,8 @@ function insertDispatchedExecution(options: {
 /** Group owner 换成 Agent（owner 转接的正规输入）。 */
 function ownGroupByAgent(f: Fixture) {
   const current = getChat(f.group.id, f.ctx);
-  setChatOwner(f.group.id, { kind: "agent", id: f.agent.id }, current.governanceRevision, {
+  if (current.leadProfileId === f.agent.id) return;
+  setChatOwnerCompat(f.group.id, { kind: "agent", id: f.agent.id }, current.governanceRevision, {
     kind: "human",
     userId: f.ctx.userId,
     ctx: f.ctx,
@@ -191,9 +195,7 @@ function ownGroupByAgent(f: Fixture) {
  * 这是四类责任聚合里的防御分支，强制移除必须照样转接。
  */
 function ownChannelByAgent(f: Fixture) {
-  sqlite
-    .prepare("UPDATE chat SET owner_kind='agent', owner_id=? WHERE id=?")
-    .run(f.agent.id, f.channel.id);
+  sqlite.prepare("UPDATE chat SET lead_profile_id=? WHERE id=?").run(f.agent.id, f.channel.id);
 }
 
 /**
@@ -217,8 +219,8 @@ function scenarioNormal() {
   const groupTask = seedTask(f, "assigned", f.group.id);
   ownGroupByAgent(f);
   ownChannelByAgent(f);
-  assert.equal(chatRow(f.group.id)!.ownerKind, "agent");
-  assert.equal(chatRow(f.channel.id)!.ownerKind, "agent");
+  assert.equal(chatRow(f.group.id)!.leadProfileId, f.agent.id);
+  assert.equal(chatRow(f.channel.id)!.leadProfileId, f.agent.id);
 
   // 常规路径的阻塞语义保留：四类责任齐备时仍然零写入抛错。
   const before = snapshot();
@@ -244,10 +246,10 @@ function scenarioNormal() {
   assert.notEqual(runStatusOf(runningRun)!.settledAt, null);
 
   // owner 转回 projectCreatedBy（Human），并且不再有 agent 的成员行。
+  assert.equal(chatRow(f.group.id)!.leadProfileId, null);
   assert.equal(chatRow(f.group.id)!.ownerKind, "human");
-  assert.equal(chatRow(f.group.id)!.ownerId, f.ctx.userId);
+  assert.equal(chatRow(f.channel.id)!.leadProfileId, null);
   assert.equal(chatRow(f.channel.id)!.ownerKind, "human");
-  assert.equal(chatRow(f.channel.id)!.ownerId, f.ctx.userId);
   assert.deepEqual(agentMemberRows(f.group.id), []);
   assert.equal(agentMemberRows(f.dm.chat.id).length, 1);
 
@@ -402,8 +404,11 @@ function scenarioHandoff() {
   // 四处善后：run 中止、owner 转接、DM Task 退回、挂荗中的租约（held）被收回。
   assert.deepEqual(outcome.abortedRunIds, [run]);
   assert.equal(runStatusOf(run)!.status, "aborted");
-  assert.deepEqual(outcome.ownerTransferredChatIds, [f.group.id]);
-  assert.equal(chatRow(f.group.id)!.ownerKind, "human");
+  assert.deepEqual(
+    sortedIds(outcome.ownerTransferredChatIds),
+    sortedIds([f.channel.id, f.group.id]),
+  );
+  assert.equal(chatRow(f.group.id)!.leadProfileId, null);
   assert.deepEqual(outcome.unassignedTaskIds, [dmTask]);
   assert.equal(taskRow(dmTask)!.status, "proposed");
   assert.equal(taskRow(dmTask)!.chatId, null);
@@ -474,9 +479,9 @@ function scenarioIsolation() {
   const projectB = createProject({ name: "P8c B" }, f.ctx);
   addProjectMember(projectB.id, f.agent.id, f.ctx);
   const dmB = createDirectChat(projectB.id, f.agent.id, f.ctx);
-  const groupB = createGroupChat(
+  const groupB = createCrewChat(
     projectB.id,
-    createGroupChatInput.parse({
+    crewInput({
       projectId: projectB.id,
       title: "B Group",
       initialOwner: { kind: "human", id: f.ctx.userId },

@@ -409,8 +409,7 @@ export class ExecutionRegistry {
     const run = this.runs.get(executionId);
     if (!run) return;
     run.log.acknowledge(through, availableFrom);
-    for (const sequence of [...run.inflight])
-      if (sequence <= through) run.inflight.delete(sequence);
+    for (const sequence of run.inflight) if (sequence <= through) run.inflight.delete(sequence);
     this.store.prune(executionId, through, availableFrom);
     // 宿主的日志 ACK 覆盖到已产出帧之后，durable outbox 才算交代完。
     this.release(executionId);

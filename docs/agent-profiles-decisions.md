@@ -9,18 +9,18 @@
 - Agent profile 包含名称、职位、人设指令，以及默认的 harness、model、effort。
 - 职位说明这个 Agent 在团队里承担什么工作，可留空。它只是展示标签，不表示权限，也不影响谁能管理 Project；留空时界面不显示职位。
 - 创建分身时直接使用 profile 的默认配置，不要求逐个分身另行选择。
-- Profile 可用于不同 Project；各 Project 维护自己的 Agent 成员集合，支持添加和移除 Agent。Public Channel 成员自动跟随该集合。
-- 从 Project 移除 Agent 时，它同时退出 Public Channel 和普通 Group，与人类的既有 DM 归档、不可继续聊天。
-- 同一 Agent 重新加入 Project 时，自动加入 Public Channel，既有 DM 重新激活；不自动加回原来的普通 Group，需另行添加。
-- 一期 Agent 有活动 runs、持有租约、承担 owner 职责或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动处理这些关联，再正常移除。
-- 二期提供强制移除及自动善后：中止 runs、撤权，Human 接任 owner、DM 未完成 Tasks 退回 proposed，确认撤权后释放租约；无法确认时保留占用。历史、施工记录、文件、进程及其他 Projects 不随之删除或改变。完整规则见 core-scope.md。
+- Profile 可用于不同 Project；各 Project 维护自己的 Agent 成员集合，支持添加和移除 Agent。Crew 成员显式加入，不随该集合自动同步。
+- 从 Project 移除 Agent 时，它退出所在 Crew，与人类的既有 DM 归档、不可继续聊天。
+- 同一 Agent 重新加入 Project 时，既有 DM 重新激活；不自动回到原 Crew，需另行显式加入。
+- 一期 Agent 有活动 runs、持有租约、担任 Crew lead 或其 DM 仍有 assigned Tasks 时阻止移除；Human 先手动处理这些关联，再正常移除。
+- 二期提供强制移除及自动善后：中止 runs、撤权，Crew lead 责任由 Human 接任、DM 未完成 Tasks 退回 proposed，确认撤权后释放租约；无法确认时保留占用。历史、施工记录、文件、进程及其他 Projects 不随之删除或改变。完整规则见 core-scope.md。
 
 ### 职位不是权限
 
 - 职位（`jobTitle`）是 profile 的展示标签，回答“这个 Agent 做什么事”。
 - 权限等级是二期的项目级 Agent 权限设计，回答“这个 Agent 能做什么事”，本期不存在。
-- owner 是具体对话里的负责人，回答“这段对话由谁组织”，与职位无关。
-- 三者不互相推导：职位不影响 owner 指定、成员管理、Task 分配或租约申请。
+- lead（Crew）或 DM 的唯一 Agent 是具体对话里的负责人，回答“这段对话由谁组织”，与职位无关。
+- 三者不互相推导：职位不影响 lead 指定、成员管理、Task 分配或租约申请。
 
 ### 配置更新
 

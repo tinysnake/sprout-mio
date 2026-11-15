@@ -12,9 +12,11 @@ export async function p6bFixture(label: string) {
   process.env.NODE_ENV = "test";
   process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("base64url");
   process.env.SPROUT_PI_ENABLED = "false";
+  const { createCrewChat } = await import("./crew-chat");
   const { migrateDatabase } = await import("../../src/db/migrate");
   migrateDatabase();
   const { db, sqlite, openDatabase } = await import("../../src/db");
+  assert.equal(sqlite.name, process.env.DATABASE_URL, "P6b must seed its private database");
   const schema = await import("../../src/db/schema");
   const { ID_PREFIXES, newId } = await import("../../src/contracts/ids");
   const project = await import("../../src/domain/project");
@@ -47,7 +49,7 @@ export async function p6bFixture(label: string) {
   );
   agents.addProjectMember(p.id, a.id, ctx);
   agents.addProjectMember(p.id, b.id, ctx);
-  const chat = chats.createGroupChat(
+  const chat = createCrewChat(
     p.id,
     {
       projectId: p.id,
@@ -114,7 +116,7 @@ export async function p6bFixture(label: string) {
       .run(p.id, id, ctx.userId);
     sqlite
       .prepare(
-        "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,1,'held',?,1)",
+        "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,1,'held','instance',?,1)",
       )
       .run(p.id, id, instance.id);
     return id;

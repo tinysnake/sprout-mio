@@ -30,7 +30,7 @@ const run = {
 const state: ChatRunState = { enabled: true, active: [run], latest: run, inputs: [] };
 
 it("DM 和群组逐 run 呈现人类关注事实，运行和停止入口仍可见", () => {
-  for (const chatKind of ["dm", "group"] as const) {
+  for (const chatKind of ["dm", "crew"] as const) {
     const html = renderToStaticMarkup(
       createElement(RunStatusPanel, { state, messages: [], chatKind, onStopRun: () => {} }),
     );
@@ -38,7 +38,7 @@ it("DM 和群组逐 run 呈现人类关注事实，运行和停止入口仍可�
     expect(html).toContain("运行中");
     expect(html).toContain(attention.attentionAt);
     expect(html).toContain(attention.humanReminderAt);
-    if (chatKind === "group") expect(html).toContain('data-testid="agent-run-stop"');
+    if (chatKind === "crew") expect(html).toContain('data-testid="agent-run-stop"');
   }
 });
 it("owner 通知与人类提醒区分，终态只保留历史标记", () => {
@@ -89,6 +89,7 @@ it("新保留 sender 有独立名称，不冒充成员或历史发送者", () =>
   };
   const html = renderToStaticMarkup(
     createElement(MessageList, {
+      projectId: "prj_test",
       messages: [message],
       profile: null,
       humanName: "你",

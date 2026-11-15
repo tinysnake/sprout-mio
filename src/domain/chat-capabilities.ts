@@ -57,21 +57,19 @@ function denialReason(scope: ChatGovernanceScope, actorKind: "human" | "agent"):
 
 /**
  * 会话的治理事实（裁定 d45）：能力表与 d6 的 owner 判定在这里一次算完，页面只读。
- * 四个 `can*` 只表达「右栏这个入口该不该出现」，真正的拒绝仍由领域层的
+ * 三个 `can*` 只表达「右栏这个入口该不该出现」，真正的拒绝仍由领域层的
  * `assertChatCapability` 给出；两者读的是同一个 `decide`。
  */
 export function chatGovernanceFacts(scope: ChatGovernanceScope, actor: ChatActor): ChatOwnerFacts {
   const actorId = actorIdOf(actor);
-  // 成员与唤醒治理只对普通 Group 生效；频道可变更 Owner，成员仍由 Project 派生，DM 成员固定。
-  const group = scope.kind === "group";
-  const can = (action: ChatAction) => group && decide(action, scope, actor.kind, actorId);
+  // 成员与 lead 治理只对 Crew 生效；DM 的成员在创建时固定，没有可调整的集合。
+  const crew = scope.kind === "crew";
+  const can = (action: ChatAction) => crew && decide(action, scope, actor.kind, actorId);
   const canChangeMembers = can("member_add") && can("member_remove");
-  const canChangeOwner = scope.kind !== "dm" && decide("owner_change", scope, actor.kind, actorId);
-  const canChangeWakePolicy = can("wake_policy_change");
-  // 标题是会话自身的名字，不依赖群组结构，DM 也该能改名；公共频道的标题由 Project 派生，改不动。
-  const canRenameTitle =
-    scope.kind !== "public_channel" && decide("title_change", scope, actor.kind, actorId);
-  const reason = group && !canChangeMembers ? denialReason(scope, actor.kind) : undefined;
+  const canChangeLead = can("lead_change");
+  // 标题是会话自身的名字，DM 也该能改名。
+  const canRenameTitle = decide("title_change", scope, actor.kind, actorId);
+  const reason = crew && !canChangeMembers ? denialReason(scope, actor.kind) : undefined;
   return {
     ownerKind: scope.ownerKind,
     ownerId: scope.ownerId,
@@ -79,8 +77,7 @@ export function chatGovernanceFacts(scope: ChatGovernanceScope, actor: ChatActor
     actorId,
     ...(scope.projectCreatedBy === undefined ? {} : { projectCreatedBy: scope.projectCreatedBy }),
     canChangeMembers,
-    canChangeOwner,
-    canChangeWakePolicy,
+    canChangeLead,
     canRenameTitle,
     ...(reason === undefined ? {} : { readOnlyReason: reason }),
   };
@@ -95,14 +92,10 @@ function factsAllow(action: ChatAction, facts: ChatOwnerFacts): boolean {
     case "member_add":
     case "member_remove":
       return facts.canChangeMembers;
-    case "owner_change":
-      return facts.canChangeOwner;
-    case "wake_policy_change":
-    case "group_dissolve":
-      return facts.canChangeWakePolicy;
+    case "lead_change":
+      return facts.canChangeLead;
     case "title_change":
       return facts.canRenameTitle;
-    case "group_create":
     case "message_send":
       // 两者是 member 档，只看身份类别，在 `assertChatCapability` 里就返回了；这里写 true 是为了让
       // `switch` 保持全覆盖：登记新动作时编译器会逼你来改这一处，而不是默默落回某个 `can*`。

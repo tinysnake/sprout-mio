@@ -37,6 +37,14 @@ const logReadToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_lo
 type ToolName = keyof typeof remoteToolInputSchemas;
 
 const descriptions: Record<ToolName, string> = {
+  sprout_resource_request:
+    "提交绑定原 run 的 Crew Machine 资源需求，等待 lead 批准；目录范围校验不提供文件系统沙箱。",
+  sprout_resource_approve:
+    "当前 Crew lead 按 epoch/revision 批准资源请求中明确的 Machine、目录及操作范围。",
+  sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；runtime 等待远端排空后归还。",
+  sprout_resource_release: "原 worker/lead run 提交资源归还意图，排空完成前保持占槽。",
+  sprout_resource_takeover:
+    "当前 Crew lead 在不经原 worker 同意的情况下把 Machine 资源改派给自己或另一名同 Crew 运行中的 worker。旧授权先冻结，待远端执行排空后新目标才获得授权；重复调用按 clientRequestId 去重。",
   sprout_chat_continuation_get:
     "读取当前 Chat 的对话接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
   sprout_lease_acquire:
@@ -45,10 +53,14 @@ const descriptions: Record<ToolName, string> = {
     "释放显式指定的远端 Machine 租约。必须提供 machineId 与当前 expectedGeneration；pending 表示旧操作尚在排空。释放不会终止进程或删除文件。",
   sprout_lease_handoff:
     "将显式指定的远端 Machine 租约交接给同 Project/Chat 的 targetInstanceId。必须提供 machineId 与 expectedGeneration；pending 尚未完成。不会终止进程或删除文件。",
+  sprout_lease_grant:
+    "把当前 Crew 持有的显式 Machine 租约授予同 Crew 内正在运行的 targetInstanceId。lead 必须是当前持有者；授予同样会 fencing，待旧执行排空后才生效，成功后 worker 成为新代次持有者，租约仍记为 Crew 的授予。不会终止进程或删除文件。",
+  sprout_lease_revoke_grant:
+    "撤销本 Crew 授予出去的显式 Machine 租约，收回给 lead。原授予者或当前 Crew lead 能撤销；同样需要 machineId 与当前 expectedGeneration，并等待旧执行排空。worker 离线时保持 fencing，需 Human 在租约页强制收回，绝不假装已排空。",
   sprout_lease_escrow:
-    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Group 或 Public Channel（chatId），可加 targetAgentProfileId 限定该 Group 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Group 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
+    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Crew（chatId），可加 targetAgentProfileId 限定该 Crew 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Crew 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
   sprout_lease_claim:
-    "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Group 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
+    "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Crew 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
   sprout_lease_escrow_cancel:
     "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。对已被自己撤销的同一条挂靠再次撤销，会原样返回原收据、不推进代次，便于响应丢失后重试。不会终止进程或删除文件。",
   sprout_lease_get:
@@ -120,7 +132,12 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): B
     const { blockMs: requestedBlockMs, ...input } = parsed;
     if (typeof requestedBlockMs === "number") blockMs = requestedBlockMs;
     if (typeof input.machineId === "string") machineId = input.machineId;
-    if (name === "sprout_lease_get") {
+    if (name.startsWith("sprout_resource_")) {
+      call = {
+        type: "crew_resource",
+        input: { projectId, command: { op: name.slice("sprout_resource_".length), input } },
+      };
+    } else if (name === "sprout_lease_get") {
       call = { type: "lease_get", input: { ...input, projectId } };
     } else if (name === "sprout_remote_execution_get") {
       call = { type: "execution_get", input: { ...input, projectId } };

@@ -156,12 +156,12 @@ function actor(targetProject: string): AgentRemoteContext {
 function holdLease(project: string, instance: string, generation: number) {
   sqlite
     .prepare(
-      "INSERT INTO machine_lease(project_id,machine_id,generation,state,holder_instance_id,changed_at) VALUES (?,?,?,'held',?,?)",
+      "INSERT INTO machine_lease(project_id,machine_id,generation,state,owner_kind,holder_instance_id,changed_at) VALUES (?,?,?,'held','instance',?,?)",
     )
     .run(project, machineId, generation, instance, Date.now());
   sqlite
     .prepare(
-      "INSERT INTO lease_authorization(project_id,machine_id,generation,holder_instance_id,state,issued_at,reason) VALUES (?,?,?,?,'active',?,'acquire')",
+      "INSERT INTO lease_authorization(project_id,machine_id,generation,owner_kind,holder_instance_id,state,issued_at,reason) VALUES (?,?,?,'instance',?,'active',?,'acquire')",
     )
     .run(project, machineId, generation, instance, Date.now());
 }

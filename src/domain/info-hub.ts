@@ -59,7 +59,7 @@ import {
   type ProjectContext,
 } from "./access";
 import type { MachineContext } from "./machine";
-import { getChat, listChatMembers, listChats } from "./chat";
+import { getChat, listChatMembers, listChats, readCrewLeadId } from "./chat";
 
 export class InfoHubError extends Error {
   constructor(
@@ -442,18 +442,18 @@ function taskSummaries(
         member.chatId === current.id && (member.kind === "human" || profileById.has(member.id)),
     );
     const dmAgents = members.filter((member) => member.kind === "agent");
+    const lead = current.kind === "crew" ? readCrewLeadId(current.id) : undefined;
     const owner =
       current.kind === "dm"
         ? dmAgents.length === 1
           ? { kind: "agent" as const, id: dmAgents[0]!.id }
           : undefined
-        : current.owner;
-    // Public Channel Human membership is implicit; other Chat owners must remain members.
-    if (
-      !owner ||
-      (current.kind !== "public_channel" &&
-        !members.some((member) => member.kind === owner.kind && member.id === owner.id))
-    )
+        : current.kind === "crew"
+          ? lead
+            ? { kind: "agent" as const, id: lead }
+            : undefined
+          : current.owner;
+    if (!owner || !members.some((member) => member.kind === owner.kind && member.id === owner.id))
       continue;
     if (owner.kind === "human") {
       responsibilityByChat.set(current.id, { kind: "human", userId: owner.id });
@@ -556,6 +556,8 @@ function leaseViews(projectId: string): LeaseView[] {
         generation: row.generation,
         state: row.state,
         holderInstanceId: row.holderInstanceId,
+        ownerKind: row.ownerKind,
+        holderCrewChatId: row.holderCrewChatId,
         changedAt: row.changedAt.toISOString(),
         pendingMutationId: pendingByMachine.get(row.machineId) ?? null,
         escrow:
@@ -639,6 +641,8 @@ function machineSummaries(
       generation: 0,
       state: "free",
       holderInstanceId: null,
+      ownerKind: null,
+      holderCrewChatId: null,
       changedAt: binding!.binding.createdAt.toISOString(),
       pendingMutationId: null,
       escrow: null,

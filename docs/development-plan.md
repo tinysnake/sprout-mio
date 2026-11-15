@@ -38,8 +38,8 @@ webhook、cron 与原生个人助理已有契约、实现和专项技术验证�
 
 草案明确区分 Human 已确认方向、执行者选择的首版默认、建议与待定项。目前已确认的首期决定如下。
 
-- Webhook 与 cron 规则归属 Project，触发动作可配置。首期主要向所属 Project 的 DM 或 Group 发送系统来源消息，支持唤醒 DM Agent、Group 中 @ 的 Agent 或当前 Agent owner；内置系统动作留到后续。
-- 自动化消息目标失效，或选择 owner 接手但当前 owner 为 Human 时，本次触发不执行并记录原因，不自动换 Agent；后续触发仍按原规则检查目标。
+- Webhook 与 cron 规则归属 Project，触发动作可配置。首期主要向所属 Project 的 DM 或 Crew 发送系统来源消息，支持唤醒 DM Agent、Crew 中指定 Agent 或 lead；内置系统动作留到后续。
+- 自动化消息目标失效，或选择 lead 接手但当前 Crew 没有 lead 时，本次触发不执行并记录原因，不自动换 Agent；后续触发仍按原规则检查目标。
 - 同一 cron 规则的上一次工作尚未结束时，跳过本次触发并记录原因，不排队、不并行启动该规则的另一份工作，被跳过的时点不补跑。
 - 停用规则只阻止新触发，不撤回已提交的消息，不停止已启动的工作。
 - 每个 Human 最多绑定一个飞书账号，采用已确认的绑定、解绑和换绑流程。
@@ -48,16 +48,16 @@ webhook、cron 与原生个人助理已有契约、实现和专项技术验证�
 - 主动通知只覆盖助理委派的工作，以及 Human 明确要求关注的工作。
 - 通知包含工作完成、需处理的失败或中断、待 Human 决定，以及 run-activity 定期汇报。
 - 每条 watch 默认每 5 分钟汇总所关注 Chat 的消息与工作活动，周期通过 watch 工具参数设置或更新。窗口无内容时不发空通知，watch 不再逐个即时转发 run 结束事件；助理委派工作的即时结果通知保留。助理可通过工具直接停止关注，旧确认被消费后不重新出现。关注窗口通过独立、无工具的助理模型调用生成语义摘要，保留原始事实；标题栏列出全部有效关注，待确认请求支持持久拒绝。本轮实现与验证状态见修订记录。
-- Pi extension 暴露 watch 入口，服务端保存关注关系并负责权限检查与定时触发；DM 或 Group 的持续关注独立于单次 run 及 Pi 进程。
+- Pi extension 暴露 watch 入口，服务端保存关注关系并负责权限检查与定时触发；DM 或 Crew 的持续关注独立于单次 run 及 Pi 进程。
 - 助理回复与主动通知统一向当前可发送的所有已绑定 channel 分发，来源不决定回复去向，各端分别记录投递结果。
 - Sprout 内提供原生助理对话入口，复用归属 Project 的普通 Agent Chat，不依赖外部 channel。助理的跨 Project 查询按 Human 当前权限受控开放，不改变 Chat 的归属。
 - 助理使用独立 Agent profile，模型和 effort 针对即时交流需求单独定制；具体默认值尚未冻结。
-- 初版 channel 只接私聊 DM，不接外部群聊；助理仍可在 Human 当前权限内查询、watch 和委派 Sprout 内部 Group。
+- 初版 channel 只接私聊 DM，不接外部群聊；助理仍可在 Human 当前权限内查询、watch 和委派 Sprout 内部 Crew。
 - Channel 接入时选择一个 Project 下的助理 DM，同一 DM 的入口共用历史与上下文，输出向该 DM 当前可发送的所有已绑定 channel 分发。
 
 常规选择采用[自动化默认行为](automation-decisions.md#首版默认行为)和[助理入口默认值](personal-assistant-decisions.md#首版入口默认值)。自动化每条规则先执行一个消息动作，支持手动试运行，记录在 Project 内查看；绑定由 Human 明确选择 Project 和助理 DM，重连不自动补发历史，不引入全局唯一助理约束。外部群聊、语音实现、保守和激进模式、复杂恢复及通用工作流留到后续。
 
-身份与能力配置、系统消息来源、触发与运行关联、Group 工作结束判定及确认去重先补共享契约。能调查确定的问题由执行者核实，只有方向不明确或返工成本较高的选择才交 Human。当前不分配新的 P 阶段编号。历史 P8 外部通信扩展条目继续作为待设计材料保留。
+身份与能力配置、系统消息来源、触发与运行关联、Crew 工作结束判定及确认去重先补共享契约。能调查确定的问题由执行者核实，只有方向不明确或返工成本较高的选择才交 Human。当前不分配新的 P 阶段编号。历史 P8 外部通信扩展条目继续作为待设计材料保留。
 
 ## 首版推进顺序
 
@@ -65,12 +65,12 @@ webhook、cron 与原生个人助理已有契约、实现和专项技术验证�
 
 | 单元 | 依赖与范围 | 单元结束时必须证明 |
 | --- | --- | --- |
-| Project 内 webhook 消息动作 | 先确定规则、系统来源、目标路由与触发记录契约，再贯通配置、认证、基本去重、DM / Group 唤醒及记录查看 | 有效事件只提交一次；未授权事件不提交；Agent 能识别系统来源；DM、显式 @ 与 owner 路由正确，现有人类消息不回归。已完成 domain/schema、HTTP ingress、Project 设置 UI 和生产服务浏览器链路验证。实际 Pi runner 使用零付费模型 fixture；Human UI 体验已确认，最后分隔线修复按授权由执行者截图复核。契约与证据入口见 [Webhook](webhook-core.md) |
+| Project 内 webhook 消息动作 | 先确定规则、系统来源、目标路由与触发记录契约，再贯通配置、认证、基本去重、DM / Crew 唤醒及记录查看 | 有效事件只提交一次；未授权事件不提交；Agent 能识别系统来源；DM、显式 @ 与 lead 路由正确，现有人类消息不回归。已完成 domain/schema、HTTP ingress、Project 设置 UI 和生产服务浏览器链路验证。实际 Pi runner 使用零付费模型 fixture；Human UI 体验已确认，最后分隔线修复按授权由执行者截图复核。契约与证据入口见 [Webhook](webhook-core.md) |
 | Cron 接入相同消息动作 | 复用上一单元的规则与提交路径，增加时区、下一时点、重叠跳过和离线不补做 | 已实现并完成 schema / domain / runtime / UI 专项技术验证：实际墙钟定时触发经生产服务与真实 Pi runner 的回环模型 fixture；同规则重叠跳过、停用不撤回、重启不补跑由边界测试覆盖。Human UI 体验已确认，固定偏移与当前默认项已完成复验，见 [Cron 契约](cron-core.md) |
 | Sprout 原生个人助理 | 复用现有 Agent profile 与 Project DM，补受限工具、跨 Project 观察、watch、提案确认、受控委派及通知 | 已实现并完成专项技术验证：当前 Human 权限、目的隔离、单次确认、持久 watch、合并通知和实际下一轮 Pi context；生产 fixture 包含初始与运行中 steer 输入，零付费调用。Human UI 体验已确认，最后基础信息分隔线修复按授权由执行者截图复核；广泛技术验证的既有限制仍保留。见[契约](assistant-core.md)与[功能证据](feature-map/assistant.md)。 |
 | 飞书 DM adapter | 依赖原生助理闭环，接身份核验、DM 绑定、接收去重、两端确认及统一投递 | 外部输入与 Sprout 共用同一 DM 历史；解绑立即停收停发；多端不重复执行；投递失败不重跑工作 | 已实现并完成专项技术验证：真实自建应用在评审实例上完成私聊发码绑定、真实卡片推送与卡片「拒绝」回调，入站消息进入该 Human 的助理 DM 历史；共享历史、解绑停收停发、多端不重跑、投递失败不重跑由领域与边界测试覆盖。Human 已验收绑定页三项体验修正（确认码跨刷新保留、显示账号昵称、换绑需飞书确认）。未验证：飞书移动端与多设备体验、真实租户的 `contact:user.base:readonly` 授权。见[推进记录](feishu-adapter-plan.md)与[契约](feishu-adapter-contract.md) |
 | Hindsight 记忆 | 依赖 Project 设置与 Pi runner。先钉 bank 解析与组件安装契约，再贯通开关、状态、工具面与设置页 | 关闭时扩展、工具、提示词与技能都不进 Pi；开启后新 session 能检索到上次写入；安装失败显式可见且不挡 run。计划见[记忆计划](memory-plan.md)。已实现并完成真实链路验证：真实 Hindsight 与 6 次付费模型调用跑通写入、新 session 检索、关闭隔离与安装失败降级；关闭态官方 npm skill 泄漏已修复。未验证：测试连接、清空、compaction、浏览器页面。证据见[真实链路](memory-e2e.md) |
-| Agent run 注意力阶梯（Part L） | 先收敛契约、七列迁移及 running 策略快照，再实现事务投递、独立 scheduler、取消收口与 UI；Part W 在下列单元实现阻塞等待工具 | 已实现 30 分钟注意力、60 分钟统一人类提醒，不按年龄或静默杀 run；其他 Agent owner 首次直投 input，人类/self 首次无消息。专项 21 测试、typecheck 与全量 1612 测试已通过，真实子进程取消实测约 3.5 秒收口且后续 run 启动；完整验证执行 115 个 gate，111 通过，失败的 4 个里 2 个是既有环境依赖项（z-lease-integration 的 free/held 控件预期、z3-mcp-acceptance 的 R1 归档 script SHA 校验），另 2 个浏览器 gate 单独复跑即通过。Human 页面体验、真实模型长运行尚未确认。见 [Turn 语义](p3/turn-semantics.md)与 [Chat 与 Run](feature-map/chat-runs.md) |
+| Agent run 注意力阶梯（Part L） | 先收敛契约、七列迁移及 running 策略快照，再实现事务投递、独立 scheduler、取消收口与 UI；Part W 在下列单元实现阻塞等待工具 | 已实现 30 分钟注意力、60 分钟统一人类提醒，不按年龄或静默杀 run；Crew lead 不是本 run 执行者时首次直投 input，lead 自己执行与 DM 首次无消息。专项 21 测试、typecheck 与全量 1612 测试已通过，真实子进程取消实测约 3.5 秒收口且后续 run 启动；完整验证执行 115 个 gate，111 通过，失败的 4 个里 2 个是既有环境依赖项（z-lease-integration 的 free/held 控件预期、z3-mcp-acceptance 的 R1 归档 script SHA 校验），另 2 个浏览器 gate 单独复跑即通过。Human 页面体验、真实模型长运行尚未确认。见 [Turn 语义](p3/turn-semantics.md)与 [Chat 与 Run](feature-map/chat-runs.md) |
 | 阻塞等待工具（Part W） | 依赖 Part L；共享时长契约、纯 execution 轮询循环、宿主 sleep、runner 接线与具名活动标签 | 已实现本地 sleep（最多 10 分钟）和 execution wait（默认 10 分钟，最多 15 分钟）；等待到点携带最后视图，表示仍在跑，不重试副作用。技术验证覆盖假时钟边界、取消、错误透传与真实 Pi runner 注册；类型检查 0 错误，全量 181 文件 1646 测试通过，147 个 gate 里 140 通过。失败的 7 个：2 个是既有环境依赖项（z-lease-integration、z3-mcp-acceptance），3 个在负载 8.24 下假红、单独复跑通过（p7-storage-recovery、as-p5b-task-pages、assistant-browser），2 个是新增 sleep 后过期的工具面夹具断言（ae-remote-tools-cancel-log、p7-pi-inheritance），修正夹具后在最终 commit 上复跑通过。真实长时间模型调用与 Human 页面体验未验证。见[远端执行](feature-map/remote-execution.md) |
 
 每个单元带上最小可用页面与实际验收，不先集中构建一套未来才使用的基础框架。新页面形状按[页面设计约定](project-conventions.md#页面设计与实现的分工)处理。功能细化见[功能计划](development-plan-functional.md#首版功能单元)，界面细化见[UI 计划](development-plan-ui.md#首版界面单元)。

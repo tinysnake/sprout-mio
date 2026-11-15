@@ -26,7 +26,7 @@ try {
   const project = createProject({ name: "Remote membership" }, ctx);
   const agent = createAgentProfile({ name: "GrantAgent", persona: "", harness: "pi" }, ctx);
   addProjectMember(project.id, agent.id, ctx);
-  const channel = listChats(project.id, ctx).find((entry) => entry.kind === "public_channel")!;
+  const channel = listChats(project.id, ctx).find((entry) => entry.kind === "crew")!;
   const dm = createDirectChat(project.id, agent.id, ctx).chat;
   const runtime = { ...(await machineRuntimeContext()), requestId: ctx.requestId };
   const runner = { pid: process.pid } as PiSessionProcess;
@@ -35,7 +35,7 @@ try {
     sendMessage(chat.id, { senderKind: "human", senderId: userId, body: "@GrantAgent hello" }, ctx);
     const work = queuedRunWork().find((entry) => entry.run.chatId === chat.id)!;
     assert(work, `${chat.kind} queued run`);
-    if (chat.kind === "public_channel") {
+    if (chat.kind === "crew") {
       assert.equal(
         (
           sqlite.prepare("SELECT count(*) AS n FROM chat_member WHERE chat_id=?").get(chat.id) as {
@@ -80,7 +80,7 @@ try {
     );
     abortAgentRun(id, ctx);
     console.log(
-      `PASS remote-grant.${original.chatId === dm.id ? "dm" : "public_channel"}.removed-member ${id}`,
+      `PASS remote-grant.${original.chatId === dm.id ? "dm" : "crew"}.removed-member ${id}`,
     );
   }
 

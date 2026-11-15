@@ -232,6 +232,19 @@ describe("assistant/worker gateway purpose and Human authority matrix", () => {
         action: "update",
         title: "Forged",
       },
+      delegation_mutate: {
+        ...projectScope,
+        action: "complete",
+        delegationId: "dlg_11111111",
+        summary: "Forged",
+      },
+      crew_mutate: {
+        ...projectScope,
+        action: "dispatch",
+        workerProfileId: "agp_11111111",
+        request: "Forged",
+        clientRequestId: "forged-dispatch",
+      },
       lease_get: leaseScope,
       lease_mutate: {
         ...leaseScope,
@@ -244,6 +257,10 @@ describe("assistant/worker gateway purpose and Human authority matrix", () => {
         requestId: "req_11111111",
         authorizationGeneration: 1,
         operation: { kind: "shell", command: "true" },
+      },
+      crew_resource: {
+        ...projectScope,
+        command: { op: "release", input: { resourceRequestId: crypto.randomUUID() } },
       },
       execution_get: executionScope,
       execution_list: leaseScope,

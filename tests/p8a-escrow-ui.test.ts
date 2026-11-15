@@ -97,9 +97,9 @@ describe("挂靠的只读投影", () => {
 
   it("目标文案只投影挂靠事实，名称取不到时退回 id", () => {
     expect(escrowTargetLabel(demoChannelEscrow, names)).toBe(
-      "发布公告频道（Public Channel） · 指定 Agent 文档 Agent",
+      "发布公告 Crew（Crew） · 指定 Agent 文档 Agent",
     );
-    expect(escrowTargetLabel(demoGroupEscrow, names)).toBe("发布协作组（Group）");
+    expect(escrowTargetLabel(demoGroupEscrow, names)).toBe("发布协作 Crew（Crew）");
     // 领取范围不是租约行要铺陈的事实：目标只留 Group 与可选的指定 Agent。
     expect(escrowTargetLabel(demoGroupEscrow, names)).not.toContain("该 Group 内任意分身可领取");
     expect(escrowTargetLabel(demoGroupEscrow)).toContain(demoEscrowTargets.group.chatId);
@@ -231,7 +231,7 @@ describe("演示场景的挂靠数据", () => {
   });
 
   it("挂靠目标选项把 DM 也列出来，指定 Agent 归属到它的 Chat", () => {
-    expect(demoEscrowChats.map((chat) => chat.kind)).toEqual(["group", "public_channel", "dm"]);
+    expect(demoEscrowChats.map((chat) => chat.kind)).toEqual(["crew", "crew", "dm"]);
     expect(demoEscrowChats.map((chat) => chat.id)).toEqual([
       demoEscrowTargets.group.chatId,
       demoEscrowTargets.channel.chatId,

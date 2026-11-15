@@ -5,12 +5,10 @@ import {
   recipientKey,
   type WakeSnapshotFacts,
 } from "../../../src/domain/wake-evaluation";
-import { resolveMentions } from "../../../src/domain/mention";
 
 type Sample = {
   id: string;
   scene: string;
-  chatKind: "group" | "public_channel";
   members: { kind: "human" | "agent"; name: string; role: string; responsibilities?: string }[];
   owner: { kind: "human" | "agent"; name: string };
   task: { status: "assigned" | "finished"; title: string } | null;
@@ -45,7 +43,13 @@ const cases = definitions.map((definition) => {
     kind,
     id: `${kind}_${sample.members.findIndex((m) => m.kind === kind && m.name === name)}`,
   });
-  const owner = identity(sample.owner.kind, sample.owner.name);
+  const lead =
+    sample.owner.kind === "agent"
+      ? sample.owner
+      : { kind: "agent" as const, name: sample.members.find((m) => m.kind === "agent")!.name };
+  // 与 buildPeriodicInput 一致，判定器快照里的 owner 表示接续责任人（Crew lead）。
+  // Crew 的实际 Human owner 不变；消息路由不再调用这个休眠中的判定器。
+  const owner = identity(lead.kind, lead.name);
   const recentMessages = sample.messages.map((message, index) => ({
     id: stableId("msg", `${sample.id}_${index}`),
     kind: message.senderKind,
@@ -58,17 +62,8 @@ const cases = definitions.map((definition) => {
   const triggerMessage = periodic
     ? null
     : { ...recentMessages[recentMessages.length - 1], body: sample.trigger.body! };
-  // 点名在写时就已解析落库，fixture 按同一份成员名做一次解析，不再让路由读正文。
-  const triggerMentions = triggerMessage
-    ? resolveMentions(
-        triggerMessage.body,
-        sample.members.map((member) => ({
-          memberKind: member.kind,
-          memberId: identity(member.kind, member.name).id,
-          name: member.name,
-        })),
-      )
-    : [];
+  // Crew 的 Human 消息直接交给 lead，点名 worker 不再改变路由。
+  const triggerMentions: WakeSnapshotFacts["mentions"] = [];
   const facts: WakeSnapshotFacts = {
     source: periodic ? "task_periodic" : "message",
     projectId: stableId("prj", "project"),
@@ -88,11 +83,11 @@ const cases = definitions.map((definition) => {
     latestReadableMessageId: recentMessages.at(-1)?.id ?? null,
     recentMessages,
     chat: {
-      kind: sample.chatKind,
+      kind: "crew",
       goal: sample.scene,
       collaboration: "按职责协作；确认、等待和收尾无需回复",
       owner,
-      wakePolicy: "contextual",
+      wakePolicy: "owner_led",
       governanceRevision: 1,
     },
     members: sample.members
@@ -143,24 +138,25 @@ const cases = definitions.map((definition) => {
   if (prepared.kind === "failed") throw new Error(JSON.stringify(prepared));
   const input = prepared.kind === "skipped" ? null : prepared.input;
   const selected =
-    definition.selected === "none"
-      ? []
-      : input!.candidates
-          .filter(
-            (candidate) =>
-              definition.selected === "all" ||
-              recipientKey(candidate.recipient) === recipientKey(owner),
-          )
-          .map((candidate) => recipientKey(candidate.recipient));
+    prepared.kind === "rule"
+      ? prepared.result.selectedRecipients.map(recipientKey)
+      : definition.selected === "none"
+        ? []
+        : input!.candidates
+            .filter(
+              (candidate) =>
+                definition.selected === "all" ||
+                recipientKey(candidate.recipient) === recipientKey(owner),
+            )
+            .map((candidate) => recipientKey(candidate.recipient));
   return {
     id: sample.id,
     source: {
       path: "orchestrate/sprout-mio-p6/samples/wake-samples.json",
       id: sample.id,
       sha256: createHash("sha256").update(raw).digest("hex"),
-      adaptation: definition.periodic
-        ? "Human owner 提醒改为设计 §1 的周期 owner 判定；原文保留在最近消息"
-        : "使用 trigger.body；成员身份转换为稳定 fixture id；仅 assigned Task 进入快照",
+      adaptation:
+        "旧 Group 样本正文仅作中文语料；快照改为 Crew owner_led，owner 投影为 lead 责任人，Human 消息仅选 lead；仅 assigned Task 进入周期快照",
     },
     covers: sample.covers,
     now: now.toISOString(),

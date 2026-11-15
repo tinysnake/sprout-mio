@@ -46,6 +46,8 @@ export const LEASE_MUTATION_LABELS: Record<LeaseMutationView["action"], string> 
   release: "释放",
   handoff: "交接",
   reclaim: "收回",
+  grant: "授予",
+  revoke_grant: "撤销授予",
 };
 
 export type LeaseHolder = {
@@ -145,13 +147,13 @@ export function escrowStateLabel(state: LeaseEscrowView["state"]): LeaseLabel {
   return LEASE_ESCROW_STATE_LABELS[state];
 }
 
-const CHAT_KIND_LABELS: Record<"dm" | "group" | "public_channel", string> = {
+const CHAT_KIND_LABELS: Record<"dm" | "crew" | "delegation", string> = {
   dm: "DM",
-  group: "Group",
-  public_channel: "Public Channel",
+  crew: "Crew",
+  delegation: "Delegation",
 };
 
-export function chatKindLabel(kind: "dm" | "group" | "public_channel"): string {
+export function chatKindLabel(kind: "dm" | "crew" | "delegation"): string {
   return CHAT_KIND_LABELS[kind];
 }
 
@@ -161,7 +163,7 @@ export function chatKindLabel(kind: "dm" | "group" | "public_channel"): string {
  */
 export type EscrowNames = {
   chats?: Readonly<Record<string, string>>;
-  chatKinds?: Readonly<Record<string, "dm" | "group" | "public_channel">>;
+  chatKinds?: Readonly<Record<string, "dm" | "crew" | "delegation">>;
   agents?: Readonly<Record<string, string>>;
 };
 

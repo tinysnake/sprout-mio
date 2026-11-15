@@ -27,6 +27,14 @@ function plan(seconds, resources, preparation = [], sandbox = false) {
   });
 }
 
+// Retired gates stay on disk so archived plans and evidence references still resolve.
+// They are tombstones: never classified, never run, never listed in any target.
+export const RETIRED_GATES = Object.freeze([
+  "i2-group-chat",
+  "i3-public-channel",
+  "i4-agent-fanout",
+]);
+
 export const MANUAL_GATES = Object.freeze([
   "p6a-live-routing",
   "p8d-windows-worker",
@@ -86,6 +94,8 @@ export const SUITE_PLAN = Object.freeze({
   "aq-p4d-pages": plan(19, { browser: 1, port3142: 1 }, server),
   "b-tooling": plan(69.675, { process: SUITE_CAPACITY.process, unit: 1 }, privateTree, true),
   "ba-task-domain": plan(2.1, { unit: 1 }),
+  "crew-delegation": plan(2.95, { unit: 1 }),
+  "crew-resource": plan(2.2, { unit: 1 }),
   "bc-task-start": plan(5.7, { unit: 1, process: 1 }),
   "bd-task-migration": plan(1.4, { unit: 1 }),
   "be-task-info": plan(1.2, { unit: 1 }),
@@ -100,9 +110,6 @@ export const SUITE_PLAN = Object.freeze({
   "g-identity-data": plan(11.336, { unit: 1, light: 1 }, server),
   "h-project-agents": plan(5.78, { light: 1, port3142: 1 }, server),
   "i-chat": plan(10.695, { light: 1 }, server),
-  "i2-group-chat": plan(12, { light: 1 }, server),
-  "i3-public-channel": plan(12, { light: 1 }, server),
-  "i4-agent-fanout": plan(12, { light: 1 }, server),
   "i5-project-removal": plan(4, { light: 1 }),
   "p6c-member-removal": plan(4, { light: 1 }),
   "p8c-removal": plan(3, { light: 1 }),

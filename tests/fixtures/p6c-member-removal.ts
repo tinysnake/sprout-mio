@@ -1,4 +1,3 @@
-import { createGroupChatInput } from "../../src/contracts/chat";
 import { fork } from "node:child_process";
 import { and, eq } from "drizzle-orm";
 import {
@@ -22,13 +21,7 @@ import {
   collectProjectMemberRemovalBlockers,
   removeProjectMember,
 } from "../../src/domain/agent";
-import {
-  createDirectChat,
-  createGroupChat,
-  ensureInstance,
-  getChat,
-  setChatOwner,
-} from "../../src/domain/chat";
+import { addCrewMember, createDirectChat, ensureInstance, getChat } from "../../src/domain/chat";
 import { chatGovernanceFacts } from "../../src/domain/chat-capabilities";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
 import { createProject } from "../../src/domain/project";
@@ -47,8 +40,9 @@ import {
   seedTask,
   blocked,
 } from "./p6c-member-fixture";
+import { createCrewChat, setChatOwnerCompat, crewInput } from "./crew-chat";
 
-const f = setup();
+const f = setup({ stayingLead: true });
 const collect = () => collectProjectMemberRemovalBlockers(f.project.id, f.agent.id);
 const remove = () => removeProjectMember(f.project.id, f.agent.id, f.ctx);
 const pass = (name: string) => console.log(`PASS ${name}`);
@@ -113,9 +107,9 @@ assert.deepEqual(collect(), []);
 pass("blockers.leases.held-and-fencing");
 
 const human = { kind: "human" as const, userId: f.ctx.userId, ctx: f.ctx };
-const unprovisionedGroup = createGroupChat(
+const unprovisionedGroup = createCrewChat(
   f.project.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: f.project.id,
     title: "Owner without instance",
     initialOwner: { kind: "agent", id: f.agent.id },
@@ -131,18 +125,19 @@ assert.equal(
     .length,
   0,
 );
-setChatOwner(
+setChatOwnerCompat(
   f.group.id,
   { kind: "agent", id: f.agent.id },
   getChat(f.group.id, f.ctx).governanceRevision,
   human,
 );
 rejectsUnchanged("owner_duties");
-// Legacy channel owner and archived group remain real responsibilities, including without active runs.
-db.update(chat)
-  .set({ ownerKind: "agent", ownerId: f.agent.id })
-  .where(eq(chat.id, f.channel.id))
-  .run();
+setChatOwnerCompat(
+  f.channel.id,
+  { kind: "agent", id: f.agent.id },
+  getChat(f.channel.id, f.ctx).governanceRevision,
+  human,
+);
 db.update(chat).set({ archivedAt: new Date() }).where(eq(chat.id, f.group.id)).run();
 const ownerBlock = collect()[0];
 assert.equal(ownerBlock.kind, "owner_duties");
@@ -152,50 +147,28 @@ assert.deepEqual(
   [f.group.id, f.channel.id, unprovisionedGroup.id].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
 );
 const facts = chatGovernanceFacts(
-  {
-    kind: "public_channel",
-    ownerKind: "agent",
-    ownerId: f.agent.id,
-    projectCreatedBy: f.ctx.userId,
-  },
+  { kind: "crew", ownerKind: "human", ownerId: f.ctx.userId, projectCreatedBy: f.ctx.userId },
   human,
 );
-assert.equal(facts.canChangeOwner, true);
-assert.equal(facts.canChangeMembers, false);
-const beforeForeign = snapshot();
-assert.throws(
-  () =>
-    setChatOwner(
-      f.channel.id,
-      { kind: "human", id: "foreign-human" },
-      getChat(f.channel.id, f.ctx).governanceRevision,
-      human,
-    ),
-  { code: "forbidden" },
-);
-assert.deepEqual(snapshot(), beforeForeign);
-setChatOwner(
-  f.channel.id,
-  { kind: "human", id: f.ctx.userId },
-  getChat(f.channel.id, f.ctx).governanceRevision,
-  human,
-);
-// Owner transfer on archived Group follows existing policy; unarchive to resolve explicitly.
+assert.equal(facts.canChangeLead, true);
+assert.equal(facts.canChangeMembers, true);
 db.update(chat).set({ archivedAt: null }).where(eq(chat.id, f.group.id)).run();
-setChatOwner(
-  f.group.id,
-  { kind: "human", id: f.ctx.userId },
-  getChat(f.group.id, f.ctx).governanceRevision,
-  human,
-);
-setChatOwner(
-  unprovisionedGroup.id,
-  { kind: "human", id: f.ctx.userId },
-  getChat(unprovisionedGroup.id, f.ctx).governanceRevision,
-  human,
-);
-assert.deepEqual(collect(), []);
-pass("blockers.owner-duties.channel-recoverable");
+for (const crewId of [f.group.id, f.channel.id, unprovisionedGroup.id]) {
+  addCrewMember(
+    crewId,
+    { kind: "agent", id: f.lead.id },
+    getChat(crewId, f.ctx).governanceRevision,
+    human,
+  );
+  setChatOwnerCompat(
+    crewId,
+    { kind: "agent", id: f.lead.id },
+    getChat(crewId, f.ctx).governanceRevision,
+    human,
+  );
+}
+assert.deepEqual(collect(), [], "普通 worker 不承担 lead 职责");
+pass("blockers.lead-duties.resolved-by-transfer");
 
 const task1 = seedTask(f);
 rejectsUnchanged("dm_assigned_tasks");
@@ -219,9 +192,9 @@ pass("blockers.dm-assigned-tasks.excludes-other-states-and-group");
 const projectB = createProject({ name: "P6c Other" }, f.ctx);
 addProjectMember(projectB.id, f.agent.id, f.ctx);
 const dmB = createDirectChat(projectB.id, f.agent.id, f.ctx);
-const groupB = createGroupChat(
+const groupB = createCrewChat(
   projectB.id,
-  createGroupChatInput.parse({
+  crewInput({
     projectId: projectB.id,
     title: "Other Project Group",
     initialOwner: { kind: "agent", id: f.agent.id },
@@ -255,6 +228,7 @@ saveProjectMachineBinding(
 );
 db.insert(machineLease)
   .values({
+    ownerKind: "instance",
     ...machineKeyB,
     generation: 1,
     state: "held",
@@ -318,10 +292,7 @@ pass("blockers.cross-project.same-profile-control-group");
 
 const busyRun = seedRun(f);
 const busyLease = seedLease(f);
-db.update(chat)
-  .set({ ownerKind: "agent", ownerId: f.agent.id })
-  .where(eq(chat.id, f.channel.id))
-  .run();
+db.update(chat).set({ leadProfileId: f.agent.id }).where(eq(chat.id, f.channel.id)).run();
 const beforeCombined = snapshot();
 const combinedError = blocked(remove);
 const structured = await toDomainAppError(combinedError, f.ctx.requestId);
@@ -378,9 +349,9 @@ db.update(machineLease)
   .set({ state: "free", holderInstanceId: null })
   .where(eq(machineLease.machineId, busyLease.key.machineId))
   .run();
-setChatOwner(
+setChatOwnerCompat(
   f.channel.id,
-  { kind: "human", id: f.ctx.userId },
+  { kind: "agent", id: f.lead.id },
   getChat(f.channel.id, f.ctx).governanceRevision,
   human,
 );

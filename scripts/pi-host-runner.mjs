@@ -112,6 +112,12 @@ async function open(config) {
   const { registerTaskTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/task-tools.ts"),
   );
+  const { registerCrewDelegationTools } = await jiti.import(
+    "../src/extension/crew-delegation-tools.ts",
+  );
+  const { registerDelegationTools } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/delegation-tools.ts"),
+  );
   const { registerInfoHubTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/info-hub-tools.ts"),
   );
@@ -284,6 +290,8 @@ async function open(config) {
               });
               registerRemoteTools(pi, remote);
               registerTaskTools(pi, remote);
+              registerDelegationTools(pi, remote);
+              registerCrewDelegationTools(pi, remote);
               registerInfoHubTools(pi, remote);
               registerCurrentTimeTool(pi);
               registerSleepTool(pi);

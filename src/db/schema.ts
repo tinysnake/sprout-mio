@@ -302,8 +302,14 @@ export const chat = sqliteTable(
     projectId: text("project_id")
       .notNull()
       .references(() => project.id),
-    kind: text("kind", { enum: ["dm", "group", "public_channel"] }).notNull(),
+    kind: text("kind", { enum: ["dm", "crew", "delegation"] }).notNull(),
     title: text("title"),
+    // 委派对话只有一个父 Crew；普通 DM/Crew 必须为空。复合外键保证父对话属于同一 Project。
+    parentCrewChatId: text("parent_crew_chat_id"),
+    // Crew 的 lead 是 Crew 自己的角色，不是 agent_profile.purpose；空表示尚未指定。
+    leadProfileId: text("lead_profile_id").references(() => agentProfile.id),
+    // 只在 lead 改任、移除 lead 和显式停止 Crew 时递增；普通 run 不改变它。
+    crewEpoch: integer("crew_epoch").notNull().default(0),
     archivedAt: integer("archived_at", { mode: "timestamp" }),
     ownerKind: text("owner_kind", { enum: ["human", "agent"] }).notNull(),
     ownerId: text("owner_id").notNull(),
@@ -322,7 +328,7 @@ export const chat = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (table) => [
-    check("chat_kind_check", sql`${table.kind} in ('dm', 'group', 'public_channel')`),
+    check("chat_kind_check", sql`${table.kind} in ('dm', 'crew', 'delegation')`),
     check(
       "chat_title_check",
       sql`${table.title} is null or length(trim(${table.title})) between 1 and 80`,
@@ -337,22 +343,61 @@ export const chat = sqliteTable(
       "chat_governance_revision_check",
       sql`typeof(${table.governanceRevision}) = 'integer' and ${table.governanceRevision} >= 0`,
     ),
-    // DM 的所有者只能是创建它的人；群与频道的所有者可以是分身，由 p5a-groups 校验参与权。
+    // DM 与 Crew 的治理 owner 固定是创建它的人类；lead 另记在 lead_profile_id。
     check(
       "chat_dm_owner_check",
       sql`${table.kind} <> 'dm' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
     ),
     check(
-      "chat_public_channel_archived_check",
-      sql`${table.kind} <> 'public_channel' or ${table.archivedAt} is null`,
+      "chat_crew_owner_check",
+      sql`${table.kind} <> 'crew' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
     ),
+    check(
+      "chat_crew_epoch_check",
+      sql`typeof(${table.crewEpoch}) = 'integer' and ${table.crewEpoch} >= 0`,
+    ),
+    check(
+      "chat_crew_lead_check",
+      sql`${table.kind} <> 'crew' or ${table.leadProfileId} is null or length(trim(${table.leadProfileId})) > 0`,
+    ),
+    // Crew 的消息路由是确定性的，不走判定器。
+    check(
+      "chat_crew_wake_check",
+      sql`${table.kind} <> 'crew' or ${table.wakePolicy} <> 'contextual'`,
+    ),
+    check(
+      "chat_delegation_parent_check",
+      sql`(${table.kind} = 'delegation' and ${table.parentCrewChatId} is not null) or (${table.kind} <> 'delegation' and ${table.parentCrewChatId} is null)`,
+    ),
+    check(
+      "chat_delegation_owner_check",
+      sql`${table.kind} <> 'delegation' or (${table.ownerKind} = 'human' and ${table.ownerId} = ${table.createdBy})`,
+    ),
+    check("chat_lead_scope_check", sql`${table.kind} = 'crew' or ${table.leadProfileId} is null`),
+    foreignKey({
+      columns: [table.parentCrewChatId, table.projectId],
+      foreignColumns: [table.id, table.projectId],
+    }),
     uniqueIndex("chat_id_project_unique").on(table.id, table.projectId),
-    uniqueIndex("chat_public_channel_project_unique")
-      .on(table.projectId)
-      .where(sql`${table.kind} = 'public_channel'`),
     index("chat_project_updated_idx").on(table.projectId, table.updatedAt, table.id),
     index("chat_project_owner_idx").on(table.projectId, table.ownerKind, table.ownerId),
   ],
+);
+
+export const crewControl = sqliteTable(
+  "crew_control",
+  {
+    chatId: text("chat_id")
+      .primaryKey()
+      .references(() => chat.id),
+    mode: text("mode", { enum: ["active", "stopped"] })
+      .notNull()
+      .default("active"),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [check("crew_control_mode_check", sql`${table.mode} in ('active', 'stopped')`)],
 );
 
 export const chatMember = sqliteTable(
@@ -376,9 +421,9 @@ export const chatMember = sqliteTable(
 );
 
 /**
- * 成员唯一真值读视图：DM 与 Group 取 `chat_member`，Public Channel 从 `project_member`
- * 与 `project.created_by` 当场派生，不给成员表复制 kind/project 事实。
- * Group 的 Agent 行只在仍属本项目时存在，移出后同一读即消失；Human 行不受 project_member 限制。
+ * 成员唯一真值读视图：DM 与 Crew 都取 `chat_member`。Crew 的 Agent 行只在仍属本项目时
+ * 存在，移出 Project 后同一读即消失；Human 行不受 project_member 限制。Crew 成员不继承
+ * Project 后续加入的 Agent，必须显式写入 `chat_member`。
  */
 export const chatEffectiveMember = sqliteView("chat_effective_member", {
   chatId: text("chat_id").notNull(),
@@ -386,7 +431,7 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
   memberKind: text("member_kind", { enum: ["human", "agent"] }).notNull(),
   memberId: text("member_id").notNull(),
   addedAt: integer("added_at", { mode: "timestamp" }).notNull(),
-  source: text("source", { enum: ["chat_member", "project_member", "project_owner"] }).notNull(),
+  source: text("source", { enum: ["chat_member"] }).notNull(),
 }).as(sql`
   SELECT
     c.id AS chat_id,
@@ -397,36 +442,218 @@ export const chatEffectiveMember = sqliteView("chat_effective_member", {
     'chat_member' AS source
   FROM chat c
   JOIN chat_member cm ON cm.chat_id = c.id
-  WHERE c.kind IN ('dm', 'group') AND (
+  WHERE c.kind IN ('dm', 'crew') AND (
     cm.member_kind = 'human' OR c.kind = 'dm' OR EXISTS (
       SELECT 1 FROM project_member pm
       WHERE pm.project_id = c.project_id AND pm.agent_profile_id = cm.member_id
     )
   )
   UNION ALL
-  SELECT
-    c.id AS chat_id,
-    c.project_id,
-    'agent' AS member_kind,
-    pm.agent_profile_id AS member_id,
-    pm.added_at,
-    'project_member' AS source
+  SELECT c.id, c.project_id, 'human', cm.member_id, cm.added_at, 'delegation'
   FROM chat c
-  JOIN project_member pm ON pm.project_id = c.project_id
-  JOIN agent_profile ap ON ap.id = pm.agent_profile_id AND ap.purpose = 'worker'
-  WHERE c.kind = 'public_channel'
+  JOIN delegation d ON d.child_chat_id = c.id
+  JOIN chat p ON p.id = d.parent_crew_chat_id
+  JOIN chat_member cm ON cm.chat_id = p.id AND cm.member_kind = 'human'
+  WHERE c.kind = 'delegation'
   UNION ALL
-  SELECT
-    c.id AS chat_id,
-    c.project_id,
-    'human' AS member_kind,
-    p.created_by AS member_id,
-    p.created_at AS added_at,
-    'project_owner' AS source
+  SELECT c.id, c.project_id, 'agent', p.lead_profile_id, d.created_at, 'delegation'
   FROM chat c
-  JOIN project p ON p.id = c.project_id
-  WHERE c.kind = 'public_channel'
+  JOIN delegation d ON d.child_chat_id = c.id
+  JOIN chat p ON p.id = d.parent_crew_chat_id
+  WHERE c.kind = 'delegation' AND p.lead_profile_id IS NOT NULL
+  UNION ALL
+  SELECT c.id, c.project_id, 'agent', d.worker_profile_id, d.created_at, 'delegation'
+  FROM chat c
+  JOIN delegation d ON d.child_chat_id = c.id
+  WHERE c.kind = 'delegation'
+  UNION ALL
+  SELECT c.id, c.project_id, 'human', cm.member_id, cm.added_at, 'delegation'
+  FROM chat c
+  JOIN chat p ON p.id = c.parent_crew_chat_id
+  JOIN chat_member cm ON cm.chat_id = p.id AND cm.member_kind = 'human'
+  WHERE c.kind = 'delegation'
+    AND NOT EXISTS (SELECT 1 FROM delegation d WHERE d.child_chat_id = c.id)
+  UNION ALL
+  SELECT c.id, c.project_id, 'agent', p.lead_profile_id, c.created_at, 'delegation'
+  FROM chat c
+  JOIN chat p ON p.id = c.parent_crew_chat_id
+  WHERE c.kind = 'delegation'
+    AND p.lead_profile_id IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM delegation d WHERE d.child_chat_id = c.id)
 `);
+
+export const delegation = sqliteTable(
+  "delegation",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    parentCrewChatId: text("parent_crew_chat_id").notNull(),
+    childChatId: text("child_chat_id").notNull(),
+    // Dispatch 时快照的 lead 与 Crew epoch；回收/投递前必须重新校验。
+    dispatchLeadProfileId: text("dispatch_lead_profile_id")
+      .notNull()
+      .references(() => agentProfile.id),
+    crewEpoch: integer("crew_epoch").notNull(),
+    workerProfileId: text("worker_profile_id")
+      .notNull()
+      .references(() => agentProfile.id),
+    workerInstanceId: text("worker_instance_id").references(() => agentInstance.id),
+    requestSummary: text("request_summary").notNull(),
+    status: text("status", {
+      enum: ["queued", "running", "blocked", "completed", "failed", "canceling", "canceled"],
+    })
+      .notNull()
+      .default("queued"),
+    attempt: integer("attempt").notNull().default(1),
+    resultRevision: integer("result_revision").notNull().default(0),
+    clientRequestId: text("client_request_id").notNull(),
+    terminalSummary: text("terminal_summary"),
+    terminalReason: text("terminal_reason", {
+      enum: [
+        "completed",
+        "failed",
+        "canceled",
+        "interrupted",
+        "crew_stopped",
+        "resource_unavailable",
+      ],
+    }),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    startedAt: integer("started_at", { mode: "timestamp" }),
+    settledAt: integer("settled_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.parentCrewChatId, table.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    foreignKey({
+      columns: [table.childChatId, table.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    uniqueIndex("delegation_child_chat_unique").on(table.childChatId),
+    uniqueIndex("delegation_crew_request_unique").on(table.parentCrewChatId, table.clientRequestId),
+    index("delegation_crew_status_idx").on(table.parentCrewChatId, table.status, table.createdAt),
+    check(
+      "delegation_status_check",
+      sql`${table.status} in ('queued', 'running', 'blocked', 'completed', 'failed', 'canceling', 'canceled')`,
+    ),
+    check("delegation_attempt_check", sql`${table.attempt} >= 1`),
+    check("delegation_revision_check", sql`${table.resultRevision} >= 0`),
+    check(
+      "delegation_terminal_check",
+      sql`(${table.status} in ('queued', 'running', 'blocked', 'canceling') and ${table.settledAt} is null and ${table.terminalReason} is null) or (${table.status} in ('completed', 'failed', 'canceled') and ${table.settledAt} is not null and ${table.terminalReason} is not null)`,
+    ),
+  ],
+);
+
+export const delegationEvent = sqliteTable(
+  "delegation_event",
+  {
+    id: text("id").primaryKey(),
+    delegationId: text("delegation_id")
+      .notNull()
+      .references(() => delegation.id),
+    kind: text("kind", {
+      enum: ["dispatched", "blocked", "completed", "failed", "canceled"],
+    }).notNull(),
+    revision: integer("revision").notNull(),
+    summary: text("summary").notNull(),
+    resultArtifactId: text("result_artifact_id"),
+    progressCount: integer("progress_count").notNull().default(0),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("delegation_event_revision_unique").on(
+      table.delegationId,
+      table.revision,
+      table.kind,
+    ),
+    check(
+      "delegation_event_kind_check",
+      sql`${table.kind} in ('dispatched', 'blocked', 'completed', 'failed', 'canceled')`,
+    ),
+    check("delegation_event_revision_check", sql`${table.revision} >= 0`),
+  ],
+);
+
+export const delegationDelivery = sqliteTable(
+  "delegation_delivery",
+  {
+    id: text("id").primaryKey(),
+    delegationId: text("delegation_id")
+      .notNull()
+      .references(() => delegation.id),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => delegationEvent.id),
+    leadProfileId: text("lead_profile_id")
+      .notNull()
+      .references(() => agentProfile.id),
+    crewEpoch: integer("crew_epoch").notNull(),
+    state: text("state", {
+      enum: ["pending", "bound", "injected", "acknowledged", "stale", "attention"],
+    })
+      .notNull()
+      .default("pending"),
+    runId: text("run_id").references(() => agentRun.id),
+    messageId: text("message_id").references(() => message.id),
+    attempts: integer("attempts").notNull().default(0),
+    attentionReason: text("attention_reason"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    boundAt: integer("bound_at", { mode: "timestamp" }),
+    injectedAt: integer("injected_at", { mode: "timestamp" }),
+    acknowledgedAt: integer("acknowledged_at", { mode: "timestamp" }),
+  },
+  (table) => [
+    uniqueIndex("delegation_delivery_event_unique").on(table.eventId),
+    index("delegation_delivery_state_idx").on(table.state, table.updatedAt),
+    check(
+      "delegation_delivery_state_check",
+      sql`${table.state} in ('pending', 'bound', 'injected', 'acknowledged', 'stale', 'attention')`,
+    ),
+    check(
+      "delegation_delivery_shape_check",
+      sql`(${table.state} in ('bound', 'injected', 'acknowledged') and ${table.runId} is not null and ${table.messageId} is not null) or (${table.state} in ('pending', 'stale', 'attention') and ${table.runId} is null and ${table.messageId} is null)`,
+    ),
+  ],
+);
+
+export const delegationResult = sqliteTable(
+  "delegation_result",
+  {
+    id: text("id").primaryKey(),
+    delegationId: text("delegation_id")
+      .notNull()
+      .references(() => delegation.id),
+    projectId: text("project_id").notNull(),
+    title: text("title").notNull(),
+    mimeType: text("mime_type").notNull().default("text/html"),
+    byteSize: integer("byte_size").notNull(),
+    content: text("content").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    uniqueIndex("delegation_result_delegation_unique").on(table.delegationId),
+    check("delegation_result_size_check", sql`${table.byteSize} between 1 and 262144`),
+  ],
+);
 
 export const agentInstance = sqliteTable(
   "agent_instance",
@@ -550,7 +777,14 @@ export const message = sqliteTable(
       .notNull()
       .references(() => chat.id),
     senderKind: text("sender_kind", {
-      enum: ["human", "agent", "automation", "assistant_event", "assistant_work"],
+      enum: [
+        "human",
+        "agent",
+        "automation",
+        "assistant_event",
+        "assistant_work",
+        "delegation_event",
+      ],
     }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
@@ -572,6 +806,8 @@ export const message = sqliteTable(
     taskAssignmentRevision: integer("task_assignment_revision"),
     taskGovernanceRevision: integer("task_governance_revision"),
     taskStartRecipientId: text("task_start_recipient_id"),
+    delegationId: text("delegation_id"),
+    delegationPromptForChatId: text("delegation_prompt_for_chat_id").references(() => chat.id),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),
@@ -583,7 +819,7 @@ export const message = sqliteTable(
     }),
     check(
       "message_sender_kind_check",
-      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work')`,
+      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work', 'delegation_event')`,
     ),
     check(
       "message_automation_shape_check",
@@ -594,9 +830,13 @@ export const message = sqliteTable(
       sql`(${table.senderKind}='assistant_event' and ${table.assistantEventId}=${table.senderId} and ${table.assistantEventId} is not null and ${table.assistantProposalId} is null and ${table.taskId} is null) or (${table.senderKind}='assistant_work' and ${table.assistantProposalId}=${table.senderId} and ${table.assistantProposalId} is not null and ${table.assistantEventId} is null and ${table.taskId} is null) or (${table.senderKind} not in ('assistant_event','assistant_work') and ${table.assistantEventId} is null and ${table.assistantProposalId} is null)`,
     ),
     uniqueIndex("message_assistant_event_unique").on(table.assistantEventId),
+    uniqueIndex("message_delegation_event_unique")
+      .on(table.delegationId)
+      .where(sql`${table.senderKind} = 'delegation_event'`),
     uniqueIndex("message_assistant_proposal_unique").on(table.assistantProposalId),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),
+    index("message_delegation_prompt_idx").on(table.delegationPromptForChatId),
     foreignKey({
       columns: [table.taskId, table.taskProjectId],
       foreignColumns: [task.id, task.projectId],
@@ -810,6 +1050,7 @@ export const agentRun = sqliteTable(
     uniqueIndex("agent_run_assistant_message_unique")
       .on(table.assistantMessageId)
       .where(sql`${table.assistantMessageId} is not null`),
+    uniqueIndex("agent_run_id_project_unique").on(table.id, table.projectId),
     uniqueIndex("agent_run_bound_identity_unique").on(
       table.id,
       table.instanceId,
@@ -1721,6 +1962,8 @@ export const machineLease = sqliteTable(
     generation: integer("generation").notNull(),
     state: text("state", { enum: ["free", "held", "fencing"] }).notNull(),
     holderInstanceId: text("holder_instance_id"),
+    ownerKind: text("owner_kind", { enum: ["instance", "crew"] }),
+    holderCrewChatId: text("holder_crew_chat_id"),
     changedAt: integer("changed_at", { mode: "timestamp_ms" }).notNull(),
   },
   (t) => [
@@ -1741,10 +1984,14 @@ export const machineLease = sqliteTable(
     }),
     check(
       "machine_lease_check_7",
-      sql`(state='free' AND holder_instance_id IS NULL) OR
-        (state IN ('held','fencing') AND holder_instance_id IS NOT NULL)`,
+      sql`(state='free' AND holder_instance_id IS NULL AND owner_kind IS NULL AND holder_crew_chat_id IS NULL) OR
+        (state IN ('held','fencing') AND owner_kind IS NOT NULL AND ((owner_kind='instance' AND holder_instance_id IS NOT NULL AND holder_crew_chat_id IS NULL) OR (owner_kind='crew' AND holder_instance_id IS NULL AND holder_crew_chat_id IS NOT NULL)))`,
     ),
     check("machine_lease_check_8", sql`state='free' OR generation>0`),
+    foreignKey({
+      columns: [t.holderCrewChatId, t.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
   ],
 );
 
@@ -1755,7 +2002,9 @@ export const leaseAuthorization = sqliteTable(
     machineId: text("machine_id").notNull(),
     generation: integer("generation").notNull(),
     holderInstanceId: text("holder_instance_id"),
-    // `escrowed` 是「挂靠中」的授权态：租约仍被占用，但发起者已交出操作权。它不是 revoked
+    ownerKind: text("owner_kind", { enum: ["instance", "crew"] }),
+    ownerCrewChatId: text("owner_crew_chat_id"),
+    // `escrowed` 是「挂靠中」的授权态:租约仍被占用,但发起者已交出操作权。它不是 revoked
     // （记录未终结，仍占着 lease_one_live_authorization 的活跃位），也不是 active（没有操作权）。
     state: text("state", {
       enum: ["free", "active", "draining", "escrowed", "revoked"],
@@ -1773,6 +2022,8 @@ export const leaseAuthorization = sqliteTable(
         "escrow",
         "claim",
         "escrow_cancel",
+        "grant",
+        "revoke_grant",
       ],
     }).notNull(),
   },
@@ -1788,7 +2039,7 @@ export const leaseAuthorization = sqliteTable(
     check("lease_authorization_check_3", sql`typeof(issued_at)='integer' AND issued_at>=0`),
     check(
       "lease_authorization_check_4",
-      sql`reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel')`,
+      sql`reason IN ('initial','acquire','release','handoff','reclaim','escrow','claim','escrow_cancel','grant','revoke_grant')`,
     ),
     primaryKey({ columns: [t.projectId, t.machineId, t.generation] }),
     uniqueIndex(
@@ -1809,6 +2060,14 @@ export const leaseAuthorization = sqliteTable(
         (state='revoked' AND revoked_at IS NOT NULL AND typeof(revoked_at)='integer' AND revoked_at>=issued_at)`,
     ),
     check("lease_authorization_check_10", sql`generation>0 OR holder_instance_id IS NULL`),
+    check(
+      "lease_authorization_owner_check",
+      sql`(owner_kind IS NULL AND owner_crew_chat_id IS NULL AND holder_instance_id IS NULL) OR (owner_kind IS NOT NULL AND owner_kind='instance' AND owner_crew_chat_id IS NULL AND holder_instance_id IS NOT NULL) OR (owner_kind IS NOT NULL AND owner_kind='crew' AND owner_crew_chat_id IS NOT NULL AND holder_instance_id IS NOT NULL)`,
+    ),
+    foreignKey({
+      columns: [t.ownerCrewChatId, t.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
     // 挂靠中仍是「这一代唯一的活跃授权」：唯一约束的语义不变，只是多了一个活跃授权态。
     uniqueIndex("lease_one_live_authorization")
       .on(t.projectId, t.machineId)
@@ -1826,9 +2085,17 @@ export const leaseMutation = sqliteTable(
     actorId: text("actor_id").notNull(),
     requestId: text("request_id").notNull(),
     payloadHash: text("payload_hash").notNull(),
-    action: text("action", { enum: ["acquire", "release", "handoff", "reclaim"] }).notNull(),
+    action: text("action", {
+      enum: ["acquire", "release", "handoff", "reclaim", "grant", "revoke_grant"],
+    }).notNull(),
     expectedGeneration: integer("expected_generation").notNull(),
     targetInstanceId: text("target_instance_id"),
+    resourceRequestId: text("resource_request_id").references(
+      (): AnySQLiteColumn => crewResourceRequest.id,
+    ),
+    targetRunId: text("target_run_id").references(() => agentRun.id),
+    targetAttempt: integer("target_attempt"),
+    crewEpoch: integer("crew_epoch"),
     state: text("state", { enum: ["pending", "completed"] }).notNull(),
     completedGeneration: integer("completed_generation"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
@@ -1840,7 +2107,10 @@ export const leaseMutation = sqliteTable(
       "lease_mutation_check_2",
       sql`length(payload_hash)=64 AND payload_hash NOT GLOB '*[^0-9a-f]*'`,
     ),
-    check("lease_mutation_check_3", sql`action IN ('acquire','release','handoff','reclaim')`),
+    check(
+      "lease_mutation_check_3",
+      sql`action IN ('acquire','release','handoff','reclaim','grant','revoke_grant')`,
+    ),
     check(
       "lease_mutation_check_4",
       sql`typeof(expected_generation)='integer' AND expected_generation BETWEEN 0 AND 9007199254740991`,
@@ -1878,11 +2148,11 @@ export const leaseMutation = sqliteTable(
     }),
     check(
       "lease_mutation_check_12",
-      sql`(action='handoff' AND target_instance_id IS NOT NULL) OR (action!='handoff' AND target_instance_id IS NULL)`,
+      sql`(action IN ('handoff','grant') AND target_instance_id IS NOT NULL) OR (action NOT IN ('handoff','grant') AND target_instance_id IS NULL)`,
     ),
     check(
       "lease_mutation_check_13",
-      sql`(actor_kind='agent' AND action IN ('acquire','release','handoff')) OR (actor_kind='human' AND action='reclaim')`,
+      sql`(actor_kind='agent' AND action IN ('acquire','release','handoff','grant','revoke_grant')) OR (actor_kind='human' AND action='reclaim')`,
     ),
     check(
       "lease_mutation_check_14",
@@ -2052,6 +2322,183 @@ export const workerExchangeFrame = sqliteTable(
     foreignKey({
       columns: [t.machineId, t.connectionGeneration],
       foreignColumns: [machineConnection.machineId, machineConnection.generation],
+    }),
+  ],
+);
+
+export const crewResourceRequest = sqliteTable(
+  "crew_resource_request",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    crewChatId: text("crew_chat_id").notNull(),
+    crewEpoch: integer("crew_epoch").notNull(),
+    revision: integer("revision").notNull().default(0),
+    subjectKind: text("subject_kind", { enum: ["delegation", "lead_run"] }).notNull(),
+    delegationId: text("delegation_id").references(() => delegation.id),
+    attempt: integer("attempt"),
+    runId: text("run_id").notNull(),
+    instanceId: text("instance_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    membershipEpoch: integer("membership_epoch").notNull(),
+    directoryRealPath: text("directory_real_path").notNull(),
+    directoryRevision: integer("directory_revision").notNull(),
+    operationsJson: text("operations_json").notNull(),
+    clientRequestId: text("client_request_id").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    approval: text("approval", { enum: ["pending", "approved", "revoked"] }).notNull(),
+    approvedByProfileId: text("approved_by_profile_id").references(() => agentProfile.id),
+    approvedByInstanceId: text("approved_by_instance_id").references(() => agentInstance.id),
+    state: text("state", {
+      enum: ["queued", "allocated", "active", "releasing", "released", "held", "attention"],
+    }).notNull(),
+    mutationId: text("mutation_id").references((): AnySQLiteColumn => leaseMutation.id),
+    grantId: text("grant_id").references((): AnySQLiteColumn => leaseGrant.id),
+    generation: integer("generation"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+    releasedAt: integer("released_at", { mode: "timestamp_ms" }),
+    reason: text("reason"),
+  },
+  (t) => [
+    uniqueIndex("crew_resource_client_unique").on(t.crewChatId, t.clientRequestId),
+    uniqueIndex("crew_resource_subject_machine_unique")
+      .on(t.runId, t.machineId)
+      .where(sql`state != 'released'`),
+    uniqueIndex("crew_resource_machine_slot")
+      .on(t.projectId, t.machineId)
+      .where(sql`state IN ('allocated','active','releasing','held')`),
+    foreignKey({ columns: [t.crewChatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
+    foreignKey({
+      columns: [t.runId, t.instanceId, t.projectId, t.chatId],
+      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
+    }),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.membershipEpoch],
+      foreignColumns: [
+        projectMachineMembership.projectId,
+        projectMachineMembership.machineId,
+        projectMachineMembership.epoch,
+      ],
+    }),
+    check(
+      "crew_resource_subject_check",
+      sql`(subject_kind='delegation' AND delegation_id IS NOT NULL AND attempt IS NOT NULL AND attempt>=1) OR (subject_kind='lead_run' AND delegation_id IS NULL AND attempt IS NULL)`,
+    ),
+    check(
+      "crew_resource_state_check",
+      sql`state IN ('queued','allocated','active','releasing','released','held','attention') AND approval IN ('pending','approved','revoked') AND crew_epoch>=0 AND revision>=0`,
+    ),
+    check(
+      "crew_resource_active_check",
+      sql`state!='active' OR (grant_id IS NOT NULL AND generation IS NOT NULL AND approval='approved')`,
+    ),
+    check("crew_resource_released_check", sql`state!='released' OR released_at IS NOT NULL`),
+  ],
+);
+
+export const crewResourceEvent = sqliteTable(
+  "crew_resource_event",
+  {
+    id: text("id").primaryKey().notNull(),
+    requestId: text("request_id")
+      .notNull()
+      .references(() => crewResourceRequest.id),
+    revision: integer("revision").notNull(),
+    kind: text("kind").notNull(),
+    audience: text("audience", { enum: ["worker", "lead", "human"] }).notNull(),
+    crewEpoch: integer("crew_epoch").notNull(),
+    state: text("state", { enum: ["pending", "bound", "acked", "attention"] }).notNull(),
+    payloadJson: text("payload_json").notNull(),
+    messageId: text("message_id").references(() => message.id),
+    boundRunId: text("bound_run_id").references(() => agentRun.id),
+    attentionReason: text("attention_reason"),
+  },
+  (t) => [
+    uniqueIndex("crew_resource_event_delivery_unique").on(
+      t.requestId,
+      t.revision,
+      t.kind,
+      t.audience,
+    ),
+    check(
+      "crew_resource_event_state_check",
+      sql`state IN ('pending','bound','acked','attention') AND audience IN ('worker','lead','human')`,
+    ),
+  ],
+);
+
+export const leaseGrant = sqliteTable(
+  "lease_grant",
+  {
+    id: text("id").primaryKey().notNull(),
+    projectId: text("project_id").notNull(),
+    machineId: text("machine_id").notNull(),
+    generation: integer("generation").notNull(),
+    crewChatId: text("crew_chat_id").notNull(),
+    crewEpoch: integer("crew_epoch").notNull(),
+    subjectKind: text("subject_kind", { enum: ["delegation", "lead_run"] }).notNull(),
+    delegationId: text("delegation_id").references(() => delegation.id),
+    attempt: integer("attempt"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    grantorInstanceId: text("grantor_instance_id").notNull(),
+    granteeInstanceId: text("grantee_instance_id").notNull(),
+    granteeRunId: text("grantee_run_id").notNull(),
+    state: text("state", { enum: ["active", "revoked"] }).notNull(),
+    requestId: text("request_id").notNull(),
+    issuedAt: integer("issued_at", { mode: "timestamp_ms" }).notNull(),
+    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [
+    check("lease_grant_check_1", sql`state IN ('active','revoked')`),
+    check(
+      "lease_grant_subject_check",
+      sql`crew_epoch>=0 AND expires_at>issued_at AND ((subject_kind='delegation' AND delegation_id IS NOT NULL AND attempt IS NOT NULL AND attempt>=1) OR (subject_kind='lead_run' AND delegation_id IS NULL AND attempt IS NULL))`,
+    ),
+    check(
+      "lease_grant_check_2",
+      sql`(state='active' AND revoked_at IS NULL) OR (state='revoked' AND revoked_at IS NOT NULL)`,
+    ),
+    check(
+      "lease_grant_check_3",
+      sql`typeof(issued_at)='integer' AND issued_at>=0 AND (revoked_at IS NULL OR (typeof(revoked_at)='integer' AND revoked_at>=issued_at))`,
+    ),
+    uniqueIndex("lease_grant_generation_grantee_unique").on(
+      t.projectId,
+      t.machineId,
+      t.generation,
+      t.granteeInstanceId,
+    ),
+    uniqueIndex("lease_grant_grantor_request_unique").on(t.grantorInstanceId, t.requestId),
+    uniqueIndex("lease_grant_one_active_per_machine")
+      .on(t.projectId, t.machineId)
+      .where(sql`state = 'active'`),
+    foreignKey({
+      columns: [t.projectId, t.machineId, t.generation, t.granteeInstanceId],
+      foreignColumns: [
+        leaseAuthorization.projectId,
+        leaseAuthorization.machineId,
+        leaseAuthorization.generation,
+        leaseAuthorization.holderInstanceId,
+      ],
+    }),
+    foreignKey({
+      columns: [t.granteeRunId, t.projectId],
+      foreignColumns: [agentRun.id, agentRun.projectId],
+    }),
+    foreignKey({
+      columns: [t.crewChatId, t.projectId],
+      foreignColumns: [chat.id, chat.projectId],
+    }),
+    foreignKey({
+      columns: [t.grantorInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
+    }),
+    foreignKey({
+      columns: [t.granteeInstanceId, t.projectId],
+      foreignColumns: [agentInstance.id, agentInstance.projectId],
     }),
   ],
 );

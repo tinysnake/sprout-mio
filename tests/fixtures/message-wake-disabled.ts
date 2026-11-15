@@ -1,4 +1,5 @@
 process.env.SPROUT_CONTINUATION_ENABLED = "false";
+import { createCrewChat } from "./crew-chat";
 
 const { migrateDatabase } = await import("../../src/db/migrate");
 migrateDatabase();
@@ -22,7 +23,7 @@ const owner = agentDomain.createAgentProfile(
   ctx,
 );
 agentDomain.addProjectMember(project.id, owner.id, ctx);
-const chat = chatDomain.createGroupChat(
+const chat = createCrewChat(
   project.id,
   {
     projectId: project.id,
@@ -50,5 +51,3 @@ const runs = sqlite
   .get(chat.id) as { count: number };
 
 console.log(JSON.stringify({ wake: wake.count, runs: runs.count }));
-
-export {};

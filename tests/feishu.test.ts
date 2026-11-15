@@ -38,6 +38,8 @@ function scenario(identity = verified(`app-${++sequence}`)) {
   const ctx = { userId, requestId: `req_${sequence}` };
   const project = projects.createProject({ name: "Feishu" }, ctx);
   const helper = agents.createAgentProfile({ name: "Assistant", purpose: "assistant" }, ctx);
+  const crewLead = agents.createAgentProfile({ name: `Crew lead ${sequence}` }, ctx);
+  agents.addProjectMember(project.id, crewLead.id, ctx);
   agents.addProjectMember(project.id, helper.id, ctx);
   const dm = chats.createDirectChat(project.id, helper.id, ctx).chat;
   const target = { projectId: project.id, chatId: dm.id };

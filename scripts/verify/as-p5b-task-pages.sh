@@ -117,7 +117,8 @@ try {
   const { sqlite } = await import('./src/db/index.ts')
   const { ID_PREFIXES, newId } = await import('./src/contracts/ids.ts')
   const { createAgentProfile, addProjectMember } = await import('./src/domain/agent.ts')
-  const { createDirectChat, createGroupChat, ensureInstance } = await import('./src/domain/chat.ts')
+  const { createDirectChat, ensureInstance } = await import('./src/domain/chat.ts')
+  const { createCrewChat } = await import('./tests/fixtures/crew-chat.ts')
   const domain = await import('./src/domain/task.ts')
   const user = sqlite.prepare('select id from user where email = ?').get(email)
   assert(user, 'authenticated user must be persisted')
@@ -275,8 +276,10 @@ try {
     pass(`responsive_${width}_no_horizontal_overflow`)
   }
   // Real Agent scope feeds the same view; browser authentication remains Human-only in P5b.
-  const groupChat = createGroupChat(projectId, { projectId, title: '非 owner 成员', members: [{ kind: 'human', id: ctx.userId }, { kind: 'agent', id: agent.id }], initialOwner: { kind: 'human', id: ctx.userId }, wakePolicy: 'owner_led' }, { kind: 'human', userId: ctx.userId, ctx })
-  const instance = ensureInstance(groupChat.id, agent.id, ctx)
+  const worker = createAgentProfile({ name: 'Task UI Worker', persona: '普通 Crew 成员能力验收' }, ctx)
+  addProjectMember(projectId, worker.id, ctx)
+  const groupChat = createCrewChat(projectId, { projectId, title: '非 owner 成员', members: [{ kind: 'human', id: ctx.userId }, { kind: 'agent', id: agent.id }, { kind: 'agent', id: worker.id }], initialOwner: { kind: 'agent', id: agent.id }, wakePolicy: 'owner_led' }, { kind: 'human', userId: ctx.userId, ctx })
+  const instance = ensureInstance(groupChat.id, worker.id, ctx)
   const groupRunId = `run_${randomUUID().replaceAll("-", "").slice(0, 8)}`
   sqlite.prepare("insert into agent_run(id,instance_id,chat_id,project_id,request_id,status,session_id) values (?,?,?,?,?,'queued',?)").run(groupRunId, instance.id, groupChat.id, projectId, ctx.requestId, instance.id)
   const memberTask = domain.createTask({ projectId, title: '非 owner 能力', description: '', constraints: '', completionRequirements: '' }, ctx).detail
@@ -288,7 +291,7 @@ try {
   await until(async () => row(memberTask.task.id).chat_id === groupChat.id && row(memberTask.task.id).status === 'assigned', 'Group assignment persisted')
   await page.getByRole('link', { name: /非 owner 成员.*进入 Chat/ }).waitFor()
   pass('group_assignment_via_page_matches_sqlite')
-  const scoped = domain.getTaskDetail(memberTask.task.id, { ...ctx, agent: { runId: groupRunId, instanceId: instance.id, agentProfileId: agent.id } })
+  const scoped = domain.getTaskDetail(memberTask.task.id, { ...ctx, agent: { runId: groupRunId, instanceId: instance.id, agentProfileId: worker.id } })
   const { createElement } = await import('react')
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { TaskDetailView } = await import('./src/components/tasks/task-detail.tsx')

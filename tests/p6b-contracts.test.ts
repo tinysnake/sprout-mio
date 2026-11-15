@@ -75,6 +75,8 @@ const lease = {
   generation: 1,
   state: "held",
   holderInstanceId: instanceId,
+  ownerKind: "instance",
+  holderCrewChatId: null,
   pendingMutationId: null,
   escrow: null,
   changedAt: at,
@@ -85,7 +87,7 @@ const lease = {
     displayName: "Builder",
     chatId,
     chatDisplayTitle: "Work",
-    chatKind: "group",
+    chatKind: "crew",
   },
 };
 const machine = {
@@ -99,7 +101,7 @@ const machine = {
 };
 const chat = {
   chatId,
-  kind: "group",
+  kind: "crew",
   displayTitle: "Work",
   archived: false,
   owner,
@@ -115,7 +117,7 @@ const instance = {
   agentProfileId,
   chatId,
   chatDisplayTitle: "Work",
-  chatKind: "group",
+  chatKind: "crew",
   leases: [lease],
 };
 const snapshot = {
@@ -138,7 +140,7 @@ const snapshot = {
   profileName: "Builder",
   projectName: "Sprout",
   chatTitle: "Work",
-  chatKind: "group",
+  chatKind: "crew",
   chatArchived: false,
   owner,
   members: [
@@ -216,7 +218,7 @@ describe("P6b basic projections", () => {
     const value = {
       chatId,
       projectId,
-      kind: "group",
+      kind: "crew",
       archived: false,
       owner,
       members: snapshot.members,
@@ -256,6 +258,7 @@ describe("P6b basic projections", () => {
       ...lease,
       generation: 0,
       state: "free",
+      ownerKind: null,
       holderInstanceId: null,
       holder: null,
       holderResolution: "none",

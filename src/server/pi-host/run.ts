@@ -1,3 +1,8 @@
+import {
+  acknowledgeDelegationDelivery,
+  confirmDelegationDelivery,
+  releaseDelegationDelivery,
+} from "../../domain/delegation";
 import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
 import {
   admitContinuation,
@@ -264,27 +269,47 @@ export function executeRun(
                         ? `[Human-confirmed assistant proposal ${selected.message.assistantProposalId}; source is program-generated work input]\n${selected.message.body}`
                         : selected.message.body,
                     })
-                  : selected.message.taskRecordKind === "start"
+                  : selected.message.delegationPromptForChatId
                     ? prepareSyntheticPiMessage({
-                        kind: "task_start",
+                        kind: "delegation",
                         messageId: selected.message.id,
                         text: selected.message.body,
                       })
-                    : await preparePiMessage(
-                        {
-                          projectId: run.projectId,
-                          chatId: run.chatId,
+                    : selected.message.taskRecordKind === "start"
+                      ? prepareSyntheticPiMessage({
+                          kind: "task_start",
                           messageId: selected.message.id,
-                        },
-                        resources,
-                        ctx,
-                      );
+                          text: selected.message.body,
+                        })
+                      : await preparePiMessage(
+                          {
+                            projectId: run.projectId,
+                            chatId: run.chatId,
+                            messageId: selected.message.id,
+                          },
+                          resources,
+                          ctx,
+                        );
               if (signals.isStopping()) return undefined;
               if (firstPendingRunInput(run.id, ctx)?.message.id !== selected.message.id) continue;
+              const delegationMessageId = selected.message.delegationPromptForChatId
+                ? selected.message.id
+                : null;
+              if (
+                delegationMessageId &&
+                confirmDelegationDelivery(run.id, delegationMessageId) !== "ok"
+              )
+                continue;
               const send = () => {
                 warnSkills(prepared);
                 sent.add(selected.message.id);
-                return process.prompt(prepared);
+                const delivered = process.prompt(prepared);
+                if (delegationMessageId)
+                  void Promise.resolve(delivered).then(
+                    () => acknowledgeDelegationDelivery(run.id, delegationMessageId),
+                    () => releaseDelegationDelivery(run.id, delegationMessageId),
+                  );
+                return delivered;
               };
               if (selected.message.assistantProposalId) {
                 const attempted = admitAssistantInput(run.id, selected.message.id, send);
@@ -349,26 +374,40 @@ export function executeRun(
                                       }
                                     : {}),
                                 })
-                              : pending.taskRecordKind === "start"
+                              : pending.delegationPromptForChatId
                                 ? prepareSyntheticPiMessage({
-                                    kind: "task_start",
+                                    kind: "delegation",
                                     messageId: pending.messageId,
                                     text: pending.text,
                                   })
-                                : await preparePiMessage(
-                                    {
-                                      projectId: run.projectId,
-                                      chatId: run.chatId,
+                                : pending.taskRecordKind === "start"
+                                  ? prepareSyntheticPiMessage({
+                                      kind: "task_start",
                                       messageId: pending.messageId,
-                                    },
-                                    resources,
-                                    ctx,
-                                  );
+                                      text: pending.text,
+                                    })
+                                  : await preparePiMessage(
+                                      {
+                                        projectId: run.projectId,
+                                        chatId: run.chatId,
+                                        messageId: pending.messageId,
+                                      },
+                                      resources,
+                                      ctx,
+                                    );
                           if (signals.isStopping()) return true;
                           if (
                             !pendingRunInputs(run.id, ctx).some(
                               (input) => input.messageId === pending.messageId,
                             )
+                          )
+                            continue;
+                          const delegationMessageId = pending.delegationPromptForChatId
+                            ? pending.messageId
+                            : null;
+                          if (
+                            delegationMessageId &&
+                            confirmDelegationDelivery(run.id, delegationMessageId) !== "ok"
                           )
                             continue;
                           sent.add(pending.messageId);
@@ -386,7 +425,12 @@ export function executeRun(
                             );
                           } else {
                             warnSkills(prepared);
-                            process.steer(prepared);
+                            const steered = process.steer(prepared);
+                            if (delegationMessageId)
+                              void Promise.resolve(steered).then(
+                                () => acknowledgeDelegationDelivery(run.id, delegationMessageId),
+                                () => releaseDelegationDelivery(run.id, delegationMessageId),
+                              );
                           }
                         } catch (error) {
                           recordRunInputDeliveryFailure(

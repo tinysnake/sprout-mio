@@ -174,7 +174,7 @@ await check("超时未处理的挂靠只显示状态事实，绝不显示成空�
     assert.equal(await fact.getAttribute("data-timeout-phase"), "awaiting");
     // 超时事实只并入状态位：行里剩下的只有目标、发起者与取得/更新时间。
     const factText = await fact.innerText();
-    assert.match(factText, /发布协作组/);
+    assert.match(factText, /发布协作 Crew/);
     assert.match(factText, /由 .+ 发起/);
     const rowText = await row.innerText();
     assert.doesNotMatch(rowText, REMOVED_COPY);
@@ -216,7 +216,7 @@ await check("已升级的挂靠只在状态位标注升级（light 1440px）", a
     const fact = row.locator("[data-timeout-phase]");
     assert.equal(await fact.getAttribute("data-timeout-phase"), "escalated");
     const factText = await fact.innerText();
-    assert.match(factText, /发布协作组/);
+    assert.match(factText, /发布协作 Crew/);
     assert.match(factText, /由 .+ 发起/);
     const rowText = await row.innerText();
     assert.doesNotMatch(rowText, REMOVED_COPY);
@@ -254,7 +254,7 @@ await check("未到时限的挂靠不带超时标记（light 1440px）", async (
       "none",
     );
     const pendingText = await pending.innerText();
-    assert.match(pendingText, /发布公告频道（Public Channel） · 指定 Agent 文档 Agent/);
+    assert.match(pendingText, /发布公告 Crew（Crew） · 指定 Agent 文档 Agent/);
     assert.doesNotMatch(pendingText, REMOVED_COPY);
     assert.doesNotMatch(pendingText, /超时|等待|空闲/);
     assert.deepEqual(errors, []);

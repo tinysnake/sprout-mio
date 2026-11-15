@@ -106,17 +106,14 @@ try {
   const output = readFileSync(join(directory, 'browser.log'), 'utf8')
   const checks = output.split('\n').filter((line) => /^(PASS|FAIL) [a-z0-9_]/.test(line))
   const required = [
-    'group_blank_title_blocks_create',
-    'chat_page_hides_request_id',
-    'group_title_edited_from_details_rail',
-    'group_governance_note_lives_in_owner_dialog',
-    'group_details_drop_instance_row',
-    'group_member_list_only_in_member_section',
-    'member_row_selects_profile',
-    'agent_owner_group_keeps_title_entry',
-    'agent_owner_group_keeps_owner_fallback_entry',
-    'dm_keeps_counterpart_and_activity_only',
-    'channel_owner_change_button_existence_and_uniqueness',
+    'crew_present_in_list', 'chat_filters_dm_and_crew', 'crew_initial_lead',
+    'crew_explicit_members', 'crew_worker_added_explicitly', 'crew_lead_transferred',
+    'crew_owner_unchanged_after_transfer', 'crew_human_message_only_wakes_lead',
+    'crew_blank_title_restores_default', 'crew_title_edited_from_details_rail',
+    'crew_details_drop_instance_row', 'member_row_selects_profile',
+    'new_chat_dialog_only_dm', 'dm_keeps_counterpart_and_activity_only',
+    'dm_has_no_crew_governance', 'mobile_390_no_horizontal_overflow',
+    'mobile_details_screen_no_overflow', 'no_console_errors',
   ]
   const ids = new Set(checks.map((line) => line.split(' ')[1]))
   for (const id of required) assert(ids.has(id), `browser assertion ${id} 缺失`)

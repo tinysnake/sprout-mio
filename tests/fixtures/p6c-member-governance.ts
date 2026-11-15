@@ -2,18 +2,20 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db, sqlite } from "../../src/db";
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { agentRun, chat, chatEffectiveMember, machineLease } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
-import { createDirectChat, createGroupChat, ensureInstance } from "../../src/domain/chat";
-import { createGroupChatInput } from "../../src/contracts/chat";
+import { addCrewMember, createDirectChat, ensureInstance, getChat } from "../../src/domain/chat";
+
 import { createProject } from "../../src/domain/project";
 import { createMachine, saveProjectMachineBinding } from "../../src/domain/machine";
+import { projectRunAttentionPolicy } from "../../src/domain/run-attention";
 import { mutateTask } from "../../src/domain/task";
 import { openInitialMembership } from "../../src/server/membership";
 import { seedLease, seedRun, seedTask } from "./p6c-member-fixture";
+import { createCrewChat, crewInput } from "./crew-chat";
 
 const base = process.env.BASE_URL!;
 const evidence = process.env.SPROUT_UI_EVIDENCE_DIR!;
@@ -37,23 +39,38 @@ try {
   await page.waitForURL((url) => url.pathname !== "/login");
   const user = sqlite.prepare("SELECT id FROM user WHERE email = ?").get(email) as { id: string };
   assert.ok(user);
+  const observerContext = await browser.newContext();
+  const observerPage = await observerContext.newPage();
+  const observerEmail = `p6c-observer-${Date.now()}@example.test`;
+  await observerPage.goto(`${base}/login`);
+  await observerPage.getByTestId("register-tab").click();
+  await observerPage.locator('input[name="name"]').fill("Other Human");
+  await observerPage.locator('input[name="email"]').fill(observerEmail);
+  await observerPage
+    .locator('input[name="password"]')
+    .fill(`${randomBytes(24).toString("base64url")}aA1!`);
+  await observerPage.locator('button[type="submit"]').click();
+  await observerPage.waitForURL((url) => url.pathname !== "/login");
   const ctx = { userId: user.id, requestId: newId(ID_PREFIXES.request) };
   const project = createProject({ name: "P6c 页面治理" }, ctx);
   const agent = createAgentProfile({ name: "Leaving Agent", persona: "", harness: "pi" }, ctx);
   const helper = createAgentProfile({ name: "Helper Agent", persona: "", harness: "pi" }, ctx);
+  const removable = createAgentProfile({ name: "Non-lead Agent", persona: "", harness: "pi" }, ctx);
   addProjectMember(project.id, agent.id, ctx);
   addProjectMember(project.id, helper.id, ctx);
+  addProjectMember(project.id, removable.id, ctx);
   const dm = createDirectChat(project.id, agent.id, ctx);
-  const group = createGroupChat(
+  const group = createCrewChat(
     project.id,
-    createGroupChatInput.parse({
+    crewInput({
       projectId: project.id,
-      title: "Owner duties group",
+      title: "Crew lead duties",
       initialOwner: { kind: "agent", id: agent.id },
       members: [
         { kind: "human", id: user.id },
         { kind: "agent", id: agent.id },
         { kind: "agent", id: helper.id },
+        { kind: "agent", id: removable.id },
       ],
     }),
     { kind: "human", userId: user.id, ctx },
@@ -63,12 +80,16 @@ try {
   const channel = db
     .select()
     .from(chat)
-    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "public_channel")))
+    .where(and(eq(chat.projectId, project.id), eq(chat.kind, "crew"), ne(chat.id, group.id)))
     .get()!;
-  db.update(chat)
-    .set({ ownerKind: "agent", ownerId: agent.id })
-    .where(eq(chat.id, channel.id))
-    .run();
+  for (const profile of [helper, removable]) {
+    addCrewMember(
+      channel.id,
+      { kind: "agent", id: profile.id },
+      getChat(channel.id, ctx).governanceRevision,
+      { kind: "human", userId: user.id, ctx },
+    );
+  }
   const bootId = newId(ID_PREFIXES.boot);
   sqlite
     .prepare(
@@ -96,6 +117,10 @@ try {
     makeMachine,
   };
   const runId = seedRun(fixture, "running");
+  db.update(agentRun)
+    .set({ attentionPolicySnapshot: projectRunAttentionPolicy(project.id) })
+    .where(eq(agentRun.id, runId))
+    .run();
   const lease = seedLease(fixture, "fencing", helperInstance.id, instance.id);
   const taskId = seedTask(fixture);
   const projectPath = `/projects/${project.id}`;
@@ -127,7 +152,7 @@ try {
   for (const [kind, fact, action] of [
     ["active_runs", runId, "先在该 Chat 停掉运行"],
     ["leases", "relation=handoff_target", "待决交接"],
-    ["owner_duties", "Owner duties group", "先在该 Chat 变更负责人"],
+    ["owner_duties", "Crew lead duties", "先在该 Chat 变更负责人"],
     ["dm_assigned_tasks", taskId, "改派、完成或取消"],
   ]) {
     const section = page.getByTestId(`member-blocker-${kind}`);
@@ -168,55 +193,68 @@ try {
     .from(machineLease)
     .where(eq(machineLease.machineId, lease.key.machineId))
     .get();
-  await visitChat(channel.id);
-  assert.ok(
-    await page
-      .getByTestId("chat-owner-name")
-      .innerText()
-      .then((text) => text.includes(agent.name)),
-  );
-  await page.getByTestId("chat-owner-edit").click();
-  assert.deepEqual(
-    await page
-      .getByTestId("chat-owner-select")
-      .locator("option")
-      .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value)),
-    [`human:${user.id}`],
-  );
-  pass("channel_owner_candidate", "频道入口可见，候选仅为本 Project 的 Human 创建者");
-  await page.getByTestId("chat-owner-submit").click();
-  await page.getByTestId("chat-owner-dialog").waitFor({ state: "hidden" });
-  await page.waitForFunction(() => {
-    const text = document.querySelector('[data-testid="chat-owner-name"]')?.textContent;
-    return text?.includes("Human") && !text.includes("Leaving Agent");
-  });
-  assert.equal(db.select().from(chat).where(eq(chat.id, channel.id)).get()?.ownerId, user.id);
+  async function reassignLead(chatId: string, candidates = [agent.id, helper.id, removable.id]) {
+    await visitChat(chatId);
+    assert.ok((await page.getByTestId("chat-owner-name").innerText()).includes("Human"));
+    assert.equal(db.select().from(chat).where(eq(chat.id, chatId)).get()?.ownerId, user.id);
+    await page.getByTestId("chat-lead-edit").click();
+    assert.deepEqual(
+      (
+        await page
+          .getByTestId("chat-lead-select")
+          .locator("option")
+          .evaluateAll((options) => options.map((option) => (option as HTMLOptionElement).value))
+      ).sort(),
+      [...candidates].sort(),
+    );
+    await page.getByTestId("chat-lead-select").selectOption(helper.id);
+    await page.getByTestId("chat-lead-submit").click();
+    await page.getByTestId("chat-lead-dialog").waitFor({ state: "hidden" });
+    assert.equal(db.select().from(chat).where(eq(chat.id, chatId)).get()?.leadProfileId, helper.id);
+  }
+  await reassignLead(channel.id);
+  pass("crew_lead_candidates", "Human owner 可改任，候选只有有效 Agent 成员");
   assert.deepEqual(db.select().from(agentRun).where(eq(agentRun.id, runId)).get(), runBefore);
   assert.deepEqual(
     db.select().from(machineLease).where(eq(machineLease.machineId, lease.key.machineId)).get(),
     leaseBefore,
   );
-  pass("channel_owner_updated", "成功后负责人事实更新，run 与租约保持真实原值");
-  await page.screenshot({ path: `${evidence}/channel-owner.png`, fullPage: true });
+  pass("crew_lead_updated", "改任 lead 后 run 与租约保持原值");
+  await page.screenshot({ path: `${evidence}/crew-lead.png`, fullPage: true });
 
   await visitChat(dm.chat.id);
-  assert.equal(await page.getByTestId("chat-owner-edit").count(), 0);
-  pass("dm_no_owner_entry", "DM 无负责人变更入口");
+  assert.equal(await page.getByTestId("chat-lead-edit").count(), 0);
+  pass("dm_no_lead_entry", "DM 无 lead 改任入口");
+  await observerPage.goto(`${base}${projectPath}/chats/${group.id}`);
+  await observerPage.getByTestId("project-error-meta").waitFor();
+  assert.match(await observerPage.getByTestId("project-error-meta").innerText(), /not_found/);
+  assert.equal(await observerPage.getByTestId("chat-lead-edit").count(), 0);
+  await observerContext.close();
+  pass("crew_non_owner_no_lead_entry", "非 owner Human 不可访问 Crew，也没有 lead 改任入口");
   await visitChat(group.id);
-  await page.getByTestId("chat-owner-edit").click();
-  assert.equal(await page.getByTestId("chat-owner-select").locator("option").count(), 3);
-  await page.getByTestId("chat-owner-select").selectOption(`human:${user.id}`);
-  await page.getByTestId("chat-owner-submit").click();
-  await page.getByTestId("chat-owner-dialog").waitFor({ state: "hidden" });
-  await page.waitForFunction(() => {
-    const text = document.querySelector('[data-testid="chat-owner-name"]')?.textContent;
-    return text?.includes("Human") && !text.includes("Leaving Agent");
-  });
-  pass("group_owner_behavior", "Group 保留 Human 与 Agent 候选及变更行为");
+  const leadRow = page
+    .getByTestId("inspector-member-list")
+    .locator("li")
+    .filter({ hasText: agent.name });
+  await leadRow.getByTestId("chat-member-lead-badge").waitFor();
+  assert.equal(await leadRow.getByTestId("chat-member-remove").count(), 0);
+  assert.ok(
+    db
+      .select()
+      .from(chatEffectiveMember)
+      .where(
+        and(eq(chatEffectiveMember.chatId, group.id), eq(chatEffectiveMember.memberId, agent.id)),
+      )
+      .get(),
+  );
+  pass(
+    "crew_lead_removal_blocked",
+    "lead 行显示 LEAD 且不提供移除入口，Project 移除显示负责人 blocker",
+  );
   const helperRow = page
     .getByTestId("inspector-member-list")
     .locator("li")
-    .filter({ hasText: helper.name });
+    .filter({ hasText: removable.name });
   await helperRow.getByTestId("chat-member-remove").click();
   await page.getByTestId("chat-member-remove-confirm").click();
   await page.getByTestId("chat-member-remove-dialog").waitFor({ state: "hidden" });
@@ -226,12 +264,15 @@ try {
       .select()
       .from(chatEffectiveMember)
       .where(
-        and(eq(chatEffectiveMember.chatId, group.id), eq(chatEffectiveMember.memberId, helper.id)),
+        and(
+          eq(chatEffectiveMember.chatId, group.id),
+          eq(chatEffectiveMember.memberId, removable.id),
+        ),
       )
       .get(),
     undefined,
   );
-  pass("group_member_removal", "Group 单独移除成员成功，不受 Project 阻塞校验影响");
+  pass("crew_member_removal", "Crew 非 lead 成员可单独移除，不受 Project 阻塞校验影响");
 
   db.update(agentRun)
     .set({ status: "aborted", settledAt: new Date() })
@@ -247,6 +288,7 @@ try {
     revision: number;
   };
   mutateTask("cancel", { taskId, expectedRevision: assigned.revision }, ctx);
+  await reassignLead(group.id, [agent.id, helper.id]);
   await page.goto(`${base}${projectPath}/members`);
   await memberRow(agent.name).getByTestId("member-remove").click();
   await page.getByTestId("confirm-member-mutation").click();
@@ -261,7 +303,7 @@ try {
       .get(),
     undefined,
   );
-  pass("project_member_removed", "阻塞解除后移除成功，Group 成员事实退出");
+  pass("project_member_removed", "改任 lead 并解除其余阻塞后移除成功，Crew 成员事实退出");
   await visitChat(dm.chat.id);
   await page.getByTestId("archived-notice").waitFor();
   pass("removed_dm_archived", "移除后原 DM 如实显示既有归档提示");

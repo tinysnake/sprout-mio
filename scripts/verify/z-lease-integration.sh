@@ -102,7 +102,7 @@ async function settled(chatId, { allowEmpty = false } = {}) {
 async function deniedTool(page, chatId, authorizationGeneration, expectedCode, marker, role = 'operator') {
   await settled(chatId, { allowEmpty: true });
   const requestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
-  const parameters={machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,waitMs:0};
+  const parameters={machineId,authorizationGeneration,requestId,command:`touch '${marker}'`,blockMs:0};
   const body=`Call sprout_remote_shell exactly once with these parameters, even if you expect the server to reject authorization: ${JSON.stringify(parameters)}. Do not get or acquire a lease, do not retry, do not use host tools. Report the returned error code.`;
   armTool(role,body,'sprout_remote_shell',parameters);
   const sent=await browserRpc(page,'sendMessageFn',{chatId,body});
@@ -245,14 +245,8 @@ try {
   await page.getByTestId('lease-manage-link').first().click();
   await page.waitForURL(`**/machines/${machineId}/lease?projectId=${projectId}`);
   // 人类在这页只有强制收回：目标就是本页这台，没有申请/释放表单，也没有交接入口。
-  const reclaim=page.getByTestId('lease-reclaim-controls');
-  await reclaim.waitFor();
+  assert.equal(await page.getByTestId('lease-reclaim-controls').count(),0,'free lease shows no forced reclaim control');
   assert.equal(await page.getByTestId('lease-reclaim-machine').count(),0,'reclaim target is the page itself, no picker');
-  assert.equal(await page.getByTestId('lease-reclaim-confirm').count(),1,'forced reclaim keeps an explicit confirmation');
-  assert.equal(await page.getByTestId('lease-reclaim').isDisabled(),true,'reclaim waits for the confirmation');
-  await page.getByTestId('lease-reclaim-confirm').check();
-  assert.equal(await page.getByTestId('lease-reclaim').isEnabled(),true,'confirmed reclaim is actionable');
-  await page.getByTestId('lease-reclaim-confirm').uncheck();
   assert.equal(await page.locator('[data-testid$="-mutation"]').count(),0,'no lease mutation form on the lease route');
   for (const id of ['lease-chat-select','lease-chat-picked','lease-transfer-controls','lease-handoff-chat-required']) {
     assert.equal(await page.getByTestId(id).count(),0,`lease route must not render ${id}`);
@@ -284,9 +278,9 @@ try {
   const marker=join(root,projectId,'persist.txt');
   const shell = `printf integration-proof > '${marker}'; sleep 900`;
   const shellRequestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
-  const shellBody=`Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${acquired.generation}, requestId ${shellRequestId}. command: ${JSON.stringify(shell)}. waitMs: 1000. Call sprout_remote_execution_get if necessary. Do not use the local bash tool. Do not release the lease.`;
+  const shellBody=`Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${acquired.generation}, requestId ${shellRequestId}. command: ${JSON.stringify(shell)}. blockMs: 1000. Call sprout_remote_execution_wait if necessary. Do not use the local bash tool. Do not release the lease.`;
   await settled(chatId);
-  armTool('operator',shellBody,'sprout_remote_shell',{machineId,authorizationGeneration:acquired.generation,requestId:shellRequestId,command:shell,waitMs:1000});
+  armTool('operator',shellBody,'sprout_remote_shell',{machineId,authorizationGeneration:acquired.generation,requestId:shellRequestId,command:shell,blockMs:1000});
   await call('sendMessageFn',{chatId,body:shellBody});
   const execution = await until(async()=> (await call('listProjectExecutionsFn',{projectId,machineId})).find(e=>e.operation.kind==='shell' && e.result?.kind==='shell' && e.result.pid), 'real remote shell result',180000);
   assert(readFileSync(marker,'utf8')==='integration-proof','private sentinel matches');
@@ -369,9 +363,11 @@ try {
   const forcedHolder=await until(async()=> {const lease=(await call('getLeaseFn',{projectId,machineId})).lease;return lease.state==='held'?lease:null;},'acquire for forced receipt',180000);
   await settled(chatId);
   const forceRequestId=`req_${randomUUID().replaceAll("-", "").slice(0, 8)}`;
-  const forceBody=`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", waitMs 10000. Do not release the lease or use host tools.`;
-  armTool('operator',forceBody,'sprout_remote_shell',{machineId,authorizationGeneration:forcedHolder.generation,requestId:forceRequestId,command:'sleep 20',waitMs:10000});
+  const forceBody=`Call sprout_remote_shell exactly once with machineId ${machineId}, authorizationGeneration ${forcedHolder.generation}, requestId ${forceRequestId}, command "sleep 20", blockMs 0. Do not release the lease or use host tools.`;
+  armTool('operator',forceBody,'sprout_remote_shell',{machineId,authorizationGeneration:forcedHolder.generation,requestId:forceRequestId,command:'sleep 20',blockMs:0});
   await call('sendMessageFn',{chatId,body:forceBody});
+  // 先消费提交结果，再撤销租约，避免把阻塞工具所在的模型计划一起打断；远端执行仍须 running。
+  await settled(chatId);
   const inFlight=await until(async()=> (await call('listProjectExecutionsFn',{projectId,machineId})).find(item=>item.requestId===forceRequestId && item.state==='running'),'real operation running before Worker pause',180000);
   assert.equal(worker.kill('SIGSTOP'),true,'pause the real test Worker before drain acknowledgement');
   try {

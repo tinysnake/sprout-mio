@@ -9,6 +9,8 @@ const instanceIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.instance));
 const mutationIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseMutation));
 const chatIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.chat));
 const escrowIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseEscrow));
+const grantIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.leaseGrant));
+const runIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.run));
 const generationSchema = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const timestampSchema = z.iso.datetime();
 export const leaseKeySchema = z.strictObject({
@@ -63,19 +65,36 @@ export const leaseEscrowViewSchema = leaseKeySchema
       ctx.addIssue({ code: "custom", message: "挂靠超时事实与挂靠时间或升级时间不一致" });
     }
   });
+export const leaseGrantViewSchema = z.object({
+  grantId: grantIdSchema,
+  crewChatId: chatIdSchema,
+  grantorInstanceId: instanceIdSchema,
+  granteeInstanceId: instanceIdSchema,
+  granteeRunId: runIdSchema,
+  issuedAt: timestampSchema,
+});
+export type LeaseGrantView = z.infer<typeof leaseGrantViewSchema>;
 export const leaseViewSchema = leaseKeySchema
   .extend({
     generation: generationSchema,
     state: z.enum(["free", "held", "fencing"]),
     holderInstanceId: instanceIdSchema.nullable(),
+    ownerKind: z.enum(["instance", "crew"]).nullable(),
+    holderCrewChatId: chatIdSchema.nullable(),
     changedAt: timestampSchema,
     pendingMutationId: mutationIdSchema.nullable(),
     /** 活跃挂靠（state=escrowed 的那一行）；没有则为 null。租约没有被释放。 */
     escrow: leaseEscrowViewSchema.nullable(),
+    /** 当前代次有效的 Crew 授予；没有则为 null。 */
+    grant: leaseGrantViewSchema.nullable().optional(),
   })
   .superRefine((value, ctx) => {
     if (
-      (value.state === "free") !== (value.holderInstanceId === null) ||
+      (value.state === "free") !== (value.ownerKind === null) ||
+      (value.ownerKind === "crew"
+        ? value.holderCrewChatId === null || value.holderInstanceId !== null
+        : value.holderCrewChatId !== null ||
+          (value.state === "free") !== (value.holderInstanceId === null)) ||
       (value.state !== "free" && value.generation === 0) ||
       (value.state === "fencing") !== (value.pendingMutationId !== null) ||
       (value.escrow !== null &&
@@ -113,6 +132,17 @@ export const leaseMutationInputSchema = z.discriminatedUnion("action", [
     expectedGeneration: positiveSafeIntegerSchema,
     confirm: z.literal(true),
   }),
+  z.strictObject({
+    ...mutationBase,
+    action: z.literal("grant"),
+    expectedGeneration: positiveSafeIntegerSchema,
+    targetInstanceId: instanceIdSchema,
+  }),
+  z.strictObject({
+    ...mutationBase,
+    action: z.literal("revoke_grant"),
+    expectedGeneration: positiveSafeIntegerSchema,
+  }),
 ]);
 // Force is a separate Human command; it is deliberately absent from Agent mutation inputs.
 export const forceReclaimLeaseInputSchema = leaseKeySchema.extend({
@@ -130,7 +160,7 @@ export const forcedReclaimSchema = z.strictObject({
 export const leaseMutationViewSchema = leaseKeySchema
   .extend({
     mutationId: mutationIdSchema,
-    action: z.enum(["acquire", "release", "handoff", "reclaim"]),
+    action: z.enum(["acquire", "release", "handoff", "reclaim", "grant", "revoke_grant"]),
     state: z.enum(["pending", "completed"]),
     expectedGeneration: generationSchema,
     completedGeneration: generationSchema.nullable(),
@@ -153,7 +183,8 @@ export const leaseMutationViewSchema = leaseKeySchema
       ctx.addIssue({ code: "custom", message: "强制收回审计事实与动作收据不一致" });
     }
     if (
-      (value.action === "handoff") !== (value.targetInstanceId !== null) ||
+      (value.action === "handoff" || value.action === "grant") !==
+        (value.targetInstanceId !== null) ||
       (value.action !== "acquire" && value.expectedGeneration === 0) ||
       (!completed &&
         (value.action === "acquire" ||

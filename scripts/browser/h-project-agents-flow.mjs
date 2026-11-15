@@ -198,9 +198,14 @@ await check("edit_persona_persists_with_same_id", async () => {
 });
 
 await check("add_and_remove_member_roundtrip", async () => {
+  const removableName = `P2-H Member ${stamp}`;
+  await page.goto(`${BASE}/agents`, { waitUntil: "domcontentloaded" });
+  await page.getByTestId("new-agent-trigger").click();
+  await page.getByTestId("agent-name-input").fill(removableName);
+  await page.getByTestId("agent-persona-input").fill("非 lead 成员移除验收");
+  await page.getByTestId("agent-submit").click();
+  await page.getByTestId("agent-item-name").filter({ hasText: removableName }).waitFor();
   await page.goto(`${BASE}${projectPath}/members`, { waitUntil: "domcontentloaded" });
-  // 注册播种的默认 Agent 已经是成员，所以这里等的是新 profile 进入可选列表，而非空成员。
-  // 添加入口改为按钮加弹窗：等按钮出现（出现即表示有可添加的 profile），再在弹窗里选人。
   await page.waitForSelector('[data-testid="add-member-trigger"]', { timeout: 20000 });
   await page.click('[data-testid="add-member-trigger"]');
   await page.waitForFunction(
@@ -238,27 +243,38 @@ await check("add_and_remove_member_roundtrip", async () => {
       ),
     agentName,
   );
-  // 只移除本次验收加入的 profile，默认成员保留。
-  await page.click(`[data-testid="member-remove"][data-agent-profile-id="${agentId}"]`);
-  await page.getByTestId("cancel-member-mutation").click();
-  const afterCancel = await page
-    .locator(`[data-testid="member-item"][data-agent-profile-id="${agentId}"]`)
-    .isVisible();
   await page.click(`[data-testid="member-remove"][data-agent-profile-id="${agentId}"]`);
   await page.getByTestId("confirm-member-mutation").click();
-  await page.waitForFunction(
-    (name) =>
-      ![...document.querySelectorAll('[data-testid="member-item-name"]')].some(
-        (node) => node.textContent === name,
-      ),
-    agentName,
-    { timeout: 20000 },
-  );
+  const blocker = page.getByTestId("member-blocker-owner_duties");
+  await blocker.waitFor();
+  if (!(await blocker.innerText()).includes("先在该 Chat 变更负责人")) {
+    throw new Error("lead 移除必须显示负责人 blocker 与下一步说明");
+  }
+  await page.getByTestId("cancel-member-mutation").click();
+  const leadRow = page.locator(`[data-testid="member-item"][data-agent-profile-id="${agentId}"]`);
+  if (!(await leadRow.isVisible())) throw new Error("被 blocker 阻止的 lead 必须保留");
+
+  await page.getByTestId("add-member-trigger").click();
+  await page.getByTestId("add-member-select").selectOption({ label: removableName });
+  await page.getByTestId("add-member-submit").click();
+  const removableRow = page.getByTestId("member-item").filter({ hasText: removableName });
+  await removableRow.waitFor();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await removableRow.waitFor();
+  await removableRow.getByTestId("member-remove").click();
+  await page.getByTestId("cancel-member-mutation").click();
+  const afterCancel = await removableRow.isVisible();
+  await removableRow.getByTestId("member-remove").click();
+  await page.getByTestId("confirm-member-mutation").click();
+  await removableRow.waitFor({ state: "hidden" });
   await shot(page, "p2-h-project-members-empty");
   record(
     "add_and_remove_member_roundtrip",
-    afterReload && afterCancel && pathOf() === `${projectPath}/members`,
-    `加入并刷新后仍有 ${agentName}，取消移除后保留，确认移除后不再在名单里`,
+    afterReload &&
+      afterCancel &&
+      (await leadRow.isVisible()) &&
+      pathOf() === `${projectPath}/members`,
+    `lead ${agentName} 移除显示 blocker；非 lead ${removableName} 加入刷新后保留、取消后保留、确认后消失`,
   );
 });
 

@@ -1,9 +1,10 @@
+import { addCrewMember } from "../../src/domain/chat";
 // 真实 SQLite + 真实域入口：Agent 执行身份的对话范围（验收 A03/A04/N04）与项目驱动移除的治理版本（裁定 d30）。
 // 不 mock 领域层：每条反证都调 src/domain/chat.ts / access.ts 的正式入口，只有 run 行按 fixtures 的习惯直接写表
 // （本单元不改唤醒与扇出，归 p5a-fanout）。
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
-import { createGroupChatInput } from "../../src/contracts/chat";
+
 import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 import { db, sqlite } from "../../src/db";
 import { agentRun, message } from "../../src/db/schema";
@@ -11,9 +12,7 @@ import { migrateDatabase } from "../../src/db/migrate";
 import type { ProjectContext } from "../../src/domain/access";
 import { addProjectMember, createAgentProfile, removeProjectMember } from "../../src/domain/agent";
 import {
-  addGroupMember,
   clearChatTitle,
-  createGroupChat,
   ensureInstance,
   getChat,
   getInstance,
@@ -22,6 +21,7 @@ import {
   listMessages,
   sendMessage,
   updateChatTitle,
+  ensureProjectCrew,
 } from "../../src/domain/chat";
 import {
   assertChatCapability,
@@ -29,9 +29,10 @@ import {
   CHAT_CAPABILITIES,
 } from "../../src/domain/chat-capabilities";
 import type { ChatActor } from "../../src/domain/chat-actor";
-import { ensureProjectChannel } from "../../src/domain/channel";
-import { createProject } from "../../src/domain/project";
 
+import { createProject } from "../../src/domain/project";
+import { setCrewLead } from "../../src/domain/chat";
+import { createCrewChat, crewInput } from "./crew-chat";
 migrateDatabase();
 
 const checks: string[] = [];
@@ -70,7 +71,7 @@ addProjectMember(projectB.id, beta.id, ctx);
 
 const human: ChatActor = { kind: "human", userId: creatorId, ctx };
 function groupInput(projectId: string, title: string, agentProfileId: string) {
-  return createGroupChatInput.parse({
+  return crewInput({
     projectId,
     title,
     members: [
@@ -81,22 +82,22 @@ function groupInput(projectId: string, title: string, agentProfileId: string) {
   });
 }
 // 主群：Alpha 有一个真实的 running run，A03/A04/N04 的短路径都在这里打。
-const groupMain = createGroupChat(projectA.id, groupInput(projectA.id, "群 A", alpha.id), human);
+const groupMain = createCrewChat(projectA.id, groupInput(projectA.id, "群 A", alpha.id), human);
 // 对照群：没有任何成员会被移除，用来证明 d30 的版本推进只落在受影响的群上。
-const groupControl = createGroupChat(
+const groupControl = createCrewChat(
   projectA.id,
   groupInput(projectA.id, "对照群", gamma.id),
   human,
 );
 // 移除群：Epsilon 的历史（instance、已结束的 run、历史消息）都在这里，随后被项目级移除。
-const groupLeaving = createGroupChat(
+const groupLeaving = createCrewChat(
   projectA.id,
   groupInput(projectA.id, "移除群", epsilon.id),
   human,
 );
-const groupB = createGroupChat(projectB.id, groupInput(projectB.id, "群 B", beta.id), human);
-const channelA = ensureProjectChannel(projectA.id);
-const channelB = ensureProjectChannel(projectB.id);
+const groupB = createCrewChat(projectB.id, groupInput(projectB.id, "群 B", beta.id), human);
+const channelA = ensureProjectCrew(projectA.id);
+const channelB = ensureProjectCrew(projectB.id);
 
 /** 真实 running run 的执行身份；`userId` 仍是 Project 归属，`agent` 是这次运行。 */
 function agentContext(runId: string, instanceId: string, agentProfileId: string): ProjectContext {
@@ -351,6 +352,18 @@ db.update(agentRun)
 assert.equal(getChat(groupLeaving.id, ctxEpsilon).id, groupLeaving.id, "移出前自己的对话可读");
 
 // ---------------------------------------------------------------- 5. d30：项目驱动的成员变化推进受影响群的治理版本
+assert.equal(
+  codeOf(() => removeProjectMember(projectA.id, epsilon.id, ctx)),
+  "project_member_removal_blocked",
+  "Crew lead 必须先移交职责",
+);
+addCrewMember(
+  groupLeaving.id,
+  { kind: "agent", id: alpha.id },
+  getChat(groupLeaving.id, ctx).governanceRevision,
+  human,
+);
+setCrewLead(groupLeaving.id, alpha.id, getChat(groupLeaving.id, ctx).governanceRevision, human);
 const revisionBefore = getChat(groupLeaving.id, ctx).governanceRevision;
 const controlBefore = getChat(groupControl.id, ctx).governanceRevision;
 const mainBefore = getChat(groupMain.id, ctx).governanceRevision;
@@ -373,7 +386,7 @@ assert.equal(
 // 反证：移除前读到的 expectedRevision 在移除后必须冲突，不能留着陈旧 CAS 落地。
 assert.equal(
   codeOf(() =>
-    addGroupMember(groupLeaving.id, { kind: "agent", id: gamma.id }, revisionBefore, human),
+    addCrewMember(groupLeaving.id, { kind: "agent", id: gamma.id }, revisionBefore, human),
   ),
   "conflict",
   "d30：移除前的 expectedRevision 在移除后必须冲突",
@@ -386,7 +399,7 @@ assert.equal(
   "被拒的过期写入不能改成员集",
 );
 // 上界：拿到当前版本就能正常治理，版本推进不是「一律拒绝」。
-const applied = addGroupMember(
+const applied = addCrewMember(
   groupLeaving.id,
   { kind: "agent", id: gamma.id },
   staleRejected.governanceRevision,
@@ -457,7 +470,7 @@ assert.ok(
 assert.equal(CHAT_CAPABILITIES.title_change.agent, "never");
 assert.equal(CHAT_CAPABILITIES.title_change.human, "member");
 const ownerFacts = {
-  kind: "group" as const,
+  kind: "crew" as const,
   ownerKind: "human" as const,
   ownerId: creatorId,
   projectCreatedBy: creatorId,

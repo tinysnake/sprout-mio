@@ -4,11 +4,11 @@ import type { ChatInfoView } from "../../contracts/info-hub";
 
 export const CHAT_KIND_LABELS: Record<ChatKind, string> = {
   dm: "DM",
-  group: "Group",
-  public_channel: "Public Channel",
+  crew: "Crew",
+  delegation: "Delegation",
 };
 
-/** 参与分身名：群与频道用实例快照，DM 用成员视图里的 Agent 展示名。 */
+/** 参与分身名：Crew 用实例快照，DM 用成员视图里的 Agent 展示名。 */
 export function sessionAgentNames(session: ChatSession, info?: ChatInfoView): string[] {
   if (session.kind !== "dm") return session.instances.map((instance) => instance.profileName);
   if (!info) return [];
@@ -24,8 +24,7 @@ export function sessionDisplayTitle(session: ChatSession, info?: ChatInfoView): 
 
 export function sessionSubtitle(session: ChatSession): string {
   if (session.kind === "dm") return "DM";
-  if (session.kind === "group") return "Group";
-  return "Public Channel";
+  return "Crew";
 }
 
 export function senderKey(kind: "human" | "agent", id: string): string {

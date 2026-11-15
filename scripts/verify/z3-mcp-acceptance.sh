@@ -609,7 +609,7 @@ const REQUIRED = {
     designExists:{path:'docs.designExists',expect:true},
     evidenceIndexExists:{path:'docs.evidenceIndexExists',expect:true},
     keyCombinationsPresent:{path:'docs.keyCombinationsPresent',expect:true},
-    evidenceScriptCurrent:{path:'docs.evidenceScriptCurrent',expect:true},
+    evidenceScriptMatchesSource:{path:'docs.evidenceScriptMatchesSource',expect:true},
     evidenceSourceCommitAncestor:{path:'docs.evidenceSourceCommitAncestor',expect:true},
   },
 };
@@ -664,7 +664,12 @@ const missingPhrases=designPhrases.filter(phrase=>!design.includes(phrase));
 const currentScriptSha=createHash('sha256').update(readFileSync('scripts/verify/z3-mcp-acceptance.sh')).digest('hex');
 const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 let ancestor=false;
-try { execFileSync('git',['merge-base','--is-ancestor',snapshot.sourceCommit,head],{stdio:'ignore'}); ancestor=true; } catch { ancestor=false; }
+let sourceScriptSha=null;
+try {
+  execFileSync('git',['merge-base','--is-ancestor',snapshot.sourceCommit,head],{stdio:'ignore'});
+  ancestor=true;
+  sourceScriptSha=createHash('sha256').update(execFileSync('git',['show',`${snapshot.sourceCommit}:scripts/verify/z3-mcp-acceptance.sh`],{stdio:['ignore','pipe','ignore']})).digest('hex');
+} catch { ancestor=false; }
 sources.docs={
   summaryExists:existsSync('docs/r1/summary.md'),
   designExists:existsSync('docs/r1/design.md'),
@@ -675,8 +680,9 @@ sources.docs={
   summaryHasNoPendingMarker:!summary.includes('待 z3 运行'),
   scopeMentionsMcpAndPhase:scope.includes('**MCP tools 接入**')&&scope.includes('已纳入一期'),
   evidenceScriptSha256:snapshot.scriptSha256,
+  evidenceSourceScriptSha256:sourceScriptSha,
   currentScriptSha256:currentScriptSha,
-  evidenceScriptCurrent:snapshot.scriptSha256===currentScriptSha,
+  evidenceScriptMatchesSource:snapshot.scriptSha256===sourceScriptSha,
   evidenceSourceCommit:snapshot.sourceCommit,
   head,
   evidenceSourceCommitAncestor:ancestor,
@@ -804,9 +810,11 @@ const clauses = [
       designExists:evidenceAt('designExists','docs.designExists'),
       evidenceIndexExists:evidenceAt('evidenceIndexExists','docs.evidenceIndexExists'),
       keyCombinationsPresent:evidenceAt('keyCombinationsPresent','docs.keyCombinationsPresent'),
-      evidenceScriptCurrent:evidenceAt('evidenceScriptCurrent','docs.evidenceScriptCurrent'),
+      evidenceScriptMatchesSource:evidenceAt('evidenceScriptMatchesSource','docs.evidenceScriptMatchesSource'),
       evidenceSourceCommitAncestor:evidenceAt('evidenceSourceCommitAncestor','docs.evidenceSourceCommitAncestor'),
       evidenceScriptSha256:snapshot.scriptSha256,
+      evidenceSourceScriptSha256:sourceScriptSha,
+      currentScriptSha256:currentScriptSha,
       evidenceSourceCommit:snapshot.sourceCommit,
       head,
       scope:'条款 7 只校验文档存在、关键组合词与证据来源一致；文档语义由独立验收者逐条核对，本门禁不保证',

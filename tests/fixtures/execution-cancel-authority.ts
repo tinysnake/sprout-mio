@@ -395,8 +395,8 @@ sqlite
 sqlite
   .prepare(
     `INSERT INTO lease_authorization
-       (project_id, machine_id, generation, holder_instance_id, state, issued_at, revoked_at, reason)
-     VALUES (?, ?, 2, ?, 'active', ?, NULL, 'reclaim')`,
+       (project_id, machine_id, generation, owner_kind, holder_instance_id, state, issued_at, revoked_at, reason)
+     VALUES (?, ?, 2, 'instance', ?, 'active', ?, NULL, 'reclaim')`,
   )
   .run(own.key.projectId, own.key.machineId, own.actor.instanceId, advanced.getTime());
 sqlite

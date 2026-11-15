@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { SUITE_PLAN, fitsResources } from "../scripts/verify/lib/suite-plan.mjs";
+import { RETIRED_GATES, SUITE_PLAN, fitsResources } from "../scripts/verify/lib/suite-plan.mjs";
 import {
   LOADED_BYPASS_ENV,
   MACHINE_STATE_ENV,
@@ -180,6 +180,7 @@ process.exit(result.status ?? 1);
     const ids = readdirSync(join(repositoryRoot, "scripts/verify"))
       .filter((name) => name.endsWith(".sh"))
       .map((name) => name.slice(0, -3))
+      .filter((name) => !RETIRED_GATES.includes(name))
       .sort();
     expect(Object.keys(SUITE_PLAN).sort()).toEqual(ids);
     for (const plan of Object.values(SUITE_PLAN))

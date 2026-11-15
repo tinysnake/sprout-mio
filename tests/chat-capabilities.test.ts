@@ -20,36 +20,27 @@ const agent = (agentProfileId: string): ChatActor => ({
   ctx,
 });
 
-/** 裁定的冻结能力表在这里逐字抄一份：表漂移必须先在这里红。 */
+type Access = "never" | "member" | "owner";
+
+/** 冻结能力表逐字抄一份：表漂移必须先在这里红。 */
 const EXPECTED: Record<ChatAction, { human: Access; agent: Access }> = {
-  group_create: { human: "member", agent: "never" },
-  group_dissolve: { human: "owner", agent: "never" },
   member_add: { human: "member", agent: "never" },
   member_remove: { human: "member", agent: "never" },
-  owner_change: { human: "owner", agent: "never" },
-  wake_policy_change: { human: "owner", agent: "never" },
-  // A03 补进表里的第八项：标题写入曾是能力表之外的治理写入路径。
+  lead_change: { human: "owner", agent: "never" },
   title_change: { human: "member", agent: "never" },
   message_send: { human: "member", agent: "member" },
 };
-type Access = "never" | "member" | "owner";
 
 const OWNER_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].human === "owner");
 const AGENT_DENIED_ACTIONS = CHAT_ACTIONS.filter((action) => EXPECTED[action].agent === "never");
 
-/** owner 档判定吃的是对话种类、所有者与 `project.created_by`（裁定 d6），用例按这份事实构造。 */
-type Facts = {
-  kind: "group" | "dm" | "public_channel";
-  ownerKind: "human" | "agent";
-  ownerId: string;
-  projectCreatedBy: string;
-};
-const facts = (ownerKind: "human" | "agent", ownerId: string, projectCreatedBy: string): Facts => ({
-  kind: "group",
-  ownerKind,
-  ownerId,
-  projectCreatedBy,
-});
+const facts = (ownerKind: "human" | "agent", ownerId: string, projectCreatedBy: string) =>
+  ({
+    kind: "crew" as const,
+    ownerKind,
+    ownerId,
+    projectCreatedBy,
+  }) satisfies ChatGovernanceScope;
 
 function expectForbidden(action: ChatAction, actor: ChatActor, chat?: ChatGovernanceScope) {
   expect(() => assertChatCapability(action, actor, chat)).toThrow(ChatError);
@@ -90,9 +81,9 @@ describe("chat 能力表", () => {
     ).not.toThrow();
   });
 
-  it("Human 成员能建群与发言，非所有者不能执行 owner 档动作", () => {
-    expect(() => assertChatCapability("group_create", human("usr_2"))).not.toThrow();
+  it("Human 成员能发言，非所有者不能换 lead", () => {
     expect(() => assertChatCapability("message_send", human("usr_2"))).not.toThrow();
+    expect(() => assertChatCapability("member_add", human("usr_2"))).not.toThrow();
     for (const action of OWNER_ACTIONS)
       expectForbidden(action, human("usr_2"), facts("human", "usr_1", "usr_1"));
   });
@@ -104,8 +95,6 @@ describe("chat 能力表", () => {
       ).not.toThrow();
   });
 
-  // 裁定 d6：只认人类所有者的写法会让「Human 指定 Agent 为 owner」的群组永久冻结，
-  // 所以 owner_kind='agent' 时由 project.created_by 的人类兜底，且只兜底这一个人类。
   it("Agent 所有者只让 Project 创建者的人类做治理兜底", () => {
     for (const action of OWNER_ACTIONS) {
       expect(() =>
@@ -138,20 +127,28 @@ describe("chat 能力表", () => {
     }
   });
 
-  // 单一判定（裁定 d45）：领域拒绝与页面布尔值读的是同一个函数，不是两套规则。
   it("owner 档的放行与 chatGovernanceFacts 的布尔值一一对应", () => {
-    const scope: ChatGovernanceScope = {
-      kind: "group",
-      ownerKind: "agent",
-      ownerId: "agp_1",
+    const scope = facts("agent", "agp_1", "usr_1");
+    const ownerByFallback = human("usr_1");
+    expect(chatGovernanceFacts(scope, ownerByFallback).canChangeLead).toBe(true);
+    expect(() => assertChatCapability("lead_change", ownerByFallback, scope)).not.toThrow();
+    const outsider = human("usr_2");
+    expect(chatGovernanceFacts(scope, outsider).canChangeLead).toBe(false);
+    expectForbidden("lead_change", outsider, scope);
+    expect(() => assertChatCapability("title_change", outsider, scope)).not.toThrow();
+  });
+
+  it("DM 没有成员与 lead 治理，但仍可改名与发言", () => {
+    const dmScope: ChatGovernanceScope = {
+      kind: "dm",
+      ownerKind: "human",
+      ownerId: "usr_1",
       projectCreatedBy: "usr_1",
     };
-    const ownerByFallback = human("usr_1");
-    expect(chatGovernanceFacts(scope, ownerByFallback).canChangeOwner).toBe(true);
-    expect(() => assertChatCapability("owner_change", ownerByFallback, scope)).not.toThrow();
-    const outsider = human("usr_2");
-    expect(chatGovernanceFacts(scope, outsider).canChangeOwner).toBe(false);
-    expectForbidden("owner_change", outsider, scope);
-    expect(() => assertChatCapability("title_change", outsider, scope)).not.toThrow();
+    const view = chatGovernanceFacts(dmScope, human("usr_1"));
+    expect(view.canChangeMembers).toBe(false);
+    expect(view.canChangeLead).toBe(false);
+    expect(view.canRenameTitle).toBe(true);
+    expect(() => assertChatCapability("title_change", human("usr_1"), dmScope)).not.toThrow();
   });
 });

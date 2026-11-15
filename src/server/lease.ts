@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { assertCrewExecutionScope } from "../domain/crew-resource";
 import { and, eq, isNotNull, isNull, lte, or } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
@@ -27,6 +28,7 @@ import type { AppErrorCode } from "../contracts/result";
 import { WORKER_STALE_AFTER_MS } from "../contracts/worker";
 import { db, sqlite } from "../db";
 import {
+  delegation,
   agentInstance,
   agentRun,
   chat,
@@ -35,6 +37,7 @@ import {
   diagnosticEvent,
   leaseAuthorization,
   leaseEscrow,
+  leaseGrant,
   leaseMutation,
   machine,
   machineConnection,
@@ -45,7 +48,7 @@ import {
   remoteExecution,
   remoteToolGrant,
 } from "../db/schema";
-import { readChatEffectiveMembers } from "../domain/channel";
+import { readChatEffectiveMembers } from "../domain/chat-members";
 import { leaseTimeoutFacts, projectLeaseTimeouts } from "../domain/lease-timeout";
 import type { MachineContext } from "../domain/machine";
 import { assertMembershipOperable, latestMembership, onLeaseMutationCompleted } from "./membership";
@@ -144,7 +147,10 @@ export function authorityNow(key: LeaseKey): AuthorityNow | undefined {
   if (!authorization || authorization.state === "revoked") return;
   return {
     generation: lease.generation,
-    holderInstanceId: lease.holderInstanceId,
+    ownerKind: lease.ownerKind,
+    ownerCrewChatId: lease.holderCrewChatId,
+    holderInstanceId:
+      lease.ownerKind === "crew" ? authorization.holderInstanceId : lease.holderInstanceId,
     state: authorization.state,
   };
 }
@@ -193,6 +199,44 @@ export function assertExecutionWrite(
     ("instanceId" in ctx && authority.holderInstanceId !== ctx.instanceId)
   )
     throw new LeaseError("lease_not_holder");
+  // 授予只对 grant 记录的那个 run 生效；同 instance 的后续 run 不能沿用旧授权。
+  // 人类取消/停止（MachineContext）保留在途执行控制权，不套 Crew grant 范围。
+  if ("instanceId" in ctx) {
+    try {
+      assertCrewExecutionScope(key, generation, ctx);
+    } catch {
+      throw new LeaseError("forbidden");
+    }
+  }
+  const grant = db
+    .select()
+    .from(leaseGrant)
+    .where(
+      and(
+        leaseGrantWhere(key),
+        eq(leaseGrant.generation, generation),
+        eq(leaseGrant.granteeInstanceId, authority.holderInstanceId),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .get();
+  // 人类（MachineContext 无 runId）保留停止在途执行的能力，不受 grant 绑定限制。
+  if (grant && "runId" in ctx) {
+    const crew = db.select().from(chat).where(eq(chat.id, grant.crewChatId)).get();
+    const subject = grant.delegationId
+      ? db.select().from(delegation).where(eq(delegation.id, grant.delegationId)).get()
+      : null;
+    if (
+      grant.granteeRunId !== ctx.runId ||
+      grant.expiresAt <= ctx.now ||
+      crew?.crewEpoch !== grant.crewEpoch ||
+      (grant.subjectKind === "delegation" &&
+        (!subject ||
+          subject.attempt !== grant.attempt ||
+          !["running", "blocked"].includes(subject.status)))
+    )
+      throw new LeaseError("lease_not_holder");
+  }
   return authority;
 }
 export const assertCurrentWrite = assertExecutionWrite;
@@ -396,11 +440,32 @@ function leaseView(row: typeof machineLease.$inferSelect): LeaseView {
       ),
     )
     .get();
+  const activeGrant = db
+    .select()
+    .from(leaseGrant)
+    .where(
+      and(
+        leaseGrantWhere({ projectId: row.projectId, machineId: row.machineId }),
+        eq(leaseGrant.generation, row.generation),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .get();
   return {
     ...row,
     changedAt: row.changedAt.toISOString(),
     pendingMutationId: pending?.id ?? null,
     escrow: liveLeaseEscrow(row),
+    grant: activeGrant
+      ? {
+          grantId: activeGrant.id,
+          crewChatId: activeGrant.crewChatId,
+          grantorInstanceId: activeGrant.grantorInstanceId,
+          granteeInstanceId: activeGrant.granteeInstanceId,
+          granteeRunId: activeGrant.granteeRunId,
+          issuedAt: activeGrant.issuedAt.toISOString(),
+        }
+      : null,
   };
 }
 export function leaseEscrowView(
@@ -580,6 +645,96 @@ function handoffTargetOperable(key: LeaseKey, targetInstanceId: string | null): 
       .get(),
   );
 }
+function leaseGrantWhere(key: LeaseKey) {
+  return and(eq(leaseGrant.projectId, key.projectId), eq(leaseGrant.machineId, key.machineId));
+}
+function revokeGrants(key: LeaseKey, generation: number, now: Date) {
+  db.update(leaseGrant)
+    .set({ state: "revoked", revokedAt: now })
+    .where(
+      and(
+        leaseGrantWhere(key),
+        eq(leaseGrant.generation, generation),
+        eq(leaseGrant.state, "active"),
+      ),
+    )
+    .run();
+}
+function isCrewLead(instanceId: string, crewChatId: string): boolean {
+  const instance = db.select().from(agentInstance).where(eq(agentInstance.id, instanceId)).get();
+  const crew = db.select().from(chat).where(eq(chat.id, crewChatId)).get();
+  return Boolean(
+    instance &&
+    crew &&
+    crew.kind === "crew" &&
+    crew.leadProfileId === instance.agentProfileId &&
+    instance.chatId === crew.id,
+  );
+}
+function granteeRunFor(targetInstanceId: string | null) {
+  if (!targetInstanceId) return undefined;
+  return db
+    .select()
+    .from(agentRun)
+    .where(and(eq(agentRun.instanceId, targetInstanceId), eq(agentRun.status, "running")))
+    .get();
+}
+/** 授予只发生在当前 Crew lead 与同一 Crew 的 delegation worker 之间；完成时重查。 */
+function grantFacts(
+  key: LeaseKey,
+  actorId: string,
+  targetInstanceId: string | null,
+  targetRunId?: string | null,
+) {
+  if (!targetInstanceId) throw new LeaseError("not_found");
+  const grantor = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
+  const grantorChat = grantor
+    ? db.select().from(chat).where(eq(chat.id, grantor.chatId)).get()
+    : undefined;
+  if (
+    !grantor ||
+    !grantorChat ||
+    grantorChat.kind !== "crew" ||
+    grantorChat.projectId !== key.projectId ||
+    grantorChat.leadProfileId !== grantor.agentProfileId
+  )
+    throw new LeaseError("forbidden");
+  const target = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, targetInstanceId))
+    .get();
+  const targetChat = target
+    ? db.select().from(chat).where(eq(chat.id, target.chatId)).get()
+    : undefined;
+  if (
+    !target ||
+    !targetChat ||
+    targetChat.kind !== "delegation" ||
+    targetChat.parentCrewChatId !== grantorChat.id ||
+    targetChat.projectId !== key.projectId
+  )
+    throw new LeaseError("forbidden");
+  const run = targetRunId
+    ? db.select().from(agentRun).where(eq(agentRun.id, targetRunId)).get()
+    : granteeRunFor(targetInstanceId);
+  const subject = db
+    .select()
+    .from(delegation)
+    .where(eq(delegation.childChatId, targetChat.id))
+    .get();
+  if (
+    !run ||
+    run.status !== "running" ||
+    run.instanceId !== targetInstanceId ||
+    run.chatId !== targetChat.id ||
+    !subject ||
+    subject.crewEpoch !== grantorChat.crewEpoch ||
+    !["running", "blocked"].includes(subject.status)
+  )
+    throw new LeaseError("remote_run_inactive");
+  return { grantor, granteeRun: run, subject, crew: grantorChat };
+}
 
 /** 同一个待决收据只记一次：worker 心跳会反复重试，诊断不能跟着刷屏。 */
 function recordStrandedHandoff(
@@ -632,9 +787,26 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
   if (!pending) return;
   // 交接的确认门必须重查目标：它可能在 fencing 期间被移出 Project，此时落地就是把租约交给
   // 一个已移除的实例。拒绝落地、保留 fencing + pending，交给 Human 在租约页释放。
-  if (pending.action === "handoff" && !handoffTargetOperable(key, pending.targetInstanceId)) {
+  if (
+    (pending.action === "handoff" || pending.action === "grant") &&
+    !handoffTargetOperable(key, pending.targetInstanceId)
+  ) {
     recordStrandedHandoff(key, pending, now);
     return;
+  }
+  let granted: ReturnType<typeof grantFacts> | undefined;
+  if (pending.action === "grant") {
+    try {
+      granted = grantFacts(key, pending.actorId, pending.targetInstanceId, pending.targetRunId);
+      if (
+        (pending.crewEpoch !== null && pending.crewEpoch !== granted.crew.crewEpoch) ||
+        (pending.targetAttempt !== null && pending.targetAttempt !== granted.subject.attempt)
+      )
+        throw new LeaseError("forbidden");
+    } catch {
+      recordStrandedHandoff(key, pending, now);
+      return;
+    }
   }
   if (
     db
@@ -653,24 +825,28 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
   )
     return;
   const old = ensureLease(key, now);
+  const previousHolder = authorityNow(key)?.holderInstanceId ?? old.holderInstanceId;
   const executions = affectedExecutions(key, old.generation);
   if (old.generation >= Number.MAX_SAFE_INTEGER) throw new LeaseError("conflict");
   const generation = old.generation + 1;
   const holderInstanceId =
-    pending.action === "handoff"
+    pending.action === "handoff" || pending.action === "grant"
       ? pending.targetInstanceId
-      : pending.action === "acquire"
+      : pending.action === "acquire" || pending.action === "revoke_grant"
         ? pending.actorId
         : null;
   db.update(leaseAuthorization)
     .set({ state: "revoked", revokedAt: now })
     .where(authorizationWhere(key, old.generation))
     .run();
+  revokeGrants(key, old.generation, now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
       generation,
       state: holderInstanceId ? "active" : "free",
+      ownerKind: holderInstanceId ? "instance" : null,
+      ownerCrewChatId: null,
       holderInstanceId,
       reason: pending.action,
       issuedAt: now,
@@ -680,11 +856,48 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     .set({
       generation,
       state: holderInstanceId ? "held" : "free",
+      ownerKind: holderInstanceId ? "instance" : null,
+      holderCrewChatId: null,
       holderInstanceId,
       changedAt: now,
     })
     .where(leaseWhere(key))
     .run();
+  if (pending.action === "grant") {
+    const { grantor, granteeRun, subject, crew } = granted!;
+    db.insert(leaseGrant)
+      .values({
+        id: newId(ID_PREFIXES.leaseGrant),
+        ...key,
+        generation,
+        crewChatId: grantor.chatId,
+        crewEpoch: crew.crewEpoch,
+        subjectKind: "delegation",
+        delegationId: subject.id,
+        attempt: subject.attempt,
+        expiresAt: new Date(now.getTime() + 86400000),
+        grantorInstanceId: pending.actorId,
+        granteeInstanceId: granteeRun.instanceId,
+        granteeRunId: granteeRun.id,
+        state: "active",
+        requestId: pending.requestId,
+        issuedAt: now,
+      })
+      .run();
+  }
+  if (pending.action === "revoke_grant") {
+    db.update(leaseGrant)
+      .set({ state: "revoked", revokedAt: now })
+      .where(
+        and(
+          leaseGrantWhere(key),
+          eq(leaseGrant.state, "active"),
+          eq(leaseGrant.grantorInstanceId, pending.actorId),
+          eq(leaseGrant.generation, pending.expectedGeneration),
+        ),
+      )
+      .run();
+  }
   // 挂靠中的租约被收回或释放时，挂靠行随之作废，但保留为历史。
   closeLiveEscrow(key, now);
   db.update(leaseMutation)
@@ -693,7 +906,7 @@ export function completeLeaseMutation(key: LeaseKey, now: Date, emitNotice = tru
     .run();
   const completed = db.select().from(leaseMutation).where(eq(leaseMutation.id, pending.id)).get()!;
   onLeaseMutationCompleted(db, completed);
-  if (emitNotice) revokeNotice(completed, old.holderInstanceId, executions, "confirmed", now);
+  if (emitNotice) revokeNotice(completed, previousHolder, executions, "confirmed", now);
 }
 function mutate(
   raw: LeaseMutationInput,
@@ -719,6 +932,32 @@ function mutateLeaseInTransaction(
   }
   const actorKind = input.action === "reclaim" ? "human" : "agent";
   const actorId = "instanceId" in ctx ? ctx.instanceId : ctx.userId;
+  if ("instanceId" in ctx) {
+    const actor = db.select().from(agentInstance).where(eq(agentInstance.id, actorId)).get();
+    const actorChat = actor
+      ? db.select().from(chat).where(eq(chat.id, actor.chatId)).get()
+      : undefined;
+    // Crew 资源统一走 coordinator：lead 不能用旧 mutation 入口自行 acquire/
+    // handoff/grant，否则会绕过批准、stop 与 scope。delegation worker 一律禁止。
+    if (
+      actorChat?.kind === "delegation" ||
+      (actorChat?.kind === "crew" && actorChat.leadProfileId === actor.agentProfileId)
+    ) {
+      throw new LeaseError("forbidden");
+    }
+    if (input.action === "handoff" && input.targetInstanceId) {
+      const target = db
+        .select()
+        .from(agentInstance)
+        .where(eq(agentInstance.id, input.targetInstanceId))
+        .get();
+      const targetChat = target
+        ? db.select().from(chat).where(eq(chat.id, target.chatId)).get()
+        : undefined;
+      if (targetChat?.kind === "crew" || targetChat?.kind === "delegation")
+        throw new LeaseError("forbidden");
+    }
+  }
   const hash = payloadHash(input);
   const existing = db
     .select()
@@ -746,15 +985,35 @@ function mutateLeaseInTransaction(
   // 发起者不能挂靠后再释放/交接/申请，Human 收回不受影响。
   if (input.action !== "reclaim" && liveEscrowRow(key))
     throw new LeaseError(input.action === "acquire" ? "lease_conflict" : "lease_not_holder");
+  const grantRow =
+    input.action === "revoke_grant"
+      ? db
+          .select()
+          .from(leaseGrant)
+          .where(
+            and(
+              leaseGrantWhere(key),
+              eq(leaseGrant.state, "active"),
+              eq(leaseGrant.generation, row.generation),
+            ),
+          )
+          .get()
+      : undefined;
+  const activeGrant =
+    grantRow && (grantRow.grantorInstanceId === actorId || isCrewLead(actorId, grantRow.crewChatId))
+      ? grantRow
+      : undefined;
   if (input.action === "acquire") {
     if (row.state === "held" && row.holderInstanceId !== actorId)
       throw new LeaseError("lease_conflict");
+  } else if (input.action === "revoke_grant") {
+    if (row.state !== "held" || !activeGrant) throw new LeaseError("lease_not_holder");
   } else if (
     row.state !== "held" ||
     (input.action !== "reclaim" && row.holderInstanceId !== actorId)
   )
     throw new LeaseError("lease_not_holder");
-  if (input.action === "handoff") {
+  if (input.action === "handoff" || input.action === "grant") {
     const target = db
       .select()
       .from(agentInstance)
@@ -802,6 +1061,10 @@ function mutateLeaseInTransaction(
     )
       throw new LeaseError("not_found");
     if (target.id === actorId) throw new LeaseError("conflict");
+    if (input.action === "grant") {
+      if (row.holderInstanceId !== actorId) throw new LeaseError("lease_not_holder");
+      grantFacts(key, actorId, target.id);
+    }
   }
   const id = newId(ID_PREFIXES.leaseMutation);
   const noop = input.action === "acquire" && row.state === "held";
@@ -811,18 +1074,27 @@ function mutateLeaseInTransaction(
       .set({ state: "revoked", revokedAt: ctx.now })
       .where(authorizationWhere(key, row.generation))
       .run();
+    revokeGrants(key, row.generation, ctx.now);
     db.insert(leaseAuthorization)
       .values({
         ...key,
         generation,
         holderInstanceId: actorId,
+        ownerKind: "instance",
         state: "active",
         reason: "acquire",
         issuedAt: ctx.now,
       })
       .run();
     db.update(machineLease)
-      .set({ generation, state: "held", holderInstanceId: actorId, changedAt: ctx.now })
+      .set({
+        generation,
+        state: "held",
+        holderInstanceId: actorId,
+        ownerKind: "instance",
+        holderCrewChatId: null,
+        changedAt: ctx.now,
+      })
       .where(leaseWhere(key))
       .run();
   }
@@ -837,7 +1109,18 @@ function mutateLeaseInTransaction(
       payloadHash: hash,
       action: input.action,
       expectedGeneration: row.generation,
-      targetInstanceId: input.action === "handoff" ? input.targetInstanceId : null,
+      targetInstanceId:
+        input.action === "handoff" || input.action === "grant" ? input.targetInstanceId : null,
+      ...(input.action === "grant"
+        ? (() => {
+            const f = grantFacts(key, actorId, input.targetInstanceId ?? null);
+            return {
+              targetRunId: f.granteeRun.id,
+              targetAttempt: f.subject.attempt,
+              crewEpoch: f.crew.crewEpoch,
+            };
+          })()
+        : {}),
       state: completed ? "completed" : "pending",
       completedGeneration: completed ? row.generation + (noop ? 0 : 1) : null,
       createdAt: ctx.now,
@@ -915,6 +1198,14 @@ export const releaseLease = (
 ) => mutate(input, ctx);
 export const handoffLease = (
   input: Extract<LeaseMutationInput, { action: "handoff" }>,
+  ctx: AgentRemoteContext,
+) => mutate(input, ctx);
+export const grantLease = (
+  input: Extract<LeaseMutationInput, { action: "grant" }>,
+  ctx: AgentRemoteContext,
+) => mutate(input, ctx);
+export const revokeLeaseGrant = (
+  input: Extract<LeaseMutationInput, { action: "revoke_grant" }>,
   ctx: AgentRemoteContext,
 ) => mutate(input, ctx);
 export const reclaimLeaseInTransaction = (
@@ -999,6 +1290,7 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
         .set({ state: "revoked", revokedAt: ctx.now })
         .where(authorizationWhere(key, row.generation))
         .run();
+      revokeGrants(key, row.generation, ctx.now);
       db.insert(leaseAuthorization)
         .values({
           ...key,
@@ -1010,7 +1302,14 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
         })
         .run();
       db.update(machineLease)
-        .set({ generation, state: "free", holderInstanceId: null, changedAt: ctx.now })
+        .set({
+          generation,
+          state: "free",
+          holderInstanceId: null,
+          ownerKind: null,
+          holderCrewChatId: null,
+          changedAt: ctx.now,
+        })
         .where(leaseWhere(key))
         .run();
       closeLiveEscrow(key, ctx.now);
@@ -1024,7 +1323,18 @@ export function forceReclaimLease(raw: ForceReclaimLeaseInput, ctx: MachineConte
         .where(eq(leaseMutation.id, pending.id))
         .get()!;
       onLeaseMutationCompleted(db, completed);
-      revokeNotice(completed, row.holderInstanceId, executions, "unconfirmed", ctx.now);
+      const previousAuthorization = db
+        .select()
+        .from(leaseAuthorization)
+        .where(authorizationWhere(key, row.generation))
+        .get();
+      revokeNotice(
+        completed,
+        previousAuthorization?.holderInstanceId ?? row.holderInstanceId,
+        executions,
+        "unconfirmed",
+        ctx.now,
+      );
       const id = newId(ID_PREFIXES.leaseMutation);
       db.insert(leaseMutation)
         .values({
@@ -1151,11 +1461,28 @@ function assertClaimInScope(escrowRow: typeof leaseEscrow.$inferSelect, ctx: Age
   )
     throw new LeaseError("lease_claim_out_of_scope");
 }
+/** Crew/delegation actor 不能以任何入口操作租约；Crew 只走 resource coordinator。 */
+function assertLeaseCommandActor(ctx: AgentRemoteContext) {
+  const instance = db
+    .select()
+    .from(agentInstance)
+    .where(eq(agentInstance.id, ctx.instanceId))
+    .get();
+  const actorChat = instance
+    ? db.select().from(chat).where(eq(chat.id, instance.chatId)).get()
+    : undefined;
+  if (
+    actorChat?.kind === "delegation" ||
+    (actorChat?.kind === "crew" && actorChat.leadProfileId === instance?.agentProfileId)
+  )
+    throw new LeaseError("forbidden");
+}
 /** 三个命令共用的事实门：代次、fencing、代次上限。挂靠不碰执行行，所以不跑 expireExecutions。 */
 function escrowCommandRow(
   input: { projectId: string; machineId: string; expectedGeneration: number },
   ctx: AgentRemoteContext,
 ) {
+  assertLeaseCommandActor(ctx);
   const row = ensureLease(input, ctx.now);
   if (row.generation !== input.expectedGeneration) throw new LeaseError("lease_stale_generation");
   if (row.state === "fencing") throw new LeaseError("lease_fencing");
@@ -1195,11 +1522,13 @@ function escrowLeaseInTransaction(input: LeaseEscrowInput, ctx: AgentRemoteConte
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
       generation,
       holderInstanceId: ctx.instanceId,
+      ownerKind: "instance",
       state: "escrowed",
       reason: "escrow",
       issuedAt: ctx.now,
@@ -1260,11 +1589,13 @@ function claimLeaseInTransaction(input: LeaseClaimInput, ctx: AgentRemoteContext
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
       generation,
       holderInstanceId: ctx.instanceId,
+      ownerKind: "instance",
       state: "active",
       reason: "claim",
       issuedAt: ctx.now,
@@ -1324,11 +1655,13 @@ function cancelLeaseEscrowInTransaction(input: LeaseEscrowCancelInput, ctx: Agen
     .set({ state: "revoked", revokedAt: ctx.now })
     .where(authorizationWhere(key, row.generation))
     .run();
+  revokeGrants(key, row.generation, ctx.now);
   db.insert(leaseAuthorization)
     .values({
       ...key,
       generation,
       holderInstanceId: ctx.instanceId,
+      ownerKind: "instance",
       state: "active",
       reason: "escrow_cancel",
       issuedAt: ctx.now,

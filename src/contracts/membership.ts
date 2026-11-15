@@ -129,6 +129,8 @@ export type MembershipView = z.infer<typeof membershipViewSchema>;
 
 /** `authorityNow` 返回值：与读行同事务取得，不缓存到后续请求。 */
 export interface AuthorityNow {
+  ownerKind: "instance" | "crew" | null;
+  ownerCrewChatId: string | null;
   generation: number;
   holderInstanceId: string | null;
   state: "free" | "active" | "draining" | "escrowed";
