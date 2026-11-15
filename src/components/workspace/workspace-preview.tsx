@@ -9,12 +9,7 @@ import { workspaceLanguage, workspacePreviewKind } from "../../lib/workspace-pre
 import { Icon } from "../ui/icon";
 import "../chat/markdown-content.css";
 import "./workspace-preview.css";
-import {
-  fetchWorkspaceText,
-  useWorkspaceBlob,
-  workspaceFileUrl,
-  type WorkspaceQuery,
-} from "./workspace-api";
+import { fetchFileText, fileUrlOf, useWorkspaceBlob, type WorkspaceSource } from "./workspace-api";
 
 /**
  * 内嵌预览按扩展名分派，渲染器只用现成库：markdown 走 react-markdown、
@@ -22,23 +17,20 @@ import {
  * 没有对应渲染器的类型不假装能看，直接给下载入口。
  */
 export function WorkspacePreview({
-  projectId,
-  chatId,
+  source,
   path,
   name,
 }: {
-  projectId: string;
-  chatId?: string;
+  source: WorkspaceSource;
   path: string;
   name: string;
 }) {
-  const query = { projectId, chatId, path } as WorkspaceQuery;
-  const url = workspaceFileUrl(query);
+  const url = fileUrlOf(source, path);
   const kind = workspacePreviewKind(name);
-  const fallback = <TextPreview query={query} />;
+  const fallback = <TextPreview url={url} />;
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      {renderKind(kind, url, query, fallback, name)}
+      {renderKind(kind, url, fallback, name)}
       <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-2 text-muted-foreground">
         <span className="truncate">{path}</span>
         <a className="flex items-center gap-1 hover:text-foreground" href={url} download={name}>
@@ -53,17 +45,16 @@ export function WorkspacePreview({
 function renderKind(
   kind: WorkspacePreviewKind,
   url: string,
-  query: WorkspaceQuery,
   fallback: React.ReactNode,
   name: string,
 ) {
   switch (kind) {
     case "markdown":
-      return <MarkdownPreview query={query} />;
+      return <MarkdownPreview url={url} />;
     case "code":
-      return <CodePreview query={query} />;
+      return <CodePreview url={url} name={name} />;
     case "csv":
-      return <CsvPreview query={query} />;
+      return <CsvPreview url={url} />;
     case "text":
       return fallback;
     case "html":
@@ -142,24 +133,24 @@ function Pending({ error }: { error?: string }) {
   );
 }
 
-function useWorkspaceText(query: WorkspaceQuery) {
+function useWorkspaceText(url: string) {
   const [state, setState] = useState<{ text: string; truncated: boolean } | { error: string }>();
   useEffect(() => {
     const controller = new AbortController();
     setState(undefined);
-    fetchWorkspaceText(query, controller.signal)
+    fetchFileText(url, controller.signal)
       .then(setState)
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
         setState({ error: error instanceof Error ? error.message : "读取失败" });
       });
     return () => controller.abort();
-  }, [query.chatId, query.path, query.projectId]);
+  }, [url]);
   return state;
 }
 
-function TextPreview({ query }: { query: WorkspaceQuery }) {
-  const state = useWorkspaceText(query);
+function TextPreview({ url }: { url: string }) {
+  const state = useWorkspaceText(url);
   if (!state) return <Pending />;
   if ("error" in state) return <Pending error={state.error} />;
   return (
@@ -169,8 +160,8 @@ function TextPreview({ query }: { query: WorkspaceQuery }) {
   );
 }
 
-function MarkdownPreview({ query }: { query: WorkspaceQuery }) {
-  const state = useWorkspaceText(query);
+function MarkdownPreview({ url }: { url: string }) {
+  const state = useWorkspaceText(url);
   if (!state) return <Pending />;
   if ("error" in state) return <Pending error={state.error} />;
   return (
@@ -221,13 +212,10 @@ async function highlight(code: string, language: string | undefined) {
   }
 }
 
-function CodePreview({ query }: { query: WorkspaceQuery }) {
-  const state = useWorkspaceText(query);
+function CodePreview({ url, name }: { url: string; name: string }) {
+  const state = useWorkspaceText(url);
   const [node, setNode] = useState<React.ReactNode>(null);
-  const language = useMemo(
-    () => workspaceLanguage(query.path.split("/").pop() ?? ""),
-    [query.path],
-  );
+  const language = useMemo(() => workspaceLanguage(name), [name]);
   useEffect(() => {
     if (!state || !("text" in state)) return;
     let alive = true;
@@ -247,8 +235,8 @@ function CodePreview({ query }: { query: WorkspaceQuery }) {
 const CSV_MAX_ROWS = 200;
 const CSV_MAX_COLUMNS = 30;
 
-function CsvPreview({ query }: { query: WorkspaceQuery }) {
-  const state = useWorkspaceText(query);
+function CsvPreview({ url }: { url: string }) {
+  const state = useWorkspaceText(url);
   const table = useMemo(() => {
     if (!state || !("text" in state)) return null;
     const parsed = Papa.parse<string[]>(state.text, { skipEmptyLines: true });

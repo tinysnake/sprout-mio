@@ -11,11 +11,12 @@ import {
   TreeItemTrigger,
 } from "../ui/tree";
 import { NewTabLink } from "./side-pane-tabs";
-import { fetchWorkspaceTree, type WorkspaceQuery } from "./workspace-api";
+import { fetchTree, type WorkspaceSource } from "./workspace-api";
 
 /**
  * 目录树按展开逐层取：一次只发一个目录的请求，展开过的地方留在内存里，
  * 折叠不丢，切换文件不重取。失败的层保留错误文案，重试只重取那一层。
+ * 同一棵树既能读本机工作区，也能读远端机器上的项目目录，来源由 `source` 决定。
  */
 type DirectoryState =
   | { status: "loading" }
@@ -23,21 +24,21 @@ type DirectoryState =
   | { status: "error"; message: string };
 
 export function WorkspaceTreeView({
-  projectId,
-  chatId,
+  source,
   selected,
   onOpen,
   onExpand,
   newTabHref,
   onRoot,
+  onMachineName,
 }: {
-  projectId: string;
-  chatId?: string;
+  source: WorkspaceSource;
   selected?: string;
   onOpen: (entry: WorkspaceEntry) => void;
   onExpand?: (path: string) => void;
   newTabHref: (entry: WorkspaceEntry) => string;
   onRoot?: (kind: "repository" | "workspace") => void;
+  onMachineName?: (name: string) => void;
 }) {
   const [directories, setDirectories] = useState<ReadonlyMap<string, DirectoryState>>(
     () => new Map(),
@@ -49,7 +50,7 @@ export function WorkspaceTreeView({
     async (path: string) => {
       setDirectories((current) => new Map(current).set(path, { status: "loading" }));
       try {
-        const tree = await fetchWorkspaceTree({ projectId, chatId, path } as WorkspaceQuery);
+        const tree = await fetchTree(source, path);
         setDirectories((current) =>
           new Map(current).set(path, {
             status: "ready",
@@ -57,7 +58,9 @@ export function WorkspaceTreeView({
             truncated: tree.truncated,
           }),
         );
-        if (path === "") onRoot?.(tree.root);
+        if (path !== "") return;
+        if (tree.root) onRoot?.(tree.root);
+        if (tree.machineName) onMachineName?.(tree.machineName);
       } catch (error) {
         setDirectories((current) =>
           new Map(current).set(path, {
@@ -67,7 +70,7 @@ export function WorkspaceTreeView({
         );
       }
     },
-    [chatId, onRoot, projectId],
+    [onMachineName, onRoot, source],
   );
 
   useEffect(() => {
@@ -98,7 +101,10 @@ export function WorkspaceTreeView({
       );
     if (state.status === "error")
       return (
-        <div className="flex flex-col items-start gap-1 px-2 py-1.5 text-destructive">
+        <div
+          data-testid="workspace-tree-error"
+          className="flex flex-col items-start gap-1 px-2 py-1.5 text-destructive"
+        >
           <span>{state.message}</span>
           <button
             type="button"
@@ -167,7 +173,7 @@ export function WorkspaceTreeView({
         value={value}
         expandedValue={expanded}
         onExpandedChange={(next) => toggle(next)}
-        aria-label="工作区文件"
+        aria-label={source.kind === "machine" ? "机器文件" : "工作区文件"}
         className="min-h-0 flex-1 overflow-auto px-1 py-1"
       >
         {renderLevel("")}
@@ -178,7 +184,7 @@ export function WorkspaceTreeView({
           className="mx-1 mb-1 self-start text-xs underline underline-offset-2"
           onClick={() => setRootVersion((value) => value + 1)}
         >
-          重新加载工作区
+          {source.kind === "machine" ? "重新加载机器目录" : "重新加载工作区"}
         </button>
       )}
     </div>

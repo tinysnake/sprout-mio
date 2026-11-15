@@ -227,6 +227,7 @@ export async function probeCapability(checkedAt: string): Promise<CapabilitySnap
     platform: process.platform === "win32" ? "win32" : "darwin",
     arch: process.arch,
     workerVersion: APP_VERSION,
+    machineBrowse: true,
     // 探测的是「现在这台机器上的实际执行环境」，与 Worker 连接代次一起上报。
     executionEnvironment: await executionEnvironment(shells),
     shells,

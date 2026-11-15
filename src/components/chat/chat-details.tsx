@@ -69,6 +69,7 @@ export function ChatDetails({
   projectProfiles,
   machineFacts = null,
   machineFactsError,
+  onBrowseMachine,
   continuation,
   tabs,
   onClose,
@@ -89,6 +90,8 @@ export function ChatDetails({
   projectProfiles: AgentProfile[];
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
+  /** 租约那一行的「浏览文件」：换右栏的文件来源，与租约状态无关。 */
+  onBrowseMachine?: (machineId: string) => void;
   continuation?: ContinuationPageData;
   /** 右栏的页签：给了就顶掉「会话详情」标题，两个页签在两个视图里都在。 */
   tabs?: ReactNode;
@@ -478,6 +481,20 @@ export function ChatDetails({
                     dense
                     showDenseNote={false}
                     hideEmpty
+                    browseLink={
+                      onBrowseMachine
+                        ? (lease) => (
+                            <button
+                              type="button"
+                              data-testid={`lease-browse-${lease.machineId}`}
+                              onClick={() => onBrowseMachine(lease.machineId)}
+                              className="underline underline-offset-2 hover:text-foreground"
+                            >
+                              浏览文件
+                            </button>
+                          )
+                        : undefined
+                    }
                     testId="chat-leases"
                   />
                 </div>

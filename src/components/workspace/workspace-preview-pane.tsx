@@ -5,7 +5,7 @@ import { useChatFile } from "../chat/chat-search";
 import { InspectorButtons } from "../chat/inspector-buttons";
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
-import { workspaceViewerUrl } from "./workspace-api";
+import { viewerUrlOf, type WorkspaceSource } from "./workspace-api";
 import { WorkspacePreview } from "./workspace-preview";
 
 const NAME_OF = (path: string) => path.split("/").pop() ?? path;
@@ -18,6 +18,7 @@ const NAME_OF = (path: string) => path.split("/").pop() ?? path;
 export function WorkspacePreviewPane({
   projectId,
   chatId,
+  machineId,
   inspectorOpen,
   filesOpen,
   onToggleInspector,
@@ -26,6 +27,8 @@ export function WorkspacePreviewPane({
 }: {
   projectId: string;
   chatId: string;
+  /** 打开的是远端机器上的文件时，预览与「新标签页」都走机器来源。 */
+  machineId?: string;
   /** 聊天标题栏被预览顶掉后，这两个入口还要在，所以页签栏复用同一组按钮。 */
   inspectorOpen: boolean;
   filesOpen: boolean;
@@ -35,6 +38,9 @@ export function WorkspacePreviewPane({
   children: ReactNode;
 }) {
   const { file, files, activate, closeTab } = useChatFile(projectId, chatId);
+  const source: WorkspaceSource = machineId
+    ? { kind: "machine", projectId, machineId }
+    : { kind: "workspace", projectId, chatId };
   // 旧链接可能只带 `file` 不带 `files`：当前文件始终算一个页签。
   const tabs = file && !files.includes(file) ? [...files, file] : files;
   const list = useRef<HTMLDivElement>(null);
@@ -90,11 +96,7 @@ export function WorkspacePreviewPane({
               size="icon"
               nativeButton={false}
               render={
-                <a
-                  href={workspaceViewerUrl({ projectId, chatId, path: file })}
-                  target="_blank"
-                  rel="noreferrer"
-                />
+                <a href={viewerUrlOf(source, file, chatId)} target="_blank" rel="noreferrer" />
               }
               data-testid="preview-open-new-tab"
               aria-label="新标签页打开"
@@ -112,13 +114,7 @@ export function WorkspacePreviewPane({
         </div>
       </div>
       {file ? (
-        <WorkspacePreview
-          key={file}
-          projectId={projectId}
-          chatId={chatId}
-          path={file}
-          name={NAME_OF(file)}
-        />
+        <WorkspacePreview key={file} source={source} path={file} name={NAME_OF(file)} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       )}

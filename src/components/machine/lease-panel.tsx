@@ -10,6 +10,7 @@ import {
   holderMachineCount,
   leaseStateLabel,
   leaseStatusLabel,
+  leasesByRecency,
   liveEscrowOf,
   mutationStateLabel,
   runLeaseRelation,
@@ -44,6 +45,7 @@ export function LeaseOverview({
   escrowNames = {},
   showDenseNote = true,
   hideEmpty = false,
+  browseLink,
   testId = "lease-overview",
 }: {
   projectId: string;
@@ -71,10 +73,12 @@ export function LeaseOverview({
   showDenseNote?: boolean;
   /** 窄栏调用方可以要求空态整块不渲染：没有租约时那句说明没有可行动信息。 */
   hideEmpty?: boolean;
+  /** 每行的浏览入口：读文件不需要租约，所以入口不随租约状态隐藏。 */
+  browseLink?: (lease: LeaseView) => ReactNode;
   testId?: string;
 }) {
   const [forcedReceipts, setForcedReceipts] = useState<Record<string, LeaseMutationView>>({});
-  const visible = visibleLeases(leases, projectId);
+  const visible = leasesByRecency(visibleLeases(leases, projectId));
   if (hideEmpty && visible.length === 0) return null;
   const machineName = (machineId: string) =>
     machines.find((item) => item.machine.id === machineId)?.machine.name ?? machineId;
@@ -146,7 +150,10 @@ export function LeaseOverview({
                     Crew 授予 · {lease.grant.granteeInstanceId} · 可被 lead 撤销
                   </dd>
                 )}
-                <dd className="text-muted-foreground">取得/更新 {formatMoment(lease.changedAt)}</dd>
+                <dd className="flex flex-wrap items-baseline gap-x-2 text-muted-foreground">
+                  <span>取得/更新 {formatMoment(lease.changedAt)}</span>
+                  {browseLink?.(lease)}
+                </dd>
                 {/* fencing 的长说明已收进问号 Dialog；这里不再平铺同一段文字。
                     挂靠中也不再解释持有者能做什么：挂靠已经把操作权交出去了。 */}
                 {lease.state !== "fencing" && !dense && !escrow && (

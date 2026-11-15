@@ -15,6 +15,7 @@ import { McpRuntime } from "./mcp";
 import type { McpServerRegistration } from "../contracts/mcp";
 import type { Identity } from "./identity";
 import { emptyWorkerRemote, RemoteDispatcher } from "./remote";
+import { BrowseBus } from "./browse";
 import { ExecutionRegistry, ExecutionStore } from "./executions";
 import { probeCapability, probeDirectory } from "./probes";
 
@@ -176,6 +177,11 @@ export function workerProgram(
         let seq = 1;
         let draining = false;
         let drainAdvanced = false;
+        // 目录/文件块是给人即时看的，不能排在 2s 轮询后面。
+        const browse = new BrowseBus(identity.machineId, () =>
+          Effect.runSync(Clock.currentTimeMillis),
+        );
+        let browsePending = false;
         while (true) {
           const checkedAt = new Date(yield* Clock.currentTimeMillis).toISOString();
           const observations = yield* Effect.tryPromise({
@@ -199,9 +205,17 @@ export function workerProgram(
             },
             catch: () => new ClientError("probe_failed"),
           });
+          const browseResults = draining ? [] : browse.outgoing(760 * 1024);
           const exchange = draining
             ? { mode: "drain" as const, session, seq }
-            : { mode: "normal" as const, session, seq, capability, observations };
+            : {
+                mode: "normal" as const,
+                session,
+                seq,
+                capability,
+                observations,
+                browse: browseResults,
+              };
           const emptyRemote = emptyWorkerRemote();
           const envelopeBytes = Buffer.byteLength(
             JSON.stringify({
@@ -213,7 +227,7 @@ export function workerProgram(
             }),
           );
           const remote = dispatcher.outgoing(
-            1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)),
+            1048576 - envelopeBytes + Buffer.byteLength(JSON.stringify(emptyRemote)) - 128,
           );
           const exchanged = yield* request(
             identity,
@@ -266,6 +280,10 @@ export function workerProgram(
               catch: () => new ClientError("invalid_response"),
             });
             configuration = exchanged.success.data.configuration;
+            browse.commit(browseResults);
+            browse.configure(configuration ?? null);
+            browse.accept(data.browse ?? []);
+            browsePending = (data.browse?.length ?? 0) > 0;
             if (draining && dispatcher.drained) {
               session = undefined;
               break;
@@ -284,7 +302,11 @@ export function workerProgram(
           if (seq >= Number.MAX_SAFE_INTEGER)
             return yield* Effect.fail(new ClientError("sequence_exhausted"));
           seq += 1;
-          yield* Effect.sleep(opened.success.data.pollIntervalMs);
+          yield* Effect.sleep(
+            browseResults.length > 0 || browsePending
+              ? Math.min(opened.success.data.pollIntervalMs, 100)
+              : opened.success.data.pollIntervalMs,
+          );
         }
       }
     }),
