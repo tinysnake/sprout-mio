@@ -28,6 +28,8 @@ import { Route as AuthedProjectsIndexRouteImport } from './routes/_authed/projec
 import { Route as AuthedProjectsProjectIdRouteImport } from './routes/_authed/projects.$projectId'
 import { Route as ApiAttachmentsAttachmentIdRouteImport } from './routes/api/attachments.$attachmentId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiMachineFileRouteImport } from './routes/api/machine/file'
+import { Route as ApiMachineTreeRouteImport } from './routes/api/machine/tree'
 import { Route as ApiRemoteAgentRouteImport } from './routes/api/remote/agent'
 import { Route as ApiWebhooksRuleIdRouteImport } from './routes/api.webhooks.$ruleId'
 import { Route as ApiWorkerCloseRouteImport } from './routes/api/worker/close'
@@ -150,6 +152,16 @@ const ApiAttachmentsAttachmentIdRoute =
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMachineFileRoute = ApiMachineFileRouteImport.update({
+  id: '/api/machine/file',
+  path: '/api/machine/file',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiMachineTreeRoute = ApiMachineTreeRouteImport.update({
+  id: '/api/machine/tree',
+  path: '/api/machine/tree',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiRemoteAgentRoute = ApiRemoteAgentRouteImport.update({
@@ -325,6 +337,8 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/machine/file': typeof ApiMachineFileRoute
+  '/api/machine/tree': typeof ApiMachineTreeRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
@@ -368,6 +382,8 @@ export interface FileRoutesByTo {
   '/agents/$agentProfileId': typeof AuthedAgentsAgentProfileIdRoute
   '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/machine/file': typeof ApiMachineFileRoute
+  '/api/machine/tree': typeof ApiMachineTreeRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
@@ -414,6 +430,8 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId': typeof AuthedProjectsProjectIdRouteWithChildren
   '/api/attachments/$attachmentId': typeof ApiAttachmentsAttachmentIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/machine/file': typeof ApiMachineFileRoute
+  '/api/machine/tree': typeof ApiMachineTreeRoute
   '/api/remote/agent': typeof ApiRemoteAgentRoute
   '/api/webhooks/$ruleId': typeof ApiWebhooksRuleIdRoute
   '/api/worker/close': typeof ApiWorkerCloseRoute
@@ -463,6 +481,8 @@ export interface FileRouteTypes {
     | '/projects/$projectId'
     | '/api/attachments/$attachmentId'
     | '/api/auth/$'
+    | '/api/machine/file'
+    | '/api/machine/tree'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
     | '/api/worker/close'
@@ -506,6 +526,8 @@ export interface FileRouteTypes {
     | '/agents/$agentProfileId'
     | '/api/attachments/$attachmentId'
     | '/api/auth/$'
+    | '/api/machine/file'
+    | '/api/machine/tree'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
     | '/api/worker/close'
@@ -551,6 +573,8 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId'
     | '/api/attachments/$attachmentId'
     | '/api/auth/$'
+    | '/api/machine/file'
+    | '/api/machine/tree'
     | '/api/remote/agent'
     | '/api/webhooks/$ruleId'
     | '/api/worker/close'
@@ -593,6 +617,8 @@ export interface RootRouteChildren {
   ApiEventsRoute: typeof ApiEventsRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiMachineFileRoute: typeof ApiMachineFileRoute
+  ApiMachineTreeRoute: typeof ApiMachineTreeRoute
   ApiRemoteAgentRoute: typeof ApiRemoteAgentRoute
   ApiWebhooksRuleIdRoute: typeof ApiWebhooksRuleIdRoute
   ApiWorkerCloseRoute: typeof ApiWorkerCloseRoute
@@ -736,6 +762,20 @@ declare module '@tanstack/react-router' {
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/machine/file': {
+      id: '/api/machine/file'
+      path: '/api/machine/file'
+      fullPath: '/api/machine/file'
+      preLoaderRoute: typeof ApiMachineFileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/machine/tree': {
+      id: '/api/machine/tree'
+      path: '/api/machine/tree'
+      fullPath: '/api/machine/tree'
+      preLoaderRoute: typeof ApiMachineTreeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/remote/agent': {
@@ -1123,6 +1163,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiEventsRoute: ApiEventsRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiMachineFileRoute: ApiMachineFileRoute,
+  ApiMachineTreeRoute: ApiMachineTreeRoute,
   ApiRemoteAgentRoute: ApiRemoteAgentRoute,
   ApiWebhooksRuleIdRoute: ApiWebhooksRuleIdRoute,
   ApiWorkerCloseRoute: ApiWorkerCloseRoute,
