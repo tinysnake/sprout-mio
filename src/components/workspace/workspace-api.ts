@@ -42,9 +42,7 @@ export class WorkspaceRequestError extends Error {
 }
 
 async function readError(response: Response) {
-  const body = (await response.json().catch(() => null)) as
-    | { error?: { message?: string } }
-    | null;
+  const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
   return body?.error?.message ?? `请求失败（${response.status}）`;
 }
 
@@ -53,8 +51,7 @@ export async function fetchWorkspaceTree(
   signal?: AbortSignal,
 ): Promise<WorkspaceTree> {
   const response = await fetch(workspaceTreeUrl(input), { signal, credentials: "same-origin" });
-  if (!response.ok)
-    throw new WorkspaceRequestError(response.status, await readError(response));
+  if (!response.ok) throw new WorkspaceRequestError(response.status, await readError(response));
   const body = (await response.json().catch(() => null)) as {
     ok?: boolean;
     data?: unknown;

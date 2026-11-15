@@ -48,19 +48,23 @@ export function resolveWorkspaceRoot(
 ): ActiveWorkspaceRoot | undefined {
   assertProjectAccess(ctx, projectId);
   const checkout = getProjectRepoState(projectId, ctx).checkout;
-  if (checkout)
-    return { kind: "repository", path: checkout.path, label: ROOT_LABEL.repository };
+  if (checkout) return { kind: "repository", path: checkout.path, label: ROOT_LABEL.repository };
   if (!chatId) return undefined;
   const instance = listInstancesForChat(chatId, ctx)[0];
   if (!instance) return undefined;
-  return { kind: "workspace", path: piInstanceWorkspacePath(instance.id), label: ROOT_LABEL.workspace };
+  return {
+    kind: "workspace",
+    path: piInstanceWorkspacePath(instance.id),
+    label: ROOT_LABEL.workspace,
+  };
 }
 
 /** 绝对路径、`.`、`..`、NUL 与反斜杠都在这里拒掉；它们没有任何合法用途，只会试探边界。 */
 export function workspacePathSegments(input: string): string[] {
   if (input.includes("\0")) throw new WorkspaceError("validation_failed", "路径无效");
   if (input.includes("\\")) throw new WorkspaceError("validation_failed", "路径无效");
-  if (input.startsWith("/")) throw new WorkspaceError("validation_failed", "路径必须是相对工作区根");
+  if (input.startsWith("/"))
+    throw new WorkspaceError("validation_failed", "路径必须是相对工作区根");
   const segments = input.split("/").filter((segment) => segment.length > 0);
   for (const segment of segments)
     if (segment === "." || segment === "..")

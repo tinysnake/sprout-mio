@@ -36,7 +36,8 @@ export async function workspaceFileResponse(request: Request): Promise<Response>
       headers: { [REQUEST_ID_HEADER]: requestId, "cache-control": "private, no-store" },
     });
   const file = result.data;
-  const sandboxed = file.contentType.startsWith("text/html") || file.contentType === "image/svg+xml";
+  const sandboxed =
+    file.contentType.startsWith("text/html") || file.contentType === "image/svg+xml";
   return new Response(file.body as BodyInit, {
     status: file.status,
     headers: {

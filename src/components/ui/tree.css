@@ -46,7 +46,9 @@
     --focus-ring-width: var(--_tree-focus-ring-width);
   }
 
-  :where([data-control-family="tree"][data-slot="item"]:focus-visible > [data-slot="item-trigger"]) {
+  :where(
+    [data-control-family="tree"][data-slot="item"]:focus-visible > [data-slot="item-trigger"]
+  ) {
     outline: var(--_tree-focus-ring-width) var(--focus-ring-style) var(--focus-ring);
     outline-offset: calc(var(--_tree-focus-ring-width) * -1);
   }
@@ -97,7 +99,8 @@
   }
 
   :where(
-    [data-control-family="tree"][data-indicator="slide"] [data-control-family="tree"][data-slot="item-trigger"]:is(:hover, [data-selected])
+    [data-control-family="tree"][data-indicator="slide"]
+      [data-control-family="tree"][data-slot="item-trigger"]:is(:hover, [data-selected])
   ) {
     background-color: transparent;
   }
@@ -116,7 +119,11 @@
     rotate: 90deg;
   }
 
-  :where([data-control-family="tree"][data-slot="item-indicator"][data-state="open"]:has(> [data-icon-dir="inline"]):dir(rtl)) {
+  :where(
+    [data-control-family="tree"][data-slot="item-indicator"][data-state="open"]:has(
+        > [data-icon-dir="inline"]
+      ):dir(rtl)
+  ) {
     rotate: -90deg;
   }
 
@@ -136,7 +143,12 @@
     transition-timing-function: var(--ease-emphasized);
   }
 
-  :where([data-control-family="tree"][data-slot="item-content"]:is([data-starting-style], [data-ending-style])) {
+  :where(
+    [data-control-family="tree"][data-slot="item-content"]:is(
+        [data-starting-style],
+        [data-ending-style]
+      )
+  ) {
     block-size: 0;
     overflow: clip;
     opacity: 0;
@@ -166,12 +178,8 @@
     position: absolute;
     inset-block: 0;
     inset-inline-start: calc(
-      var(--_tree-level, 1) *
-      var(--cui-tree-indent-inset) +
-      var(--spacing) *
-      2 -
-      var(--cui-tree-guide-inline-size) /
-      2
+      var(--_tree-level, 1) * var(--cui-tree-indent-inset) + var(--spacing) * 2 -
+        var(--cui-tree-guide-inline-size) / 2
     );
     inline-size: var(--cui-tree-guide-inline-size);
     border-radius: var(--cui-tree-guide-inline-size);
@@ -179,7 +187,13 @@
     pointer-events: none;
   }
 
-  :where([data-control-family="tree"][data-slot="item-content"]:is([data-starting-style], [data-ending-style]) > [data-slot="item-group"]) {
+  :where(
+    [data-control-family="tree"][data-slot="item-content"]:is(
+        [data-starting-style],
+        [data-ending-style]
+      )
+      > [data-slot="item-group"]
+  ) {
     translate: 0 calc(var(--spacing) * -1);
   }
 }

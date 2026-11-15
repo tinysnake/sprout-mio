@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { FileIcon, FolderClosed, FolderOpen, Loader2 } from "lucide-react";
 import type { WorkspaceEntry } from "../../contracts/workspace";
 import { Icon } from "../ui/icon";
-import { Tree, TreeItem, TreeItemContent, TreeItemIndicator, TreeItemLabel, TreeItemTrigger } from "../ui/tree";
+import {
+  Tree,
+  TreeItem,
+  TreeItemContent,
+  TreeItemIndicator,
+  TreeItemLabel,
+  TreeItemTrigger,
+} from "../ui/tree";
 import { NewTabLink } from "./side-pane-tabs";
 import { fetchWorkspaceTree, type WorkspaceQuery } from "./workspace-api";
 
@@ -135,9 +142,7 @@ export function WorkspaceTreeView({
               <TreeItemLabel className={entry.symlink ? "italic" : undefined}>
                 {entry.name}
               </TreeItemLabel>
-              {entry.kind === "file" && (
-                <NewTabLink href={newTabHref(entry)} name={entry.name} />
-              )}
+              {entry.kind === "file" && <NewTabLink href={newTabHref(entry)} name={entry.name} />}
             </TreeItemTrigger>
             {entry.kind === "directory" && (
               <TreeItemContent className="pl-3">

@@ -224,7 +224,10 @@ async function highlight(code: string, language: string | undefined) {
 function CodePreview({ query }: { query: WorkspaceQuery }) {
   const state = useWorkspaceText(query);
   const [node, setNode] = useState<React.ReactNode>(null);
-  const language = useMemo(() => workspaceLanguage(query.path.split("/").pop() ?? ""), [query.path]);
+  const language = useMemo(
+    () => workspaceLanguage(query.path.split("/").pop() ?? ""),
+    [query.path],
+  );
   useEffect(() => {
     if (!state || !("text" in state)) return;
     let alive = true;
@@ -271,7 +274,10 @@ function CsvPreview({ query }: { query: WorkspaceQuery }) {
         <thead>
           <tr>
             {table.header.map((cell, index) => (
-              <th key={index} className="sticky top-0 border-b border-border bg-secondary px-2 py-1.5 text-left font-medium">
+              <th
+                key={index}
+                className="sticky top-0 border-b border-border bg-secondary px-2 py-1.5 text-left font-medium"
+              >
                 {cell}
               </th>
             ))}

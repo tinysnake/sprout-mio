@@ -3,8 +3,25 @@
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import { useRender } from "@base-ui/react/use-render";
 import { ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, CSSProperties, KeyboardEvent, MouseEvent, ReactElement, ReactNode, Ref } from "react";
-import { Children, createContext, isValidElement, useContext, useEffect, useId, useRef, useState } from "react";
+import type {
+  ComponentProps,
+  CSSProperties,
+  KeyboardEvent,
+  MouseEvent,
+  ReactElement,
+  ReactNode,
+  Ref,
+} from "react";
+import {
+  Children,
+  createContext,
+  isValidElement,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "cn";
 import "./tree.css";
 
@@ -62,17 +79,23 @@ export type TreeItemProps = Omit<ComponentProps<"li">, "value"> & {
   children?: ReactNode;
 };
 
-export type TreeItemTriggerProps = Omit<ComponentProps<"div">, "style"> & { style?: CSSProperties & TreeKnobStyle } & {
+export type TreeItemTriggerProps = Omit<ComponentProps<"div">, "style"> & {
+  style?: CSSProperties & TreeKnobStyle;
+} & {
   render?: RenderProp<ComponentProps<"div">>;
 };
 
-export type TreeItemIndicatorProps = Omit<ComponentProps<"span">, "style"> & { style?: CSSProperties & TreeKnobStyle };
+export type TreeItemIndicatorProps = Omit<ComponentProps<"span">, "style"> & {
+  style?: CSSProperties & TreeKnobStyle;
+};
 
 export type TreeItemLabelProps = ComponentProps<"span"> & {
   render?: RenderProp<ComponentProps<"span">>;
 };
 
-export type TreeItemContentProps = ComponentProps<"div"> & { style?: CSSProperties & TreeKnobStyle };
+export type TreeItemContentProps = ComponentProps<"div"> & {
+  style?: CSSProperties & TreeKnobStyle;
+};
 
 const TYPEAHEAD_TIMEOUT = 500;
 
@@ -91,7 +114,11 @@ type TreeContextValue = {
   getLabel: (value: string) => string;
   getItem: (value: string) => RegisteredTreeItem | undefined;
   select: (value: string, reason: "pointer" | "keyboard", toggle: boolean) => void;
-  selectRange: (value: string, reason: "pointer" | "keyboard", fallbackAnchor: string | null) => void;
+  selectRange: (
+    value: string,
+    reason: "pointer" | "keyboard",
+    fallbackAnchor: string | null,
+  ) => void;
   selectAll: (value: string) => void;
   toggleExpanded: (value: string, force?: boolean, reason?: "pointer" | "keyboard") => void;
   setFocusedValue: (value: string) => void;
@@ -160,14 +187,23 @@ function isUnderExpandedAncestors(
   items: ReadonlyMap<string, RegisteredTreeItem>,
   expanded: ReadonlySet<string>,
 ): boolean {
-  for (let parentValue = item.parentValue; parentValue !== undefined; parentValue = items.get(parentValue)?.parentValue) {
+  for (
+    let parentValue = item.parentValue;
+    parentValue !== undefined;
+    parentValue = items.get(parentValue)?.parentValue
+  ) {
     if (!expanded.has(parentValue)) return false;
   }
   return true;
 }
 
-function reachableItems(items: ReadonlyMap<string, RegisteredTreeItem>, expanded: ReadonlySet<string>): RegisteredTreeItem[] {
-  return [...items.values()].filter((item) => isUnderExpandedAncestors(item, items, expanded)).sort(compareTreeItems);
+function reachableItems(
+  items: ReadonlyMap<string, RegisteredTreeItem>,
+  expanded: ReadonlySet<string>,
+): RegisteredTreeItem[] {
+  return [...items.values()]
+    .filter((item) => isUnderExpandedAncestors(item, items, expanded))
+    .sort(compareTreeItems);
 }
 
 function resolveTabStop(
@@ -188,7 +224,12 @@ function focusItem(item: RegisteredTreeItem | undefined, ctx: TreeContextValue):
   item.node.focus();
 }
 
-function focusParentItem(items: RegisteredTreeItem[], index: number, level: number, ctx: TreeContextValue): void {
+function focusParentItem(
+  items: RegisteredTreeItem[],
+  index: number,
+  level: number,
+  ctx: TreeContextValue,
+): void {
   for (let itemIndex = index - 1; itemIndex >= 0; itemIndex--) {
     const item = items[itemIndex];
     if (!item || item.level !== level - 1) continue;
@@ -225,7 +266,10 @@ type TreeKeyboardState = {
   isExpanded: boolean;
 };
 
-function getTreeKeyboardState(event: KeyboardEvent<HTMLUListElement>, ctx: TreeContextValue): TreeKeyboardState | null {
+function getTreeKeyboardState(
+  event: KeyboardEvent<HTMLUListElement>,
+  ctx: TreeContextValue,
+): TreeKeyboardState | null {
   if (event.defaultPrevented || !(event.target instanceof HTMLElement)) return null;
   const item = ctx.getItemFromTarget(event.target, event.currentTarget);
   if (!item || event.target !== item.node) return null;
@@ -257,7 +301,12 @@ function handleInlineArrow(
   else focusParentItem(items, index, item.level, ctx);
 }
 
-function activateItem(key: "Enter" | " ", item: RegisteredTreeItem, ctx: TreeContextValue, extend: boolean): void {
+function activateItem(
+  key: "Enter" | " ",
+  item: RegisteredTreeItem,
+  ctx: TreeContextValue,
+  extend: boolean,
+): void {
   if (item.disabled) return;
   if (key === " ") {
     if (extend) ctx.selectRange(item.value, "keyboard", item.value);
@@ -268,10 +317,18 @@ function activateItem(key: "Enter" | " ", item: RegisteredTreeItem, ctx: TreeCon
   if (item.expandable) ctx.toggleExpanded(item.value, undefined, "keyboard");
 }
 
-function handleTreeKeyDown(event: KeyboardEvent<HTMLUListElement>, ctx: TreeContextValue, typeahead: TypeaheadRef): void {
+function handleTreeKeyDown(
+  event: KeyboardEvent<HTMLUListElement>,
+  ctx: TreeContextValue,
+  typeahead: TypeaheadRef,
+): void {
   if (event.altKey) return;
   const multiple = ctx.selectionMode === "multiple";
-  const selectsAll = multiple && (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "a";
+  const selectsAll =
+    multiple &&
+    (event.metaKey || event.ctrlKey) &&
+    !event.shiftKey &&
+    event.key.toLowerCase() === "a";
   if (event.metaKey && !selectsAll) return;
   const state = getTreeKeyboardState(event, ctx);
   if (!state) return;
@@ -365,7 +422,8 @@ export function Tree({
       if (labelsRef.current.get(itemValue) === node) labelsRef.current.delete(itemValue);
     };
   };
-  const getNavigableItems = () => reachableItems(items, expanded).filter((item) => item.node.checkVisibility());
+  const getNavigableItems = () =>
+    reachableItems(items, expanded).filter((item) => item.node.checkVisibility());
   const getItemFromTarget = (target: HTMLElement, root: HTMLElement) => {
     const node = target.closest('[data-control-family="tree"][data-slot="item"]');
     if (!(node instanceof HTMLLIElement) || !root.contains(node)) return;
@@ -376,7 +434,11 @@ export function Tree({
   const getItem = (itemValue: string) => items.get(itemValue);
 
   const anchorRef = useRef<string | null>(null);
-  const commitSelection = (next: Set<string>, itemValue: string, reason: "pointer" | "keyboard") => {
+  const commitSelection = (
+    next: Set<string>,
+    itemValue: string,
+    reason: "pointer" | "keyboard",
+  ) => {
     if (next.size === selected.size && [...next].every((entry) => selected.has(entry))) return;
     if (!value) setSelectedState(next);
     onValueChange?.([...next], { value: itemValue, reason });
@@ -396,18 +458,31 @@ export function Tree({
     commitSelection(next, itemValue, reason);
   };
 
-  const selectRange = (itemValue: string, reason: "pointer" | "keyboard", fallbackAnchor: string | null) => {
+  const selectRange = (
+    itemValue: string,
+    reason: "pointer" | "keyboard",
+    fallbackAnchor: string | null,
+  ) => {
     if (selectionMode !== "multiple") return;
     const navigable = getNavigableItems();
-    const indexOf = (candidate: string | null) => navigable.findIndex((item) => item.value === candidate);
+    const indexOf = (candidate: string | null) =>
+      navigable.findIndex((item) => item.value === candidate);
     const target = indexOf(itemValue);
     if (target === -1) return;
     let anchor = indexOf(anchorRef.current);
-    if (anchor === -1) anchor = fallbackAnchor === null ? navigable.findIndex((item) => selected.has(item.value)) : indexOf(fallbackAnchor);
+    if (anchor === -1)
+      anchor =
+        fallbackAnchor === null
+          ? navigable.findIndex((item) => selected.has(item.value))
+          : indexOf(fallbackAnchor);
     if (anchor === -1) anchor = target;
     anchorRef.current = navigable[anchor]?.value ?? itemValue;
     const range = navigable.slice(Math.min(anchor, target), Math.max(anchor, target) + 1);
-    commitSelection(new Set(range.filter((item) => !item.disabled).map((item) => item.value)), itemValue, reason);
+    commitSelection(
+      new Set(range.filter((item) => !item.disabled).map((item) => item.value)),
+      itemValue,
+      reason,
+    );
   };
 
   const selectAll = (itemValue: string) => {
@@ -416,7 +491,11 @@ export function Tree({
     commitSelection(new Set(enabled.map((item) => item.value)), itemValue, "keyboard");
   };
 
-  const toggleExpanded = (itemValue: string, force?: boolean, reason: "pointer" | "keyboard" = "pointer") => {
+  const toggleExpanded = (
+    itemValue: string,
+    force?: boolean,
+    reason: "pointer" | "keyboard" = "pointer",
+  ) => {
     const willExpand = force ?? !expanded.has(itemValue);
     const next = new Set(expanded);
     if (willExpand) next.add(itemValue);
@@ -512,7 +591,11 @@ export function TreeItem({
   const parent = useContext(TreeItemContext);
   const parentValue = parent?.value;
   const level = (parent?.level ?? 0) + 1;
-  const expandable = expandableProp ?? Children.toArray(children).some((child) => isValidElement(child) && child.type === TreeItemContent);
+  const expandable =
+    expandableProp ??
+    Children.toArray(children).some(
+      (child) => isValidElement(child) && child.type === TreeItemContent,
+    );
   const labelId = useId();
   const [labelled, setLabelled] = useState(false);
   const nodeRef = useRef<HTMLLIElement | null>(null);
@@ -526,7 +609,14 @@ export function TreeItem({
 
   const expanded = expandable && tree.expanded.has(value);
   const selected = tree.selected.has(value);
-  const itemContext: TreeItemContextValue = { value, level, disabled, expandable, labelId, setLabelled };
+  const itemContext: TreeItemContextValue = {
+    value,
+    level,
+    disabled,
+    expandable,
+    labelId,
+    setLabelled,
+  };
   const itemRef = (node: HTMLElement | null) => {
     nodeRef.current = node instanceof HTMLLIElement ? node : null;
     return setRef(ref, nodeRef.current);
@@ -597,7 +687,13 @@ function isNestedControl(event: MouseEvent<HTMLElement>): boolean {
   return control !== null && control !== currentTarget && currentTarget.contains(control);
 }
 
-export function TreeItemTrigger({ className, children, onClick, render, ...props }: TreeItemTriggerProps) {
+export function TreeItemTrigger({
+  className,
+  children,
+  onClick,
+  render,
+  ...props
+}: TreeItemTriggerProps) {
   const tree = useTree();
   const item = useTreeItem();
   const expanded = item.expandable && tree.expanded.has(item.value);
@@ -626,7 +722,11 @@ export function TreeItemTrigger({ className, children, onClick, render, ...props
         }
         focusItem(tree.getItem(item.value), tree);
       },
-      className: cn("flex cursor-pointer select-none items-center", "aria-disabled:pointer-events-none", className),
+      className: cn(
+        "flex cursor-pointer select-none items-center",
+        "aria-disabled:pointer-events-none",
+        className,
+      ),
       children,
     },
   });
@@ -718,7 +818,13 @@ export function TreeItemContent({ className, children, ...props }: TreeItemConte
       )}
     >
       {/* biome-ignore lint/a11y/useSemanticElements: WAI-ARIA treeview requires role="group" on the nested child list. */}
-      <ul role="group" data-control-ui="tree" data-control-family="tree" data-slot="item-group" className={cn("flex flex-col", className)}>
+      <ul
+        role="group"
+        data-control-ui="tree"
+        data-control-family="tree"
+        data-slot="item-group"
+        className={cn("flex flex-col", className)}
+      >
         {children}
       </ul>
     </CollapsiblePrimitive.Panel>

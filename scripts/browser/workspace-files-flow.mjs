@@ -102,12 +102,15 @@ writeFileSync(
   `${workspace}/README.md`,
   "# 工作区说明\n\n| 入口 | 说明 |\n| --- | --- |\n| src | 源码 |\n\n```ts\nconst answer: number = 42;\n```\n",
 );
-writeFileSync(`${workspace}/docs/data.csv`, "name,count,note\nalpha,3,首个\nbeta,12,第二个,\"x\"\n");
+writeFileSync(`${workspace}/docs/data.csv`, 'name,count,note\nalpha,3,首个\nbeta,12,第二个,"x"\n');
 writeFileSync(
   `${workspace}/src/index.ts`,
   "export function greet(name: string): string {\n  return `hi ${name}`;\n}\n",
 );
-writeFileSync(`${workspace}/src/page.html`, "<!doctype html><h1 data-probe=\"html-file\">minimal page</h1>");
+writeFileSync(
+  `${workspace}/src/page.html`,
+  '<!doctype html><h1 data-probe="html-file">minimal page</h1>',
+);
 writeFileSync(`${workspace}/notes.txt`, "plain text preview\n");
 writeFileSync(`${workspace}/pixel.png`, png(64, 40));
 
@@ -124,7 +127,8 @@ function png(width, height) {
     let value = 0xffffffff;
     for (const byte of buffer) {
       value ^= byte;
-      for (let bit = 0; bit < 8; bit += 1) value = value & 1 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
+      for (let bit = 0; bit < 8; bit += 1)
+        value = value & 1 ? (value >>> 1) ^ 0xedb88320 : value >>> 1;
     }
     return (value ^ 0xffffffff) >>> 0;
   };
@@ -305,13 +309,19 @@ await page.waitForSelector('[data-testid="workspace-panel"]', { timeout: 20000 }
 record("header_button_reopens_files", true, "再点一次回到文件树");
 
 // 页签多了要能横着滚，而且右侧按钮不跟着滚走。
-const allFiles = ["README.md", "docs/data.csv", "src/index.ts", "src/page.html", "pixel.png", "notes.txt"];
+const allFiles = [
+  "README.md",
+  "docs/data.csv",
+  "src/index.ts",
+  "src/page.html",
+  "pixel.png",
+  "notes.txt",
+];
 const allFilesParam = allFiles.map((path) => encodeURIComponent(path)).join(",");
 await page.setViewportSize({ width: 1000, height: 800 });
-await page.goto(
-  `${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=README.md`,
-  { waitUntil: "domcontentloaded" },
-);
+await page.goto(`${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=README.md`, {
+  waitUntil: "domcontentloaded",
+});
 await page.waitForSelector('[data-testid="center-tab-list"]', { timeout: 20000 });
 const strip = await page.$eval('[data-testid="center-tab-list"]', (node) => ({
   scrollWidth: node.scrollWidth,
@@ -351,16 +361,24 @@ record(
   `文本「${newTabButton.text}」宽 ${Math.round(newTabButton.size)}，右缘 ${Math.round(newTabButton.right)} ≤ 文件按钮左缘 ${Math.round(filesButton)}`,
 );
 await page.setViewportSize({ width: 1440, height: 900 });
-await page.goto(`${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=docs%2Fdata.csv`, {
-  waitUntil: "domcontentloaded",
+await page.goto(
+  `${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=docs%2Fdata.csv`,
+  {
+    waitUntil: "domcontentloaded",
+  },
+);
+await page.waitForSelector('[data-testid="workspace-preview-pane"] table tbody tr', {
+  timeout: 20000,
 });
-await page.waitForSelector('[data-testid="workspace-preview-pane"] table tbody tr', { timeout: 20000 });
 
 const newTabHref = await page.getAttribute('[data-testid="preview-open-new-tab"]', "href");
 await page.goto(`${BASE}${newTabHref}`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector('[data-testid="workspace-file-page"]', { timeout: 20000 });
 const pageText = (await page.textContent('[data-testid="workspace-file-page"]')) ?? "";
-const rawHref = await page.getAttribute('[data-testid="workspace-file-page"] a[href^="/api/workspace/file"]', "href");
+const rawHref = await page.getAttribute(
+  '[data-testid="workspace-file-page"] a[href^="/api/workspace/file"]',
+  "href",
+);
 const rawResponse = await page.request.get(`${BASE}${rawHref}`);
 record(
   "new_tab_opens_the_viewer_not_the_raw_bytes",
@@ -370,7 +388,9 @@ record(
     rawResponse.status() === 200,
   `${newTabHref} → ${new URL(page.url()).pathname}；原文 ${rawResponse.headers()["content-type"]}`,
 );
-await page.goto(`${BASE}${chatPath}?info=1&pane=files&file=README.md`, { waitUntil: "domcontentloaded" });
+await page.goto(`${BASE}${chatPath}?info=1&pane=files&file=README.md`, {
+  waitUntil: "domcontentloaded",
+});
 
 const query = new URLSearchParams({ projectId, chatId, path: "../../etc/passwd" });
 const traversal = await page.request.get(`${BASE}/api/workspace/file?${query}`);

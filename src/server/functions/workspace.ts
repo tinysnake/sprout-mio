@@ -25,8 +25,7 @@ async function authorize(
   if (!authenticated.ok) return authenticated;
   const ctx = { userId: authenticated.data.userId, requestId };
   const root = workspace.resolveWorkspaceRoot(projectId, chatId, ctx);
-  if (!root)
-    return fail({ code: "not_found", message: "这个对话还没有工作区", requestId });
+  if (!root) return fail({ code: "not_found", message: "这个对话还没有工作区", requestId });
   return ok({ root, ctx }, requestId);
 }
 
@@ -37,8 +36,7 @@ export async function listWorkspaceBoundary(
 ): Promise<AppResult<WorkspaceTree>> {
   try {
     const parsed = workspaceTreeInput.safeParse(input);
-    if (!parsed.success)
-      return fail({ code: "validation_failed", message: "参数无效", requestId });
+    if (!parsed.success) return fail({ code: "validation_failed", message: "参数无效", requestId });
     const authorized = await authorize(
       parsed.data.projectId,
       parsed.data.chatId,
@@ -61,8 +59,7 @@ export async function readWorkspaceFileBoundary(
 ): Promise<AppResult<WorkspaceFile>> {
   try {
     const parsed = workspaceFileInput.safeParse(input);
-    if (!parsed.success)
-      return fail({ code: "validation_failed", message: "参数无效", requestId });
+    if (!parsed.success) return fail({ code: "validation_failed", message: "参数无效", requestId });
     const authorized = await authorize(
       parsed.data.projectId,
       parsed.data.chatId,

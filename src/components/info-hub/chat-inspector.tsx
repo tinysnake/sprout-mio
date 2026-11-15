@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { ContinuationPanel } from "../continuation/continuation-panel";
 import type { ContinuationPageData } from "../continuation/continuation-page-data";
@@ -13,8 +14,6 @@ import { Icon } from "../ui/icon";
 import { ResultError } from "../project/result-error";
 import { TaskAssociations } from "../tasks/task-associations";
 import { ChatAvatar } from "../chat/chat-avatar";
-import { useChatSidePane } from "../chat/chat-search";
-import { SidePaneTabs } from "../workspace/side-pane-tabs";
 import { ChatFactsBlock } from "./chat-info-panel";
 import { ChatActivityFacts } from "./chat-activity";
 import { LeaseOverview } from "../machine/lease-panel";
@@ -39,6 +38,7 @@ export function ChatInspector({
   machineFacts = null,
   machineFactsError,
   continuation,
+  tabs,
   onClose,
 }: {
   chat: Chat;
@@ -53,9 +53,10 @@ export function ChatInspector({
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
   continuation?: ContinuationPageData;
+  /** 真应用里由路由给出「信息 | 文件」页签；独立场景没有路由，退回原样标题。 */
+  tabs?: ReactNode;
   onClose: () => void;
 }) {
-  const { pane, setPane } = useChatSidePane(chat.projectId, chat.id);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {" "}
@@ -72,8 +73,7 @@ export function ChatInspector({
         >
           <Icon as={ArrowLeft} />
         </Button>
-        {/* 页签与文件面板共用同一条头部：切到文件时不会出现两层标题。 */}
-        <SidePaneTabs pane={pane} onChange={setPane} />
+        {tabs ?? <h2 className="text-[10px] font-medium text-muted-foreground">Info Hub</h2>}
         <div className="min-w-0 flex-1" />
         <Button
           type="button"
