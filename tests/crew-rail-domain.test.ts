@@ -42,7 +42,7 @@ const crew = createCrewChat(
 );
 
 describe("Crew rail 的读取边界", () => {
-  it("隔离 crew/epoch、排除取消与归档，输出只含卡片字段", () => {
+  it("隔离 crew/epoch、排除归档；取消进入非进行中", () => {
     const create = (key: string) =>
       dispatchDelegation(
         {
@@ -74,9 +74,12 @@ describe("Crew rail 的读取边界", () => {
     cancelDelegation({ delegationId: canceled.delegationId, reason: "撤销" }, ctx);
     db.update(chat).set({ archivedAt: new Date() }).where(eq(chat.id, archived.childChatId)).run();
     const rail = listCrewDelegationRail({ projectId: project.id, crewChatId: crew.id }, ctx);
-    expect(rail.counts).toEqual({ active: 1, needsYou: 0, completed: 1 });
+    expect(rail.counts).toEqual({ active: 1, inactive: 2, needsYou: 0 });
     expect(rail.active[0].delegationId).toBe(active.delegationId);
-    expect(rail.completed[0].summary).toBe("已生成报告");
+    expect(rail.inactive.map((item) => item.delegationId)).toContain(canceled.delegationId);
+    expect(
+      rail.inactive.find((item) => item.delegationId === completed.delegationId)?.summary,
+    ).toBe("已生成报告");
     expect(Object.keys(rail.active[0]).sort()).toEqual(
       [
         "delegationId",
@@ -101,7 +104,7 @@ describe("Crew rail 的读取边界", () => {
     ).toThrow();
   });
 
-  it("attention 优先、分段不重叠，完成卡片最多 20，计数保留总数", () => {
+  it("按进行中/非进行中分组，attention 计入需处理，历史不截断", () => {
     const card = (
       id: string,
       status: CrewDelegationCard["status"],
@@ -126,9 +129,12 @@ describe("Crew rail 的读取边界", () => {
       card("attention", "completed", "结果未送达"),
       ...Array.from({ length: 25 }, (_, i) => card(`done-${i}`, "completed")),
     ]);
-    expect(grouped.counts).toEqual({ active: 3, needsYou: 3, completed: 25 });
-    expect(grouped.completed).toHaveLength(20);
-    expect(grouped.needsYou.map((item) => item.delegationId)).toContain("attention");
-    expect(groupCrewDelegations([]).counts).toEqual({ active: 0, needsYou: 0, completed: 0 });
+    expect(grouped.counts).toEqual({ active: 2, inactive: 29, needsYou: 3 });
+    expect(grouped.active.map((item) => item.delegationId)).toEqual(["active", "queued"]);
+    expect(grouped.inactive).toHaveLength(29);
+    expect(grouped.inactive.map((item) => item.delegationId)).toContain("canceling");
+    expect(grouped.inactive.map((item) => item.delegationId)).toContain("attention");
+    expect(grouped.inactive.map((item) => item.delegationId)).toContain("done-24");
+    expect(groupCrewDelegations([]).counts).toEqual({ active: 0, inactive: 0, needsYou: 0 });
   });
 });

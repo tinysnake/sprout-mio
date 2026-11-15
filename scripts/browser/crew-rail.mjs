@@ -58,16 +58,66 @@ try {
           .querySelector('[data-testid="crew-rail-toggle"]')
           ?.getAttribute("aria-expanded") === "true",
     );
-    assert.equal(await rail.getByTestId("crew-card").count(), 3);
+    assert.equal(await rail.locator('[data-testid="crew-card"]:visible').count(), 3);
     assert.match(await toggle.innerText(), /进行中 1/);
-    assert.match(await toggle.innerText(), /需要你 1/);
-    for (const label of ["需要你", "进行中", "已完成"])
-      assert.equal(await rail.getByRole("region", { name: label }).count(), 1);
+    assert.match(await toggle.innerText(), /需处理 2/);
+    for (const label of ["进行中的委派", "非进行中的委派"])
+      assert.equal(await rail.getByRole("region", { name: label, exact: true }).count(), 1);
+    const initialStatuses = await rail
+      .locator('[data-testid="crew-card-status"]:visible')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          text: node.textContent,
+          status: node.getAttribute("data-status"),
+          className: node.className,
+        })),
+      );
     assert.deepEqual(
-      (await rail.getByTestId("crew-card-status").allTextContents()).sort(),
-      ["已完成", "进行中", "需要你"].sort(),
+      initialStatuses.map((item) => item.text).sort(),
+      ["已完成", "需要你", "进行中"].sort(),
     );
+    const running = initialStatuses.find((item) => item.status === "running");
+    assert.match(running.className, /text-status-success/);
+    assert.match(
+      initialStatuses.find((item) => item.status === "completed").className,
+      /text-status-success/,
+    );
+    assert.match(
+      initialStatuses.find((item) => item.status === "blocked").className,
+      /text-status-warning/,
+    );
+    assert.equal(await rail.getByTestId("crew-card-pulse").count(), 1);
+    assert.equal(
+      await page.locator('[data-testid="chat-list"] [data-chat-kind="delegation"]').count(),
+      0,
+    );
+    assert.equal(await page.locator(`[data-chat-id="${fixture.childChatId}"]`).count(), 0);
     await page.screenshot({ path: `${evidence}/wide-expanded.png`, fullPage: true });
+  });
+  await check("history_collapses_by_active_slots", async () => {
+    const history = page.getByTestId("crew-history-toggle");
+    await history.waitFor();
+    assert.match(await history.innerText(), /历史委派/);
+    assert.match(await history.innerText(), /4/);
+    assert.equal(await history.getAttribute("aria-expanded"), "false");
+    await history.click();
+    assert.equal(await history.getAttribute("aria-expanded"), "true");
+    assert.match(await history.innerText(), /收起历史委派/);
+    assert.equal(await rail.locator('[data-testid="crew-card"]:visible').count(), 7);
+    const expandedStatuses = await rail
+      .locator('[data-testid="crew-card-status"]:visible')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          status: node.getAttribute("data-status"),
+          text: node.textContent,
+          className: node.className,
+        })),
+      );
+    const failed = expandedStatuses.find((item) => item.status === "failed");
+    const canceled = expandedStatuses.find((item) => item.text === "已取消");
+    assert.match(failed.className, /text-status-failed/);
+    assert.match(canceled.className, /text-muted-foreground/);
+    await page.screenshot({ path: `${evidence}/wide-history-expanded.png`, fullPage: true });
   });
   let anchor;
   await check("open_child_and_return_to_parent_anchor", async () => {
@@ -104,6 +154,10 @@ try {
     await page.getByTestId("delegation-parent-link").waitFor();
     await page.getByTestId("crew-rail").waitFor({ state: "detached" });
     assert.equal(await page.getByTestId("crew-rail").count(), 0);
+    assert.equal(
+      await page.locator('[data-testid="chat-list"] [data-chat-kind="delegation"]').count(),
+      0,
+    );
     await page.getByTestId("delegation-parent-link").click();
     await page.waitForURL((url) => url.pathname === parentPath);
     await page.waitForFunction((expected) => {
@@ -123,7 +177,11 @@ try {
       process.execPath,
       ["--import", "tsx", "scripts/browser/crew-rail-append.ts"],
       {
-        env: { ...process.env, CREW_RAIL_PROJECT_ID: project.id, CREW_RAIL_CREW_ID: fixture.crewChatId },
+        env: {
+          ...process.env,
+          CREW_RAIL_PROJECT_ID: project.id,
+          CREW_RAIL_CREW_ID: fixture.crewChatId,
+        },
         encoding: "utf8",
         timeout: 30000,
       },

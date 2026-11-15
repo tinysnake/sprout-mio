@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, notInArray } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { db } from "../db";
 import { agentProfile, chat, delegation, delegationDelivery } from "../db/schema";
 import type { CrewDelegationCard, CrewDelegationRail } from "../contracts/delegation";
@@ -7,24 +7,16 @@ import { getChat } from "./chat";
 import { DelegationError } from "./delegation";
 
 export function groupCrewDelegations(cards: CrewDelegationCard[]): CrewDelegationRail {
-  const active = cards.filter(
-    (card) =>
-      card.status === "queued" || card.status === "running" || card.status === "canceling",
-  );
-  const needsYou = cards.filter(
+  const active = cards.filter((card) => card.status === "queued" || card.status === "running");
+  const inactive = cards.filter((card) => !active.includes(card));
+  const needsYou = inactive.filter(
     (card) =>
       card.status === "blocked" || card.status === "failed" || card.attentionReason !== null,
   );
-  const attention = new Set(needsYou.map((card) => card.delegationId));
-  const completed = cards.filter(
-    (card) => card.status === "completed" && !attention.has(card.delegationId),
-  );
-  const running = active.filter((card) => !attention.has(card.delegationId));
   return {
-    active: running,
-    needsYou,
-    completed: completed.slice(0, 20),
-    counts: { active: running.length, needsYou: needsYou.length, completed: completed.length },
+    active,
+    inactive,
+    counts: { active: active.length, inactive: inactive.length, needsYou: needsYou.length },
   };
 }
 
@@ -72,7 +64,6 @@ export function listCrewDelegationRail(
         eq(delegation.projectId, input.projectId),
         eq(delegation.parentCrewChatId, input.crewChatId),
         eq(delegation.crewEpoch, epoch.epoch),
-        notInArray(delegation.status, ["canceled"]),
       ),
     )
     .orderBy(desc(delegation.updatedAt), desc(delegation.id))

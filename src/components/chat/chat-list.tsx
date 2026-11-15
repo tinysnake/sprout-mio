@@ -80,6 +80,11 @@ export function filterChats(
   });
 }
 
+/** 聊天列表只列人类可进入的对话；委派子对话从 Crew 右栏进入，不重复占一行。 */
+export function chatListChats(chats: Chat[]): Chat[] {
+  return chats.filter((chat) => chat.kind !== "delegation");
+}
+
 /**
  * Chat 列表：搜索、新建入口与类型呈现。类型没有可选项时不做任何过滤，
  * 因此窄列表隐藏类型行不会留下用户无法解除的隐形筛选。
@@ -116,9 +121,13 @@ export function ChatListPanel({
     () => new Map((aggregates ?? []).map((entry) => [entry.chatId, entry])),
     [aggregates],
   );
-  const searched = filterChats(chats, chatAgents, names, query, aggregateMap);
+  const listed = chatListChats(chats);
+  const searched = filterChats(listed, chatAgents, names, query, aggregateMap);
   const typed = filter === "all" ? searched : searched.filter((chat) => chat.kind === filter);
-  const pending = (aggregates ?? []).filter((entry) => entry.activeRunIds.length > 0);
+  const visibleIds = new Set(listed.map((chat) => chat.id));
+  const pending = (aggregates ?? []).filter(
+    (entry) => visibleIds.has(entry.chatId) && entry.activeRunIds.length > 0,
+  );
   const shown = pendingOnly
     ? typed.filter((chat) => (aggregateMap.get(chat.id)?.activeRunIds.length ?? 0) > 0)
     : typed;
@@ -184,7 +193,7 @@ export function ChatListPanel({
             </button>
           )}
         </p>
-        {chats.length === 0 ? (
+        {listed.length === 0 ? (
           <p
             data-testid="chats-empty"
             className="px-2 py-3 text-xs leading-6 text-muted-foreground"

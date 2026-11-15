@@ -77,8 +77,7 @@ function delegationSignature(result: AppResult<CrewDelegationRail> | undefined):
   return JSON.stringify({
     ...result.data,
     active: result.data.active.map(({ elapsedMs: _elapsedMs, ...card }) => card),
-    needsYou: result.data.needsYou.map(({ elapsedMs: _elapsedMs, ...card }) => card),
-    completed: result.data.completed.map(({ elapsedMs: _elapsedMs, ...card }) => card),
+    inactive: result.data.inactive.map(({ elapsedMs: _elapsedMs, ...card }) => card),
   });
 }
 

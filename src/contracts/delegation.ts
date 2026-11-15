@@ -156,9 +156,8 @@ export type CrewDelegationCard = {
 
 export type CrewDelegationRail = {
   active: CrewDelegationCard[];
-  needsYou: CrewDelegationCard[];
-  completed: CrewDelegationCard[];
-  counts: { active: number; needsYou: number; completed: number };
+  inactive: CrewDelegationCard[];
+  counts: { active: number; inactive: number; needsYou: number };
 };
 
 export const crewDelegationViewSchema = z.strictObject({

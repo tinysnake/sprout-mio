@@ -13,7 +13,7 @@ function ProjectChatsIndex() {
   const loader = useLoaderData({ from: "/_authed/projects/$projectId/chats" }) as ChatsLoaderData;
   const members = loader.members.ok ? loader.members.data : [];
   const profiles = loader.profiles.ok ? loader.profiles.data : [];
-  const hasChats = loader.chats.ok && loader.chats.data.length > 0;
+  const hasChats = loader.chats.ok && loader.chats.data.some((chat) => chat.kind !== "delegation");
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">

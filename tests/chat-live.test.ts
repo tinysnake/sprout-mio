@@ -667,9 +667,8 @@ describe("消息增量读的游标", () => {
           attentionReason: null,
         },
       ],
-      needsYou: [],
-      completed: [],
-      counts: { active: 1, needsYou: 0, completed: 0 },
+      inactive: [],
+      counts: { active: 1, inactive: 0, needsYou: 0 },
     };
     const result = (): AppResult<CrewDelegationRail> => ({ ok: true, data, requestId: "req_rail" });
     const changed = vi.fn();
@@ -698,8 +697,8 @@ describe("消息增量读的游标", () => {
     data = {
       ...data,
       active: [],
-      completed: data.active.map((card) => ({ ...card, status: "completed" })),
-      counts: { active: 0, needsYou: 0, completed: 1 },
+      inactive: data.active.map((card) => ({ ...card, status: "completed" })),
+      counts: { active: 0, inactive: 1, needsYou: 0 },
     };
     await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
     expect(read).toHaveBeenCalledTimes(2);

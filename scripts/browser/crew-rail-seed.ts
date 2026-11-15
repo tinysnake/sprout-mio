@@ -105,6 +105,35 @@ db.update(delegation)
   .set({ status: "blocked", terminalSummary: "请确认重试次数与超时范围。" })
   .where(eq(delegation.id, needsYou.delegationId))
   .run();
+for (const [index, item] of (
+  [
+    { status: "completed", request: "补写使用说明" },
+    { status: "completed", request: "整理历史记录" },
+    { status: "failed", request: "检查迁移脚本" },
+    { status: "canceled", request: "重跑过期任务" },
+  ] as const
+).entries()) {
+  const settled = dispatchDelegation(
+    {
+      chatId: crew.id,
+      workerProfileId: worker.id,
+      request: item.request,
+      clientRequestId: `rail-gate-${item.status}-${item.request}`,
+    },
+    ctx,
+  );
+  db.update(delegation)
+    .set({
+      status: item.status,
+      terminalSummary:
+        item.status === "completed" ? `${item.request}已完成。` : `${item.request}已结束。`,
+      terminalReason: item.status,
+      settledAt: new Date(),
+      updatedAt: new Date(Date.now() - 120000 - index * 1000),
+    })
+    .where(eq(delegation.id, settled.delegationId))
+    .run();
+}
 const dm = createDirectChat(projectId, worker.id, ctx);
 console.log(
   JSON.stringify({
