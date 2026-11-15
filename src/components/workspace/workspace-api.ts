@@ -23,6 +23,15 @@ export function workspaceTreeUrl(input: WorkspaceQuery) {
   return `/api/workspace/tree?${query(input)}`;
 }
 
+/**
+ * 「新标签页打开」指向应用自己的整页预览，不是字节接口：
+ * md / csv 这类文件的响应类型会让浏览器显示源码，整页预览才和嵌入视图一致。
+ */
+export function workspaceViewerUrl(input: { projectId: string; chatId: string; path: string }) {
+  const params = new URLSearchParams({ chatId: input.chatId, path: input.path });
+  return `/projects/${input.projectId}/files?${params.toString()}`;
+}
+
 export class WorkspaceRequestError extends Error {
   constructor(
     readonly status: number,

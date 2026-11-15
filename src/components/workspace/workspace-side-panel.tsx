@@ -5,7 +5,7 @@ import { useChatFile, useChatSidePane, type ChatSidePane } from "../chat/chat-se
 import { Button } from "../ui/button";
 import { Icon } from "../ui/icon";
 import { SidePaneTabs } from "./side-pane-tabs";
-import { workspaceFileUrl } from "./workspace-api";
+import { workspaceViewerUrl } from "./workspace-api";
 import { WorkspaceTreeView } from "./workspace-tree";
 
 const ROOT_LABEL = {
@@ -69,9 +69,7 @@ export function WorkspaceSidePanel({
           selected={file.file}
           onRoot={setRoot}
           onOpen={(entry: WorkspaceEntry) => file.open(entry.path)}
-          newTabHref={(entry) =>
-            workspaceFileUrl({ projectId, chatId, path: entry.path })
-          }
+          newTabHref={(entry) => workspaceViewerUrl({ projectId, chatId, path: entry.path })}
         />
       </div>
     </div>

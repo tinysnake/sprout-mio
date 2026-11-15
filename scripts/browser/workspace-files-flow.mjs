@@ -248,16 +248,77 @@ await page.waitForFunction(
 record("text_renders", true, "txt 纯文本");
 
 await openFile("README.md");
-const newTabHref = await page.getAttribute('[data-testid="preview-open-new-tab"]', "href");
-const response = await page.request.get(`${BASE}${newTabHref}`);
-const body = await response.text();
+
+const fileTabs = () =>
+  page.$$eval('[data-testid="center-tab-file"]', (nodes) =>
+    nodes.map((node) => node.getAttribute("data-workspace-path")),
+  );
+const tabPaths = await fileTabs();
 record(
-  "new_tab_url_serves_same_file",
-  response.status() === 200 &&
-    response.headers()["content-type"]?.includes("markdown") === true &&
-    body.includes("工作区说明"),
-  `${newTabHref} → ${response.status()} ${response.headers()["content-type"]}`,
+  "opened_files_keep_their_own_tab",
+  ["README.md", "docs/data.csv", "src/index.ts", "src/page.html", "pixel.png", "notes.txt"].every(
+    (path) => tabPaths.includes(path),
+  ),
+  `页签 ${JSON.stringify(tabPaths)}`,
 );
+
+await openFile("notes.txt");
+record(
+  "reopening_a_file_reuses_its_tab",
+  (await fileTabs()).length === tabPaths.length,
+  `页签数 ${tabPaths.length} → ${(await fileTabs()).length}`,
+);
+
+await openFile("README.md");
+await page.click('[data-testid="center-tab-chat"]');
+await page.waitForSelector('[data-testid="chat-pane"]', { timeout: 20000 });
+record(
+  "chat_tab_keeps_file_tabs",
+  (await fileTabs()).length === tabPaths.length,
+  `回到聊天后页签 ${JSON.stringify(await fileTabs())}`,
+);
+await page.click('[data-workspace-path="docs/data.csv"]');
+await page.waitForSelector(`${preview} table tbody tr`, { timeout: 20000 });
+record("file_tab_restores_preview", true, "点数据页签回到 csv 预览");
+
+await page.click('[data-testid="side-pane-tab-info"]');
+await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
+record(
+  "info_tab_keeps_the_files_tab",
+  (await page.$('[data-testid="side-pane-tab-files"]')) !== null,
+  "信息页里「文件」页签仍在",
+);
+await page.click('[data-testid="side-pane-tab-files"]');
+await page.waitForSelector('[data-testid="workspace-panel"]', { timeout: 20000 });
+record("files_tab_returns_to_the_tree", true, "从信息页点回文件页签");
+
+// 预览占着中栏时聊天标题栏不在，入口在预览页签栏上。
+await page.click('[data-testid="toggle-workspace-files"]');
+await page.waitForSelector('[data-testid="chat-details"]', { timeout: 20000 });
+record(
+  "header_button_toggles_the_files_pane",
+  (await page.$('[data-testid="workspace-panel"]')) === null,
+  "文件按钮在已打开时切回信息",
+);
+await page.click('[data-testid="toggle-workspace-files"]');
+await page.waitForSelector('[data-testid="workspace-panel"]', { timeout: 20000 });
+record("header_button_reopens_files", true, "再点一次回到文件树");
+
+const newTabHref = await page.getAttribute('[data-testid="preview-open-new-tab"]', "href");
+await page.goto(`${BASE}${newTabHref}`, { waitUntil: "domcontentloaded" });
+await page.waitForSelector('[data-testid="workspace-file-page"]', { timeout: 20000 });
+const pageText = (await page.textContent('[data-testid="workspace-file-page"]')) ?? "";
+const rawHref = await page.getAttribute('[data-testid="workspace-file-page"] a[href^="/api/workspace/file"]', "href");
+const rawResponse = await page.request.get(`${BASE}${rawHref}`);
+record(
+  "new_tab_opens_the_viewer_not_the_raw_bytes",
+  new URL(page.url()).pathname === `/projects/${projectId}/files` &&
+    pageText.includes("alpha") &&
+    !pageText.includes("name,count,note") &&
+    rawResponse.status() === 200,
+  `${newTabHref} → ${new URL(page.url()).pathname}；原文 ${rawResponse.headers()["content-type"]}`,
+);
+await page.goto(`${BASE}${chatPath}?info=1&pane=files&file=README.md`, { waitUntil: "domcontentloaded" });
 
 const query = new URLSearchParams({ projectId, chatId, path: "../../etc/passwd" });
 const traversal = await page.request.get(`${BASE}/api/workspace/file?${query}`);

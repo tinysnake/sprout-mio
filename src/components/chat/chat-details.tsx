@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ContinuationPanel } from "../continuation/continuation-panel";
 import type { ContinuationPageData } from "../continuation/continuation-page-data";
 import type { FormEvent } from "react";
@@ -70,6 +70,7 @@ export function ChatDetails({
   machineFacts = null,
   machineFactsError,
   continuation,
+  tabs,
   onClose,
   onChanged,
 }: {
@@ -87,6 +88,8 @@ export function ChatDetails({
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
   continuation?: ContinuationPageData;
+  /** 右栏的页签：给了就顶掉「会话详情」标题，两个页签在两个视图里都在。 */
+  tabs?: ReactNode;
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -171,7 +174,14 @@ export function ChatDetails({
         >
           <Icon as={ArrowLeft} />
         </Button>
-        <h2 className="min-w-0 flex-1 truncate text-[13px]">会话详情</h2>
+        {tabs ? (
+          <>
+            {tabs}
+            <div className="min-w-0 flex-1" />
+          </>
+        ) : (
+          <h2 className="min-w-0 flex-1 truncate text-[13px]">会话详情</h2>
+        )}
         <Button
           type="button"
           variant="ghost"

@@ -1,6 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
-import { PanelRight, PanelRightClose } from "lucide-react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
 import type { AutomationSource } from "../../contracts/automation";
@@ -9,8 +8,7 @@ import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
 import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { AppError, AppResult } from "../../contracts/result";
-import { Button } from "../ui/button";
-import { Icon } from "../ui/icon";
+import { InspectorButtons } from "./inspector-buttons";
 import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
 import type { ComposerEditorHandle } from "./composer-editor";
@@ -106,6 +104,8 @@ export function ChatThread({
   runState,
   inspectorOpen,
   onToggleInspector,
+  filesOpen = false,
+  onToggleFiles,
   draft,
   onDraftChange,
   onSend,
@@ -151,6 +151,10 @@ export function ChatThread({
   runState: AgentRunResult<ChatRunState>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
+  /** 右栏停在「文件」页签时为真，按钮据此呈现按下态。 */
+  filesOpen?: boolean;
+  /** 工作区文件的独立入口：右栏收起后也从这里一键回来。 */
+  onToggleFiles?: () => void;
   draft: string;
   onDraftChange: (value: string) => void;
   onSend: () => void;
@@ -345,19 +349,12 @@ export function ChatThread({
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {assistantWatch}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            data-testid="toggle-inspector"
-            aria-label={inspectorOpen ? "关闭会话详情" : "打开会话详情"}
-            title="会话详情"
-            aria-expanded={inspectorOpen}
-            aria-controls="info-hub"
-            onClick={onToggleInspector}
-          >
-            <Icon as={inspectorOpen ? PanelRightClose : PanelRight} />
-          </Button>
+          <InspectorButtons
+            inspectorOpen={inspectorOpen}
+            onToggleInspector={onToggleInspector}
+            filesOpen={filesOpen}
+            onToggleFiles={onToggleFiles}
+          />
         </div>
       </header>
       <div

@@ -7,7 +7,9 @@
 - `tree-pane` 右侧栏切到「文件」页签后显示树，只列当前工作区的条目，`.git` 不出现。
 - `tree-lazy` 目录按需加载；折叠再展开不重新请求；加载失败可重试，根失败可重新加载工作区。
 - `preview-inline` 点文件在中栏预览，markdown / 代码 / csv / html / pdf / 图片 / 音视频各有渲染器，其余类型给下载入口。
-- `open-new-tab` 树行与预览页都有「新标签页打开」，指向同一份字节。
+- `file-tabs` 打开过的文件各占中栏一个页签；没打开过的开新页签，打开过的只切换，「聊天」页签常驻。
+- `entry-points` 右栏头部两个页签（信息/文件）+ 聊天标题栏与预览页签栏上的「工作区文件」按钮，看文件时入口不会消失。
+- `open-new-tab` 树行与预览页都有「新标签页打开」，落到应用自己的整页预览（`/projects/$projectId/files`），md / csv 渲染后显示而不是露出源码。
 - `root-switch` 有 Project 工作副本时树头写「Project 工作副本」，否则写「Chat 工作区」。
 - `fence` 绝对路径、`..`、反斜杠、出界符号链接一律拒绝；`.git` 读不到。
 - `no-lease` 查看不需要租约，不产生 Execution 记录；没有运行中的 Agent 也能看。
@@ -15,7 +17,7 @@
 ## How to get to it (user POV)
 
 - 打开 Chat `/projects/$projectId/chats/$chatId`，点右上角信息入口展开右侧栏，切到「文件」。
-- 深链 `?info=1&pane=files` 直接打开文件页签，`&file=docs/README.md` 直接打开某个文件的预览。
+- 深链 `?info=1&pane=files` 直接打开文件页签，`&file=docs/README.md` 直接打开某个文件的预览，`&files=a.md,b.csv` 带上整排页签。
 - 点文件行或目录展开；点行右侧的箭号图标在新标签页打开。
 
 ## Driving it with Playwright and verify scripts
@@ -31,7 +33,10 @@
 | 看 CSV | `workspace-preview-pane table tbody tr` | 首行作表头，数据行数与文件一致 |
 | 看 HTML | `iframe[title="HTML 预览"]` | 内联脚本在沙箱里跑，页内可读到 `<h1>` |
 | 看图片 | `workspace-preview-pane img` | `src` 是 `blob:`，`naturalWidth > 0` |
-| 新标签页打开 | `preview-open-new-tab`、`workspace-open-new-tab` | 直接 GET 该 `href` 得到同名字节与正确 `content-type` |
+| 新开一个文件的页签 | `center-tab-file[data-workspace-path]` | 页签数加一，先前打开的页签还在 |
+| 从页签回聊天 | `center-tab-chat`、`chat-pane` | 聊天回来，文件页签一个不少 |
+| 标题栏入口 | `toggle-workspace-files` | 在文件与信息页签之间切换，右栏收着时也能一步到文件 |
+| 新标签页打开 | `preview-open-new-tab`、`workspace-open-new-tab`、`workspace-file-page` | 落到 `/projects/$projectId/files`，页面里是渲染结果；`原始文件` 链接仍是 `/api/workspace/file` |
 | 越界请求 | `GET /api/workspace/file?...&path=../../etc/passwd` | `400 validation_failed`，不回内容 |
 | 切回信息页签 | `side-pane-tab-info`、`chat-inspector` | URL 的 chat 路径不变，聊天没有被卸载 |
 

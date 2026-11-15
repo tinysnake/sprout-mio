@@ -1,7 +1,7 @@
 import { Link, createFileRoute, useRouteContext, useRouter } from "@tanstack/react-router";
 import { ChatPane } from "../../components/chat/chat-pane";
 import { SelectedRunPanel } from "../../components/chat/run-status";
-import { useChatInspector } from "../../components/chat/chat-search";
+import { useChatFilesEntry, useChatInspector } from "../../components/chat/chat-search";
 import { isActiveRunState, useChatLive } from "../../components/chat/use-chat-live";
 import type { ChatDetailLoaderData } from "../../components/chat/chat-loader";
 import { ResultError } from "../../components/project/result-error";
@@ -31,6 +31,8 @@ function ProjectChatDetailPage() {
   const router = useRouter();
   const { human } = useRouteContext({ from: "/_authed" });
   const { open, setOpen } = useChatInspector(projectId, chatId);
+  // 右栏收起时也要能直接回到文件：按钮自带「再点收起」的切换语义。
+  const { filesOpen, toggleFiles } = useChatFilesEntry(projectId, chatId);
   const live = useInfoHubLive();
   const watching = hasActiveRun(loader);
   // 活跃 run 期间只重读消息与 run 状态，不再重跑整棵路由的 loader；
@@ -84,6 +86,8 @@ function ProjectChatDetailPage() {
         continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
+        filesOpen={filesOpen}
+        onToggleFiles={toggleFiles}
         onChanged={() => void router.invalidate()}
       />
     </>

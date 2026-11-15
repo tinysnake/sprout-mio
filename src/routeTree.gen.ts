@@ -40,6 +40,7 @@ import { Route as AuthedMachinesMachineIdIndexRouteImport } from './routes/_auth
 import { Route as AuthedMachinesMachineIdLeaseRouteImport } from './routes/_authed/machines.$machineId.lease'
 import { Route as AuthedProjectsProjectIdIndexRouteImport } from './routes/_authed/projects.$projectId.index'
 import { Route as AuthedProjectsProjectIdChatsRouteImport } from './routes/_authed/projects.$projectId.chats'
+import { Route as AuthedProjectsProjectIdFilesRouteImport } from './routes/_authed/projects.$projectId.files'
 import { Route as AuthedProjectsProjectIdMembersRouteImport } from './routes/_authed/projects.$projectId.members'
 import { Route as AuthedProjectsProjectIdSettingsRouteImport } from './routes/_authed/projects.$projectId.settings'
 import { Route as AuthedProjectsProjectIdTasksRouteImport } from './routes/_authed/projects.$projectId.tasks'
@@ -215,6 +216,12 @@ const AuthedProjectsProjectIdChatsRoute =
     path: '/chats',
     getParentRoute: () => AuthedProjectsProjectIdRoute,
   } as any)
+const AuthedProjectsProjectIdFilesRoute =
+  AuthedProjectsProjectIdFilesRouteImport.update({
+    id: '/files',
+    path: '/files',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
 const AuthedProjectsProjectIdMembersRoute =
   AuthedProjectsProjectIdMembersRouteImport.update({
     id: '/members',
@@ -331,6 +338,7 @@ export interface FileRoutesByFullPath {
   '/projects/': typeof AuthedProjectsIndexRoute
   '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
+  '/projects/$projectId/files': typeof AuthedProjectsProjectIdFilesRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
@@ -372,6 +380,7 @@ export interface FileRoutesByTo {
   '/machines': typeof AuthedMachinesIndexRoute
   '/projects': typeof AuthedProjectsIndexRoute
   '/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
+  '/projects/$projectId/files': typeof AuthedProjectsProjectIdFilesRoute
   '/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
   '/machines/$machineId': typeof AuthedMachinesMachineIdIndexRoute
@@ -418,6 +427,7 @@ export interface FileRoutesById {
   '/_authed/projects/': typeof AuthedProjectsIndexRoute
   '/_authed/machines/$machineId/lease': typeof AuthedMachinesMachineIdLeaseRoute
   '/_authed/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsRouteWithChildren
+  '/_authed/projects/$projectId/files': typeof AuthedProjectsProjectIdFilesRoute
   '/_authed/projects/$projectId/members': typeof AuthedProjectsProjectIdMembersRoute
   '/_authed/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   '/_authed/projects/$projectId/tasks': typeof AuthedProjectsProjectIdTasksRouteWithChildren
@@ -466,6 +476,7 @@ export interface FileRouteTypes {
     | '/projects/'
     | '/machines/$machineId/lease'
     | '/projects/$projectId/chats'
+    | '/projects/$projectId/files'
     | '/projects/$projectId/members'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/tasks'
@@ -507,6 +518,7 @@ export interface FileRouteTypes {
     | '/machines'
     | '/projects'
     | '/machines/$machineId/lease'
+    | '/projects/$projectId/files'
     | '/projects/$projectId/members'
     | '/projects/$projectId/tasks'
     | '/machines/$machineId'
@@ -552,6 +564,7 @@ export interface FileRouteTypes {
     | '/_authed/projects/'
     | '/_authed/machines/$machineId/lease'
     | '/_authed/projects/$projectId/chats'
+    | '/_authed/projects/$projectId/files'
     | '/_authed/projects/$projectId/members'
     | '/_authed/projects/$projectId/settings'
     | '/_authed/projects/$projectId/tasks'
@@ -809,6 +822,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdChatsRouteImport
       parentRoute: typeof AuthedProjectsProjectIdRoute
     }
+    '/_authed/projects/$projectId/files': {
+      id: '/_authed/projects/$projectId/files'
+      path: '/files'
+      fullPath: '/projects/$projectId/files'
+      preLoaderRoute: typeof AuthedProjectsProjectIdFilesRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
     '/_authed/projects/$projectId/members': {
       id: '/_authed/projects/$projectId/members'
       path: '/members'
@@ -1023,6 +1043,7 @@ const AuthedProjectsProjectIdTasksRouteWithChildren =
 
 interface AuthedProjectsProjectIdRouteChildren {
   AuthedProjectsProjectIdChatsRoute: typeof AuthedProjectsProjectIdChatsRouteWithChildren
+  AuthedProjectsProjectIdFilesRoute: typeof AuthedProjectsProjectIdFilesRoute
   AuthedProjectsProjectIdMembersRoute: typeof AuthedProjectsProjectIdMembersRoute
   AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   AuthedProjectsProjectIdTasksRoute: typeof AuthedProjectsProjectIdTasksRouteWithChildren
@@ -1033,6 +1054,7 @@ const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren
   {
     AuthedProjectsProjectIdChatsRoute:
       AuthedProjectsProjectIdChatsRouteWithChildren,
+    AuthedProjectsProjectIdFilesRoute: AuthedProjectsProjectIdFilesRoute,
     AuthedProjectsProjectIdMembersRoute: AuthedProjectsProjectIdMembersRoute,
     AuthedProjectsProjectIdSettingsRoute:
       AuthedProjectsProjectIdSettingsRouteWithChildren,

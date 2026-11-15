@@ -19,10 +19,13 @@ import { ChatListPanel } from "../../components/chat/chat-list";
 import { NewChatDialog } from "../../components/chat/new-chat-dialog";
 import {
   CHATS_ROUTE_ID,
+  useChatFilesEntry,
   useChatInspector,
+  useChatSidePane,
   chatsSearchSchema,
 } from "../../components/chat/chat-search";
 import { useSearch } from "@tanstack/react-router";
+import { SidePaneTabs } from "../../components/workspace/side-pane-tabs";
 import { WorkspaceSidePanel } from "../../components/workspace/workspace-side-panel";
 import { WorkspacePreviewPane } from "../../components/workspace/workspace-preview-pane";
 import type { ChatDetailLoaderData, ChatsLoaderData } from "../../components/chat/chat-loader";
@@ -91,6 +94,8 @@ function ChatsLayout() {
   });
   const chatId = detail?.params.chatId;
   const { open, setOpen } = useChatInspector(projectId, chatId);
+  const { filesOpen, toggleFiles } = useChatFilesEntry(projectId, chatId);
+  const { pane, setPane } = useChatSidePane(projectId, chatId);
   const search = useSearch({ from: CHATS_ROUTE_ID });
   const profiles = loader.profiles.ok ? loader.profiles.data : [];
   const members = loader.members.ok ? loader.members.data : [];
@@ -191,8 +196,17 @@ function ChatsLayout() {
             </>
           }
           chat={
-            chatId && search.file ? (
-              <WorkspacePreviewPane projectId={projectId} chatId={chatId} path={search.file} />
+            chatId && (search.file || search.files) ? (
+              <WorkspacePreviewPane
+                projectId={projectId}
+                chatId={chatId}
+                inspectorOpen={open}
+                filesOpen={filesOpen}
+                onToggleInspector={() => setOpen(!open)}
+                onToggleFiles={toggleFiles}
+              >
+                <Outlet />
+              </WorkspacePreviewPane>
             ) : (
               <Outlet />
             )
@@ -212,6 +226,7 @@ function ChatsLayout() {
                 humanName={human?.name ?? ""}
                 members={selected.members}
                 profile={selected.profile}
+                tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
                 info={selected.info}
                 turnContext={selected.turnContext}
                 activity={activity}
