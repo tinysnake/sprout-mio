@@ -304,6 +304,58 @@ await page.click('[data-testid="toggle-workspace-files"]');
 await page.waitForSelector('[data-testid="workspace-panel"]', { timeout: 20000 });
 record("header_button_reopens_files", true, "再点一次回到文件树");
 
+// 页签多了要能横着滚，而且右侧按钮不跟着滚走。
+const allFiles = ["README.md", "docs/data.csv", "src/index.ts", "src/page.html", "pixel.png", "notes.txt"];
+const allFilesParam = allFiles.map((path) => encodeURIComponent(path)).join(",");
+await page.setViewportSize({ width: 1000, height: 800 });
+await page.goto(
+  `${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=README.md`,
+  { waitUntil: "domcontentloaded" },
+);
+await page.waitForSelector('[data-testid="center-tab-list"]', { timeout: 20000 });
+const strip = await page.$eval('[data-testid="center-tab-list"]', (node) => ({
+  scrollWidth: node.scrollWidth,
+  clientWidth: node.clientWidth,
+  scrollLeft: node.scrollLeft,
+}));
+record(
+  "tab_list_scrolls_when_files_outgrow_the_strip",
+  strip.scrollWidth > strip.clientWidth,
+  `scrollWidth ${strip.scrollWidth} > clientWidth ${strip.clientWidth} @1000`,
+);
+
+await page.click('[data-testid="center-tab-file"][data-workspace-path="notes.txt"]');
+await page.waitForFunction(
+  () =>
+    document
+      .querySelector('[data-testid="center-tab-list"]')
+      ?.querySelector('[role="tab"][aria-selected="true"]')
+      ?.getAttribute("data-workspace-path") === "notes.txt",
+  null,
+  { timeout: 20000 },
+);
+const scrolled = await page.$eval('[data-testid="center-tab-list"]', (node) => node.scrollLeft);
+record("active_tab_scrolls_into_view", scrolled > 0, `scrollLeft ${scrolled}`);
+
+const newTabButton = await page.$eval('[data-testid="preview-open-new-tab"]', (node) => {
+  const box = node.getBoundingClientRect();
+  return { text: node.textContent?.trim() ?? "", right: box.right, size: box.width };
+});
+const filesButton = await page.$eval(
+  '[data-testid="toggle-workspace-files"]',
+  (node) => node.getBoundingClientRect().left,
+);
+record(
+  "new_tab_button_is_an_icon_left_of_the_icon_group",
+  newTabButton.text === "" && newTabButton.right <= filesButton + 1,
+  `文本「${newTabButton.text}」宽 ${Math.round(newTabButton.size)}，右缘 ${Math.round(newTabButton.right)} ≤ 文件按钮左缘 ${Math.round(filesButton)}`,
+);
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.goto(`${BASE}${chatPath}?info=1&pane=files&files=${allFilesParam}&file=docs%2Fdata.csv`, {
+  waitUntil: "domcontentloaded",
+});
+await page.waitForSelector('[data-testid="workspace-preview-pane"] table tbody tr', { timeout: 20000 });
+
 const newTabHref = await page.getAttribute('[data-testid="preview-open-new-tab"]', "href");
 await page.goto(`${BASE}${newTabHref}`, { waitUntil: "domcontentloaded" });
 await page.waitForSelector('[data-testid="workspace-file-page"]', { timeout: 20000 });
