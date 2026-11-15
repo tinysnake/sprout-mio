@@ -514,7 +514,13 @@ try {
   // 机器侧释放这两台机器（没有真实 Worker 去跑 release，按文件头边界 a 直写）。
   for (const key of [machineHeld, machineHandoff])
     db.update(machineLease)
-      .set({ state: "free", holderInstanceId: null, changedAt: new Date() })
+      .set({
+        state: "free",
+        holderInstanceId: null,
+        ownerKind: null,
+        holderCrewChatId: null,
+        changedAt: new Date(),
+      })
       .where(
         and(eq(machineLease.projectId, key.projectId), eq(machineLease.machineId, key.machineId)),
       )

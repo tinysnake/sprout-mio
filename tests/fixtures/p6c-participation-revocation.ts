@@ -36,6 +36,9 @@ const f = setup({ stayingLead: true });
 const pass = (name: string) => console.log(`PASS ${name}`);
 const remove = () => removeProjectMember(f.project.id, f.agent.id, f.ctx);
 const holder = seedRemoteActor(sqlite, f.ctx.userId, f.project.id, f.bootId);
+// 挂靠目标放在 DM 里：Crew 里的实例现在由 coordinator 管（handoff 直接 forbidden），
+// 这条用例要验的是「成员被撤销后新的挂靠请求按 not_found 拒绝」，不能先撞上那道门。
+const dmInstance = ensureInstance(f.dm.chat.id, f.agent.id, f.ctx);
 const pending = seedLease(f, "fencing", holder.instanceId, f.instance.id);
 const beforeHandoff = snapshot();
 blocked(remove);
@@ -285,7 +288,7 @@ assert.throws(
         action: "handoff",
         requestId: newId(ID_PREFIXES.request),
         expectedGeneration: 1,
-        targetInstanceId: f.instance.id,
+        targetInstanceId: dmInstance.id,
       },
       holder,
     ),
@@ -319,6 +322,7 @@ assert.equal(
 assert.equal(getChat(f.dm.chat.id, f.ctx).archivedAt, undefined);
 assert.throws(() => ensureInstance(f.group.id, f.agent.id, f.ctx), { code: "not_found" });
 // An old Group instance cannot become a handoff target merely by rejoining the Project.
+// Crew 里的实例由 coordinator 管，挂靠请求现在直接 forbidden；被拒且零写入才是这条的性质。
 const beforeRejoinedHandoff = snapshot();
 assert.throws(
   () =>
@@ -332,7 +336,7 @@ assert.throws(
       },
       holder,
     ),
-  { code: "not_found" },
+  { code: "forbidden" },
 );
 assert.deepEqual(snapshot(), beforeRejoinedHandoff);
 const released = db

@@ -358,7 +358,7 @@ if (scenario === "forged") {
   const freeCommand = freeWorker.exchange().remote.commands[0]!;
   sqlite
     .prepare(
-      "UPDATE machine_lease SET state='free',holder_instance_id=NULL,generation=generation+1,changed_at=? WHERE project_id=? AND machine_id=?",
+      "UPDATE machine_lease SET state='free',holder_instance_id=NULL,owner_kind=NULL,holder_crew_chat_id=NULL,generation=generation+1,changed_at=? WHERE project_id=? AND machine_id=?",
     )
     .run(clock, projectId, freeMachine.machineId);
   freeWorker.exchange([terminalReport(freeCommand)]);
@@ -439,6 +439,9 @@ if (scenario === "forged") {
     projectId,
     machineId: dual.machineId,
     generation: 5,
+    // 拥有者字段要合法，否则先撞 owner check，测不到「同一 scope 只能有一条当前授权」。
+    ownerKind: "instance" as const,
+    ownerCrewChatId: null,
     holderInstanceId: holderP.instanceId,
     state: "active" as const,
     issuedAt: new Date(),
@@ -1328,6 +1331,8 @@ if (scenario === "intent") {
       projectId,
       machineId: machine.machineId,
       generation: 3,
+      // 授权行必须写清拥有者：active 的 instance 授权要求 owner_kind 非空。
+      ownerKind: "instance",
       holderInstanceId: holder.instanceId,
       state: "active",
       reason: "reclaim",
@@ -1336,7 +1341,7 @@ if (scenario === "intent") {
     .run();
   sqlite
     .prepare(
-      "UPDATE machine_lease SET state='held',holder_instance_id=?,generation=3,changed_at=? WHERE project_id=? AND machine_id=?",
+      "UPDATE machine_lease SET state='held',owner_kind='instance',holder_crew_chat_id=NULL,holder_instance_id=?,generation=3,changed_at=? WHERE project_id=? AND machine_id=?",
     )
     .run(holder.instanceId, tick().getTime(), projectId, machine.machineId);
   // Human 不因 origin holder 不同被误拒：取消按当前权威归属，执行仍记 origin。

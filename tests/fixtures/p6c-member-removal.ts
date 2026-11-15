@@ -98,8 +98,9 @@ assert.equal(
   fencing.pendingMutationId,
 );
 assert.match(blocked(remove).message, /等待确认或前往租约页处理/);
+// 释放要把三个拥有者字段一起清掉：free 的行的 owner_kind 与 holder_crew_chat_id 必须是空的。
 db.update(machineLease)
-  .set({ state: "free", holderInstanceId: null })
+  .set({ state: "free", holderInstanceId: null, ownerKind: null, holderCrewChatId: null })
   .where(eq(machineLease.machineId, held.key.machineId))
   .run();
 completeLeaseMutation(fencing.key, new Date(), false);
@@ -346,7 +347,7 @@ db.update(agentRun)
   .where(eq(agentRun.id, busyRun))
   .run();
 db.update(machineLease)
-  .set({ state: "free", holderInstanceId: null })
+  .set({ state: "free", holderInstanceId: null, ownerKind: null, holderCrewChatId: null })
   .where(eq(machineLease.machineId, busyLease.key.machineId))
   .run();
 setChatOwnerCompat(
@@ -399,7 +400,7 @@ assert.equal(
 );
 // Human handles the now-held responsibility before removal.
 db.update(machineLease)
-  .set({ state: "free", holderInstanceId: null })
+  .set({ state: "free", holderInstanceId: null, ownerKind: null, holderCrewChatId: null })
   .where(eq(machineLease.machineId, handoff.key.machineId))
   .run();
 assert.deepEqual(collect(), [], "completed historical handoff must not block");
