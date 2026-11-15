@@ -1361,7 +1361,8 @@ try {
     await delay(100);
     await revisit(page);
     try {
-      await until(() => reads >= 2, "stalled read is retried", 40);
+      // 读取上限是 5s，重读请求在它之后才发出；8s 的窗口在满载机器上不够，留 20s。
+      await until(() => reads >= 2, "stalled read is retried", 100);
     } catch (error) {
       throw new Error(`${(error as Error).message}（实际发出 ${reads} 次读取）`);
     }
