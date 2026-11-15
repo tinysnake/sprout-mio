@@ -39,8 +39,14 @@ function DelegationCard({
 }) {
   const attention = card.attentionReason !== null;
   const running = card.status === "running" && !attention;
+  const activity = card.activity;
   return (
-    <li data-testid="crew-card" className="border-b border-border last:border-0">
+    <li
+      data-testid="crew-card"
+      data-delegation-id={card.delegationId}
+      data-status={card.status}
+      className="border-b border-border last:border-0"
+    >
       <Link
         to="/projects/$projectId/chats/$chatId"
         params={{ projectId, chatId: card.childChatId }}
@@ -55,16 +61,14 @@ function DelegationCard({
         }}
         className="block px-5 py-3 hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
       >
-        <div className="flex items-center gap-2 text-[11px]">
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">
-            {card.workerProfileName}
-          </span>
+        <div className="flex items-start gap-2">
+          <p className="min-w-0 flex-1 break-words text-xs font-medium">{card.title}</p>
           <span
             data-testid="crew-card-status"
             data-status={card.status}
             data-attention={attention ? "true" : undefined}
             className={cn(
-              "inline-flex items-center gap-1.5 font-medium",
+              "inline-flex shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium",
               attention && card.status !== "blocked"
                 ? "text-status-failed"
                 : statusTones[card.status],
@@ -80,13 +84,33 @@ function DelegationCard({
             {attention ? "需要你" : statuses[card.status]}
           </span>
         </div>
-        <p className="mt-1 break-words text-xs font-medium">{card.title}</p>
+        {activity && (
+          <p
+            data-testid="crew-card-activity"
+            data-activity-status={activity.status}
+            className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
+          >
+            <span
+              aria-hidden="true"
+              className={cn(
+                "size-1.5 shrink-0 rounded-full bg-current",
+                activity.status === "running" && "text-status-success motion-safe:animate-pulse",
+                activity.status === "error" && "text-status-failed",
+              )}
+            />
+            <span className="truncate">
+              {activity.label}
+              {activity.detail ? ` · ${activity.detail}` : ""}
+            </span>
+          </p>
+        )}
         {(card.attentionReason || card.summary) && (
           <p className="mt-1 line-clamp-2 break-words text-[11px] text-muted-foreground">
             {card.attentionReason || card.summary}
           </p>
         )}
         <div className="mt-2 flex flex-wrap gap-x-3 text-[10px] text-muted-foreground">
+          <span>执行者 {card.workerProfileName}</span>
           <span>
             耗时 {Math.floor(card.elapsedMs / 60000)}分{Math.floor(card.elapsedMs / 1000) % 60}秒
           </span>
@@ -169,13 +193,36 @@ export function CrewRail({
         )}
       </button>
       <div id={contentId} hidden={!expanded} className="max-h-[min(30rem,50dvh)] overflow-y-auto">
-        {data.active.length > 0 && (
-          <section aria-label="进行中的委派">
-            <h3 className="px-5 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">
-              进行中的委派 {data.counts.active}
-            </h3>
-            <ul>
-              {data.active.map((card) => (
+        <ul aria-label="委派">
+          {[...data.active, ...recentInactive].map((card) => (
+            <DelegationCard
+              key={card.delegationId}
+              projectId={projectId}
+              crewChatId={crewSession.chat.id}
+              card={card}
+            />
+          ))}
+        </ul>
+        {historicalInactive.length > 0 && (
+          <section aria-label="历史委派">
+            <button
+              type="button"
+              data-testid="crew-history-toggle"
+              aria-expanded={historyExpanded}
+              aria-controls={`${contentId}-history`}
+              className="flex w-full items-center gap-2 border-b border-border px-5 py-2.5 text-left text-[11px] text-muted-foreground hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+              onClick={() => setHistoryExpanded((current) => !current)}
+            >
+              {historyExpanded ? (
+                <ChevronDown className="size-3.5" />
+              ) : (
+                <ChevronRight className="size-3.5" />
+              )}
+              <span className="flex-1">{historyExpanded ? "收起历史委派" : "历史委派"}</span>
+              <span>{historicalInactive.length}</span>
+            </button>
+            <ul id={`${contentId}-history`} hidden={!historyExpanded}>
+              {historicalInactive.map((card) => (
                 <DelegationCard
                   key={card.delegationId}
                   projectId={projectId}
@@ -184,55 +231,6 @@ export function CrewRail({
                 />
               ))}
             </ul>
-          </section>
-        )}
-        {data.inactive.length > 0 && (
-          <section aria-label="非进行中的委派">
-            <h3 className="px-5 pb-1 pt-2 text-[11px] font-medium text-muted-foreground">
-              非进行中的委派 {data.counts.inactive}
-            </h3>
-            {recentInactive.length > 0 && (
-              <ul>
-                {recentInactive.map((card) => (
-                  <DelegationCard
-                    key={card.delegationId}
-                    projectId={projectId}
-                    crewChatId={crewSession.chat.id}
-                    card={card}
-                  />
-                ))}
-              </ul>
-            )}
-            {historicalInactive.length > 0 && (
-              <>
-                <button
-                  type="button"
-                  data-testid="crew-history-toggle"
-                  aria-expanded={historyExpanded}
-                  aria-controls={`${contentId}-history`}
-                  className="flex w-full items-center gap-2 border-b border-border px-5 py-2.5 text-left text-[11px] text-muted-foreground hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
-                  onClick={() => setHistoryExpanded((current) => !current)}
-                >
-                  {historyExpanded ? (
-                    <ChevronDown className="size-3.5" />
-                  ) : (
-                    <ChevronRight className="size-3.5" />
-                  )}
-                  <span className="flex-1">{historyExpanded ? "收起历史委派" : "历史委派"}</span>
-                  <span>{historicalInactive.length}</span>
-                </button>
-                <ul id={`${contentId}-history`} aria-label="历史委派" hidden={!historyExpanded}>
-                  {historicalInactive.map((card) => (
-                    <DelegationCard
-                      key={card.delegationId}
-                      projectId={projectId}
-                      crewChatId={crewSession.chat.id}
-                      card={card}
-                    />
-                  ))}
-                </ul>
-              </>
-            )}
           </section>
         )}
       </div>

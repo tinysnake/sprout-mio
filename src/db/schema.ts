@@ -777,7 +777,14 @@ export const message = sqliteTable(
       .notNull()
       .references(() => chat.id),
     senderKind: text("sender_kind", {
-      enum: ["human", "agent", "automation", "assistant_event", "assistant_work"],
+      enum: [
+        "human",
+        "agent",
+        "automation",
+        "assistant_event",
+        "assistant_work",
+        "delegation_event",
+      ],
     }).notNull(),
     senderId: text("sender_id").notNull(),
     body: text("body").notNull(),
@@ -812,7 +819,7 @@ export const message = sqliteTable(
     }),
     check(
       "message_sender_kind_check",
-      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work')`,
+      sql`${table.senderKind} in ('human', 'agent', 'automation', 'assistant_event', 'assistant_work', 'delegation_event')`,
     ),
     check(
       "message_automation_shape_check",
@@ -823,6 +830,9 @@ export const message = sqliteTable(
       sql`(${table.senderKind}='assistant_event' and ${table.assistantEventId}=${table.senderId} and ${table.assistantEventId} is not null and ${table.assistantProposalId} is null and ${table.taskId} is null) or (${table.senderKind}='assistant_work' and ${table.assistantProposalId}=${table.senderId} and ${table.assistantProposalId} is not null and ${table.assistantEventId} is null and ${table.taskId} is null) or (${table.senderKind} not in ('assistant_event','assistant_work') and ${table.assistantEventId} is null and ${table.assistantProposalId} is null)`,
     ),
     uniqueIndex("message_assistant_event_unique").on(table.assistantEventId),
+    uniqueIndex("message_delegation_event_unique")
+      .on(table.delegationId)
+      .where(sql`${table.senderKind} = 'delegation_event'`),
     uniqueIndex("message_assistant_proposal_unique").on(table.assistantProposalId),
     index("message_chat_created_at_idx").on(table.chatId, table.createdAt),
     uniqueIndex("message_id_chat_unique").on(table.id, table.chatId),

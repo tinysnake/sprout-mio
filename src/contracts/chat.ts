@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { attachmentIdSchema, attachmentSchema } from "./attachment";
 import { automationSourceSchema } from "./automation";
+import { delegationStatusSchema } from "./delegation";
 import { agentProfileIdSchema } from "./agent";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
@@ -290,6 +291,16 @@ const messageBaseSchema = z.object({
     })
     .optional(),
 });
+const delegationMessageSchema = z.strictObject({
+  delegationId: z.string().min(1),
+  childChatId: z.string().min(1),
+  title: z.string(),
+  status: delegationStatusSchema,
+  workerProfileName: z.string(),
+  summary: z.string().nullable(),
+  settledAt: z.iso.datetime(),
+});
+
 export const messageSchema = z
   .discriminatedUnion("senderKind", [
     messageBaseSchema.extend({
@@ -326,6 +337,16 @@ export const messageSchema = z
     messageBaseSchema.extend({
       senderKind: z.literal("agent"),
       automationSource: z.never().optional(),
+    }),
+    messageBaseSchema.extend({
+      senderKind: z.literal("delegation_event"),
+      delegation: delegationMessageSchema,
+      automationSource: z.never().optional(),
+      taskRecord: z.never().optional(),
+      mentions: z.tuple([]),
+      skills: z.tuple([]),
+      attachments: z.tuple([]),
+      attachmentSpans: z.tuple([]),
     }),
     messageBaseSchema.extend({
       senderKind: z.literal("automation"),

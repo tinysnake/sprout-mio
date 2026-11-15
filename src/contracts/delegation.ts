@@ -142,6 +142,13 @@ export const listCrewDelegationsInput = z.strictObject({
   crewChatId: z.string().min(1),
 });
 
+export const crewDelegationActivitySchema = z.strictObject({
+  label: z.string(),
+  detail: z.string().nullable(),
+  status: z.enum(["running", "done", "error"]),
+});
+export type CrewDelegationActivity = z.infer<typeof crewDelegationActivitySchema>;
+
 export type CrewDelegationCard = {
   delegationId: string;
   childChatId: string;
@@ -152,6 +159,8 @@ export type CrewDelegationCard = {
   elapsedMs: number;
   summary: string | null;
   attentionReason: string | null;
+  activity: CrewDelegationActivity | null;
+  runId: string | null;
 };
 
 export type CrewDelegationRail = {

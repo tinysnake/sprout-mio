@@ -665,6 +665,8 @@ describe("消息增量读的游标", () => {
           elapsedMs: 1000,
           summary: null,
           attentionReason: null,
+          activity: null,
+          runId: null,
         },
       ],
       inactive: [],

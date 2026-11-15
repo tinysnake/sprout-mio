@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { ChatRunActivity } from "../../contracts/agent-run";
 import type { AutomationSource } from "../../contracts/automation";
@@ -15,6 +16,7 @@ import { MessageMarkdown } from "./message-markdown";
 import type { MessageSkillSpan } from "../../contracts/skill";
 import { runAttentionSenderLabel } from "../../contracts/run-attention";
 import { RunAttentionNotice } from "./run-attention";
+import { rememberCrewReturn } from "./crew-return-anchor";
 
 const GROUPING_WINDOW_MS = 5 * 60 * 1000;
 
@@ -34,8 +36,10 @@ export function MessageList({
   runActivityByMessage,
   breaks = [],
   automationRuleLink,
+  projectId,
 }: {
   messages: Message[];
+  projectId: string;
   /** DM 的既有身份快照；群聊逐条按 senderId 查 senderNames。 */
   profile: AgentResult<AgentProfile> | null;
   /** 当前登录者的名称来自已有会话；缺失时退回「你」。 */
@@ -63,6 +67,46 @@ export function MessageList({
   const dmAgentName = agent?.name ?? "Agent";
 
   const renderItem = (message: Message, index: number) => {
+    if (message.senderKind === "delegation_event") {
+      const delegation = message.delegation;
+      const tone =
+        delegation.status === "completed"
+          ? "text-status-success"
+          : delegation.status === "failed"
+            ? "text-status-failed"
+            : "text-status-warning";
+      const label =
+        delegation.status === "completed"
+          ? "已完成"
+          : delegation.status === "failed"
+            ? "失败"
+            : delegation.status === "canceled"
+              ? "已取消"
+              : delegation.status;
+      return (
+        <li key={message.id} data-testid="delegation-message" className="pt-4">
+          <Link
+            to="/projects/$projectId/chats/$chatId"
+            params={{ projectId, chatId: delegation.childChatId }}
+            search={{ info: undefined }}
+            data-testid="delegation-message-open"
+            onClick={() => rememberCrewReturn(message.chatId)}
+            className="block rounded-lg border border-border bg-card px-3.5 py-3 hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+          >
+            <div className="flex items-center gap-2 text-[10px]">
+              <span className="text-muted-foreground">委派</span>
+              <span className={tone}>{label}</span>
+              <span className="ml-auto text-muted-foreground">{clockLabel(message.createdAt)}</span>
+            </div>
+            <p className="mt-1 text-xs font-medium break-words">{delegation.title}</p>
+            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
+              执行者 {delegation.workerProfileName}
+              {delegation.summary ? ` · ${delegation.summary}` : ""}
+            </p>
+          </Link>
+        </li>
+      );
+    }
     const human = message.senderKind === "human";
     const source =
       message.senderKind === "automation" ||

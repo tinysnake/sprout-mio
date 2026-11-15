@@ -75,6 +75,7 @@ Crew 是 Project 内的多人协作 Chat，取代旧的 Group 与 Public Channel
 - lead 通过 `sprout_delegation_start` 发起委派，也可以由有权限的 Human 经 server function 发起；worker 必须是本 Crew 的 Agent 成员，不能是 lead 自己。相同 `clientRequestId` 在同一个 Crew 内重放返回原委派，不新建子对话。
 - 委派创建 `chat.kind='delegation'` 子对话，`parent_crew_chat_id` 指向 Crew，并固定 dispatch 时的 lead、`crew_epoch`、worker、请求摘要和 worker instance。子对话不进入普通 Chat 列表，也不参与 Crew 唤醒。
 - 子对话的可读成员由父 Crew 派生：当前 lead、该委派的 worker、能读父 Crew 的 Human。其他 worker 读不到 sibling 子对话；成员移除后访问立即失效。
+- 父 Crew 右栏按进行中优先展示委派，进行中显示最新 run 的 activity；非进行中只保留最近 24 小时，并折叠超出首屏的条目。终态委派在父 Crew 时间线写入一条 `delegation_event` 系统卡片，点击可回到子对话；卡片不进入 lead 输入，也不触发唤醒。
 - Human 的 Crew 消息仍然只进入 lead。worker 的进度只写子对话；`sprout_delegation_input` 可以由 lead 或 Human 追加到运行中的 worker，不写 Crew 时间线。
 - worker 用 `sprout_delegation_complete` 提交摘要与可选 HTML artifact，或用 `sprout_delegation_block` 报告 `needs_input`、`resource_unavailable`、`out_of_scope`、`failed`。摘要上限 8 KiB；报告正文超过 200 字时应使用 artifact。
 - 每次结果写入 `delegation_event`（`delegation_id + revision + kind` 唯一），同一事务创建 pending delivery。delivery 快照 lead 与 epoch，投递前重读当前 lead、epoch 与停止状态；不匹配转 attention，不投给旧 lead。

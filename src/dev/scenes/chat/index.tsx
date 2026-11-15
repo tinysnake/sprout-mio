@@ -646,6 +646,7 @@ function MessagesScene() {
       </div>
       <div className="rounded-container border border-border bg-background p-5">
         <MessageList
+          projectId={PROJECT_ID}
           messages={visibleMessages}
           profile={{ ok: true, data: profiles[0]!, requestId: "req_demo" }}
           humanName={HUMAN}

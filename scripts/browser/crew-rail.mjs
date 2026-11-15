@@ -50,7 +50,7 @@ try {
   const rail = page.getByTestId("crew-rail");
   const toggle = page.getByTestId("crew-rail-toggle");
   await page.goto(`${BASE}${parentPath}`, { waitUntil: "domcontentloaded" });
-  await check("cards_counts_and_sections", async () => {
+  await check("cards_flat_and_status", async () => {
     await rail.waitFor();
     await page.waitForFunction(
       () =>
@@ -61,8 +61,10 @@ try {
     assert.equal(await rail.locator('[data-testid="crew-card"]:visible').count(), 3);
     assert.match(await toggle.innerText(), /进行中 1/);
     assert.match(await toggle.innerText(), /需处理 2/);
-    for (const label of ["进行中的委派", "非进行中的委派"])
-      assert.equal(await rail.getByRole("region", { name: label, exact: true }).count(), 1);
+    assert.equal(await rail.getByText("进行中的委派", { exact: true }).count(), 0);
+    assert.equal(await rail.getByText("非进行中的委派", { exact: true }).count(), 0);
+    const visibleCards = rail.locator('[data-testid="crew-card"]:visible');
+    assert.equal(await visibleCards.first().getAttribute("data-status"), "running");
     const initialStatuses = await rail
       .locator('[data-testid="crew-card-status"]:visible')
       .evaluateAll((nodes) =>
@@ -87,12 +89,30 @@ try {
       /text-status-warning/,
     );
     assert.equal(await rail.getByTestId("crew-card-pulse").count(), 1);
+    const activity = rail.getByTestId("crew-card-activity").first();
+    await activity.waitFor();
+    assert.match(await activity.innerText(), /读取迁移/);
+    assert.match(await activity.innerText(), /0067_adorable_corsair\.sql/);
+    assert.match(await rail.innerText(), /执行者 Researcher/);
+    assert.equal((await rail.innerText()).includes("Initiator"), false);
+    assert.equal(
+      await rail.locator(`[data-delegation-id="${fixture.staleDelegationId}"]`).count(),
+      0,
+    );
     assert.equal(
       await page.locator('[data-testid="chat-list"] [data-chat-kind="delegation"]').count(),
       0,
     );
     assert.equal(await page.locator(`[data-chat-id="${fixture.childChatId}"]`).count(), 0);
     await page.screenshot({ path: `${evidence}/wide-expanded.png`, fullPage: true });
+  });
+  await check("delegation_completion_card_links_to_child", async () => {
+    const card = page.getByTestId("delegation-message").last();
+    await card.waitFor();
+    assert.match(await card.innerText(), /整理验收记录/);
+    assert.match(await card.innerText(), /执行者 Researcher/);
+    const href = await card.getByTestId("delegation-message-open").getAttribute("href");
+    assert.match(href, new RegExp(`/chats/${fixture.childChatId}$`));
   });
   await check("history_collapses_by_active_slots", async () => {
     const history = page.getByTestId("crew-history-toggle");
@@ -121,17 +141,13 @@ try {
   });
   let anchor;
   await check("open_child_and_return_to_parent_anchor", async () => {
-    // 200 条父消息（4 页），先把锚点滚到旧页，确保它不在返回时的首屏 50 条里。
-    // 读满 4 页：目标放在最旧页，距最新页 3 页，超出窗口 2 页的保留半径。
-    for (const target of [100, 150, 200]) {
-      await page.getByTestId("message-history").evaluate((element) => {
-        element.scrollTop = 0;
-      });
-      await page.waitForFunction(
-        (count) => document.querySelectorAll("[data-message-id]").length >= count,
-        target,
-      );
-    }
+    // 200 条父消息；先多读一页，把锚点放在旧页，确保它不在返回时的首屏 50 条里。
+    const older = page.getByTestId("load-older-messages");
+    await page.getByTestId("message-history").evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await older.click();
+    await page.waitForFunction(() => document.querySelectorAll("[data-message-id]").length >= 100);
     await page.getByTestId("message-history").evaluate((element) => {
       const rows = [...element.querySelectorAll("[data-message-id]")];
       const row = rows[20];

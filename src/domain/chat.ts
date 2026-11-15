@@ -26,6 +26,7 @@ import { ID_PREFIXES, newId } from "../contracts/ids";
 import { db, sqlite } from "../db";
 import {
   agentInstance,
+  agentProfile,
   agentRun,
   agentRunInput,
   assistantEvent,
@@ -33,6 +34,7 @@ import {
   chatEffectiveMember,
   chatMember,
   crewControl,
+  delegation,
   message,
   project,
   projectMember,
@@ -132,6 +134,33 @@ function toMessage(
     body: row.body,
     createdAt: row.createdAt.toISOString(),
   };
+  if (row.senderKind === "delegation_event") {
+    if (!row.delegationId) throw new Error("delegation_message_corrupt");
+    const record = db.select().from(delegation).where(eq(delegation.id, row.delegationId)).get();
+    if (!record) throw new Error("delegation_message_corrupt");
+    const worker = db
+      .select({ name: agentProfile.name })
+      .from(agentProfile)
+      .where(eq(agentProfile.id, record.workerProfileId))
+      .get();
+    return {
+      ...identity,
+      senderKind: "delegation_event",
+      delegation: {
+        delegationId: record.id,
+        childChatId: record.childChatId,
+        title: record.title,
+        status: record.status,
+        workerProfileName: worker?.name ?? "Agent",
+        summary: record.terminalSummary,
+        settledAt: (record.settledAt ?? row.createdAt).toISOString(),
+      },
+      mentions: [],
+      skills: [],
+      attachments: [],
+      attachmentSpans: [],
+    };
+  }
   if (row.senderKind === "assistant_event") {
     const event = db
       .select()

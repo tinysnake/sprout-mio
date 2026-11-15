@@ -144,7 +144,7 @@ describe("Crew delegation", () => {
     expect(bodies).toContain("先给结论，再列改动");
   });
 
-  it("delivers a completed result to the lead run, not into the Crew timeline", () => {
+  it("delivers a completed result to the lead run and records a Crew delegation card", () => {
     const crewBefore = listMessages(crew.id, human).length;
     const result = dispatch("client-complete-1");
     const before = readChildChat(result.delegationId);
@@ -156,7 +156,18 @@ describe("Crew delegation", () => {
       },
       workerContext(result.delegationId),
     );
-    expect(listMessages(crew.id, human)).toHaveLength(crewBefore);
+    const crewMessages = listMessages(crew.id, human);
+    expect(crewMessages).toHaveLength(crewBefore + 1);
+    expect(crewMessages.at(-1)).toMatchObject({
+      senderKind: "delegation_event",
+      delegation: {
+        delegationId: result.delegationId,
+        childChatId: result.childChatId,
+        status: "completed",
+        workerProfileName: worker.name,
+        summary: "登录页改版完成",
+      },
+    });
     const leads: (typeof agentRun.$inferSelect)[] = db
       .select()
       .from(agentRun)
@@ -255,7 +266,18 @@ describe("Crew delegation", () => {
       .get();
     expect(delivery?.state).toBe("attention");
     expect(delivery?.attentionReason).toBe("lead_changed");
-    expect(listMessages(crew.id, human)).toHaveLength(crewBefore);
+    const crewMessages = listMessages(crew.id, human);
+    expect(crewMessages).toHaveLength(crewBefore + 1);
+    expect(crewMessages.at(-1)).toMatchObject({
+      senderKind: "delegation_event",
+      delegation: {
+        delegationId: result.delegationId,
+        childChatId: result.childChatId,
+        status: "completed",
+        workerProfileName: worker.name,
+        summary: "旧 lead 的结果",
+      },
+    });
   });
 
   it("derives child chat membership from the parent Crew, not from sibling workers", () => {

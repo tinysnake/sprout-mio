@@ -12,17 +12,40 @@ import type {
   CrewDelegationRail,
 } from "../../contracts/delegation";
 import { ok, fail, type AppResult } from "../../contracts/result";
+import type { RunActivity } from "../../contracts/agent-run";
 import type { ProjectContext } from "../../domain/access";
 import { getRequestContext } from "../request-context";
 import { toDomainAppError } from "./domain-errors";
 
 async function deps() {
-  const [auth, delegation, rail] = await Promise.all([
+  const [auth, delegation, rail, runActivity] = await Promise.all([
     import("../session"),
     import("../../domain/delegation"),
     import("../../domain/crew-delegation-rail"),
+    import("../pi-host/run-activity"),
   ]);
-  return { requireSession: auth.requireSession, ...delegation, ...rail };
+  return {
+    requireSession: auth.requireSession,
+    ...delegation,
+    ...rail,
+    readRunActivity: runActivity.readRunActivity,
+  };
+}
+
+function enrichLiveActivity(
+  rail: CrewDelegationRail,
+  readRunActivity: (runId: string) => RunActivity | undefined,
+): CrewDelegationRail {
+  const active = rail.active.map((card) => {
+    if (card.status !== "running" || !card.runId) return card;
+    const step = readRunActivity(card.runId)?.current;
+    if (!step) return card;
+    return {
+      ...card,
+      activity: { label: step.label, detail: step.detail ?? null, status: step.status },
+    };
+  });
+  return { ...rail, active };
 }
 
 async function boundary<T>(
@@ -88,7 +111,8 @@ export const listCrewDelegationsFn = createServerFn({ method: "POST" })
       const parsed = listCrewDelegationsInput.safeParse(data);
       if (!parsed.success)
         return fail({ code: "validation_failed", message: "Chat 参数无效", requestId });
-      return ok(d.listCrewDelegationRail(parsed.data, ctx), requestId);
+      const rail = d.listCrewDelegationRail(parsed.data, ctx);
+      return ok(enrichLiveActivity(rail, d.readRunActivity), requestId);
     });
   });
 

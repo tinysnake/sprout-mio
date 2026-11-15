@@ -471,6 +471,7 @@ export function ChatThread({
         ) : !runState.ok ? (
           <>
             <MessageList
+              projectId={chat.projectId}
               messages={messages.data}
               breaks={history?.breaks}
               profile={profile}
@@ -486,6 +487,7 @@ export function ChatThread({
         ) : (
           <>
             <MessageList
+              projectId={chat.projectId}
               messages={messages.data}
               breaks={history?.breaks}
               profile={profile}

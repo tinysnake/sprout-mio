@@ -130,6 +130,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/mention-write.test.ts",
     "tests/mention.test.ts",
     "tests/message-attachment-layout.test.ts",
+    "tests/message-list-delegation.test.ts",
     "tests/html-block.test.ts",
     "tests/message-markdown.test.ts",
     "tests/message-window.test.ts",

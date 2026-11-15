@@ -8,7 +8,7 @@ import type { CrewDelegationCard } from "../src/contracts/delegation";
 process.env.DATABASE_URL = join(mkdtempSync(join(tmpdir(), "crew-rail-")), "rail.sqlite");
 const { migrateDatabase } = await import("../src/db/migrate");
 const { db, sqlite } = await import("../src/db");
-const { chat, delegation } = await import("../src/db/schema");
+const { agentRun, chat, delegation } = await import("../src/db/schema");
 const { createProject } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
 const { createCrewChat } = await import("./fixtures/crew-chat");
@@ -58,6 +58,7 @@ describe("Crew rail 的读取边界", () => {
     const oldEpoch = create("epoch");
     const canceled = create("canceled");
     const archived = create("archived");
+    const stale = create("stale");
     db.update(delegation)
       .set({
         status: "completed",
@@ -68,13 +69,39 @@ describe("Crew rail 的读取边界", () => {
       .where(eq(delegation.id, completed.delegationId))
       .run();
     db.update(delegation)
+      .set({
+        status: "completed",
+        terminalSummary: "过期",
+        terminalReason: "completed",
+        settledAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+        updatedAt: new Date(Date.now() - 25 * 60 * 60 * 1000),
+      })
+      .where(eq(delegation.id, stale.delegationId))
+      .run();
+    db.update(delegation)
       .set({ crewEpoch: 99 })
       .where(eq(delegation.id, oldEpoch.delegationId))
       .run();
     cancelDelegation({ delegationId: canceled.delegationId, reason: "撤销" }, ctx);
     db.update(chat).set({ archivedAt: new Date() }).where(eq(chat.id, archived.childChatId)).run();
+    db.update(agentRun)
+      .set({
+        activity: {
+          current: { label: "读取迁移", detail: "drizzle/0067", status: "running" },
+          entries: [],
+        },
+      })
+      .where(eq(agentRun.chatId, active.childChatId))
+      .run();
     const rail = listCrewDelegationRail({ projectId: project.id, crewChatId: crew.id }, ctx);
     expect(rail.counts).toEqual({ active: 1, inactive: 2, needsYou: 0 });
+    expect(rail.active[0].runId).not.toBeNull();
+    expect(rail.active[0].activity).toEqual({
+      label: "读取迁移",
+      detail: "drizzle/0067",
+      status: "running",
+    });
+    expect(rail.inactive.map((item) => item.delegationId)).not.toContain(stale.delegationId);
     expect(rail.active[0].delegationId).toBe(active.delegationId);
     expect(rail.inactive.map((item) => item.delegationId)).toContain(canceled.delegationId);
     expect(
@@ -91,6 +118,8 @@ describe("Crew rail 的读取边界", () => {
         "elapsedMs",
         "summary",
         "attentionReason",
+        "activity",
+        "runId",
       ].sort(),
     );
     expect(() =>
@@ -119,6 +148,8 @@ describe("Crew rail 的读取边界", () => {
       elapsedMs: 1000,
       summary: null,
       attentionReason,
+      activity: null,
+      runId: null,
     });
     const grouped = groupCrewDelegations([
       card("canceling", "canceling"),

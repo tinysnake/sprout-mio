@@ -759,6 +759,25 @@ export function acknowledgeDelegationDelivery(runId: string, messageId: string):
     .run();
 }
 
+function insertCompletionMessage(row: ReturnType<typeof readDelegationRow>, summary: string): void {
+  const existing = db
+    .select({ id: message.id })
+    .from(message)
+    .where(and(eq(message.delegationId, row.id), eq(message.senderKind, "delegation_event")))
+    .get();
+  if (existing) return;
+  db.insert(message)
+    .values({
+      id: newId(ID_PREFIXES.message),
+      chatId: row.parentCrewChatId,
+      senderKind: "delegation_event",
+      senderId: row.id,
+      body: summary.trim() || "委派已结束",
+      delegationId: row.id,
+    })
+    .run();
+}
+
 function settle(
   delegationId: string,
   status: "completed" | "failed" | "canceled",
@@ -808,6 +827,7 @@ function settle(
     summary,
     ...(artifactId ? { resultArtifactId: artifactId } : {}),
   });
+  insertCompletionMessage(row, summary);
   enqueueDelegationDelivery(delegationId, eventId);
 }
 

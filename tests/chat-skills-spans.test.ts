@@ -70,7 +70,12 @@ it("syntax spans freeze for human, authenticated remote sender and settled Agent
     chats.listMessages(direct.chat.id, ctx).find((message) => message.id === saved.id)!;
   const html = () =>
     renderToStaticMarkup(
-      createElement(MessageList, { messages: [read()], profile: null, humanName: "Human" }),
+      createElement(MessageList, {
+        projectId: "prj_test",
+        messages: [read()],
+        profile: null,
+        humanName: "Human",
+      }),
     );
   const renderedText = (markup: string) => markup.replace(/<[^>]*>/g, "");
   const before = html();

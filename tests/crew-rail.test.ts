@@ -30,6 +30,8 @@ const card: CrewDelegationCard = {
   elapsedMs: 3000,
   summary: null,
   attentionReason: null,
+  activity: null,
+  runId: null,
 };
 const data: CrewDelegationRail = {
   active: [card],
@@ -57,6 +59,22 @@ describe("Crew rail 的显示与偏好", () => {
       }),
     ).toBe("");
   });
+  it("activity 紧贴 title，执行者可见且不出现 Initiator", () => {
+    const html = render("crew", {
+      active: [
+        {
+          ...card,
+          activity: { label: "读取迁移", detail: "drizzle/0067", status: "running" },
+          runId: "run_one",
+        },
+      ],
+      inactive: [],
+      counts: { active: 1, inactive: 0, needsYou: 0 },
+    });
+    expect(html.indexOf(">检查接口<")).toBeLessThan(html.indexOf("读取迁移"));
+    expect(html.indexOf("读取迁移")).toBeLessThan(html.indexOf("执行者 Researcher"));
+    expect(html).not.toContain("Initiator");
+  });
   it("状态有色、运行中有动效，历史按空位折叠", () => {
     const inactive = (id: string, status: CrewDelegationCard["status"]): CrewDelegationCard => ({
       ...card,
@@ -75,11 +93,11 @@ describe("Crew rail 的显示与偏好", () => {
       ],
       counts: { active: 2, inactive: 4, needsYou: 2 },
     });
-    expect(html).toContain('aria-label="进行中的委派"');
-    expect(html).toContain('aria-label="非进行中的委派"');
-    expect(html).toContain("进行中的委派 2");
-    expect(html).toContain("非进行中的委派 4");
+    expect(html).not.toContain("进行中的委派");
+    expect(html).not.toContain("非进行中的委派");
+    expect(html).toContain("进行中 2");
     expect(html).toContain("需处理 2");
+    expect(html.indexOf(">检查接口<")).toBeLessThan(html.indexOf(">failed<"));
     expect(html).toMatch(/data-status="running"[^>]*text-status-success/);
     expect(html).toMatch(/data-status="queued"[^>]*text-status-warning/);
     expect(html).toMatch(/data-status="failed"[^>]*text-status-failed/);
@@ -87,7 +105,8 @@ describe("Crew rail 的显示与偏好", () => {
     expect(html).toContain('data-testid="crew-card-pulse"');
     expect(html).toContain('data-testid="crew-history-toggle"');
     expect(html).toContain("历史委派");
-    expect(html).toContain('aria-label="历史委派" hidden');
+    expect(html).toContain(">3<");
+    expect(html).toMatch(/<ul id="crew-rail-[^"]+-history" hidden/);
     expect(html).not.toContain('aria-label="需要你"');
   });
   it("进行中占用预览位，非进行中最多显示 3 个", () => {

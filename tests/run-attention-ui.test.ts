@@ -89,6 +89,7 @@ it("新保留 sender 有独立名称，不冒充成员或历史发送者", () =>
   };
   const html = renderToStaticMarkup(
     createElement(MessageList, {
+      projectId: "prj_test",
       messages: [message],
       profile: null,
       humanName: "你",
