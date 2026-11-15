@@ -27,6 +27,7 @@ import { hashCredential, machineBindings, matchesCredential } from "../domain/ma
 import { getRequestContext, REQUEST_ID_HEADER } from "./request-context";
 import { machineRuntimeContext, runtimeSnapshot } from "./runtime";
 import { applyRemoteExchange, drainRemoteResponse, RemoteError } from "./remote";
+import { mergeBrowseResults, takeBrowseCommands } from "./machine-browse";
 import { LeaseError } from "./lease";
 import { latestMembership } from "./membership";
 
@@ -204,6 +205,7 @@ function frameHash(input: NormalExchange | DrainExchange) {
               seq: input.seq,
               capability: input.capability,
               observations: input.observations,
+              browse: input.browse ?? [],
               remote: input.remote,
             }
           : { mode: input.mode, session: input.session, seq: input.seq, remote: input.remote },
@@ -316,6 +318,7 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
     .run();
   // 首次 exchange 把连接从 connecting 推进到 online，这是页面上可见的状态变化；纯心跳不发布。
   if (row.seq === 0 && seq > 0) publishMachineChange(session.machineId);
+  mergeBrowseResults(session.machineId, input.browse ?? [], ctx.now.getTime());
   const data: ExchangeData = {
     mode: "normal",
     session,
@@ -329,6 +332,7 @@ function normalExchange(input: NormalExchange, ctx: WorkerContext): ExchangeData
         revision,
       })),
     },
+    browse: takeBrowseCommands(session.machineId, ctx.now.getTime()),
     remote: applyRemoteExchange(input.remote, { ...ctx, session, seq, mode: "normal" }),
   };
   db.insert(workerExchangeFrame)

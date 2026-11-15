@@ -15,6 +15,11 @@ import {
   absolutePathSchema,
   positiveSafeIntegerSchema,
 } from "./machine";
+import {
+  MACHINE_BROWSE_CHUNK_BYTES,
+  machineBrowseCommandListSchema,
+  machineBrowseResultListSchema,
+} from "./machine-browse";
 
 export const WORKER_PROTOCOL_VERSION = 3;
 export const WORKER_POLL_INTERVAL_MS = 2000;
@@ -50,10 +55,31 @@ export const workerExchangeInput = z
       mode: z.literal("normal"),
       capability: capabilitySnapshotSchema,
       observations: z.array(directoryObservationSchema).max(1000),
+      browse: machineBrowseResultListSchema.optional(),
     }),
     z.strictObject({ ...exchangeBase, mode: z.literal("drain") }),
   ])
   .superRefine((value, ctx) => {
+    const seenBrowse = new Set<string>();
+    ("browse" in value ? value.browse : undefined)?.forEach((result, index) => {
+      if (seenBrowse.has(result.requestId))
+        ctx.addIssue({
+          code: "custom",
+          path: ["browse", index],
+          message: "浏览结果必须按 requestId 唯一",
+        });
+      seenBrowse.add(result.requestId);
+      if (
+        result.ok &&
+        result.op === "file_chunk" &&
+        result.base64.length > Math.ceil((MACHINE_BROWSE_CHUNK_BYTES * 4) / 3) + 4
+      )
+        ctx.addIssue({
+          code: "custom",
+          path: ["browse", index, "base64"],
+          message: "浏览块超过单块字节上限",
+        });
+    });
     if (value.mode === "normal") {
       const projects = new Set<string>();
       value.observations.forEach((fact, index) => {
@@ -243,8 +269,28 @@ export const workerExchangeResponseSchema = z.union([
           })
           .nullable(),
         remote: workerExchangeOutputRemoteSchema,
+        browse: machineBrowseCommandListSchema.optional(),
       })
       .superRefine((value, ctx) => {
+        for (const command of value.browse ?? []) {
+          if (command.machineId !== value.session.machineId)
+            ctx.addIssue({
+              code: "custom",
+              path: ["browse"],
+              message: "浏览命令必须属于当前 Machine",
+            });
+          if (
+            value.configuration &&
+            !value.configuration.bindings.some((binding) => binding.projectId === command.projectId)
+          )
+            ctx.addIssue({
+              code: "custom",
+              path: ["browse"],
+              message: "浏览命令的 Project 必须已绑定到这台 Machine",
+            });
+        }
+        if (value.mode === "drain" && (value.browse?.length ?? 0) > 0)
+          ctx.addIssue({ code: "custom", path: ["browse"], message: "drain 不能下发浏览命令" });
         if (
           (value.mode === "normal") !== (value.configuration !== null) ||
           (value.mode === "drain" &&

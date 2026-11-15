@@ -117,6 +117,8 @@ export const capabilitySnapshotSchema = z.strictObject({
   workerVersion: z.string().min(1).max(80),
   // 旧 Worker 不报执行环境；缺省表示未知，不是「等于桌面」。
   executionEnvironment: executionEnvironmentSchema.optional(),
+  // 旧 Worker 收到浏览帧会因 strict schema 断开会话；服务端据此拒绝下发而不是赌版本。
+  machineBrowse: z.literal(true).optional(),
   shells: z.array(shellFactSchema).max(16),
   remoteOperations: z
     .array(z.enum(REMOTE_OPERATION_KINDS))
