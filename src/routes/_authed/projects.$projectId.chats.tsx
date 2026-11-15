@@ -24,6 +24,7 @@ import {
   useChatFilesEntry,
   useChatInspector,
   useChatSidePane,
+  useMachineBrowse,
   chatsSearchSchema,
 } from "../../components/chat/chat-search";
 import { useSearch } from "@tanstack/react-router";
@@ -116,6 +117,10 @@ function ChatsLayout() {
     loader.members.ok && loader.profiles.ok && human ? (
       <NewChatDialog projectId={projectId} members={members} profiles={profiles} />
     ) : undefined;
+  const browseMachine = useMachineBrowse(projectId, chatId);
+  const machineNames = loader.machines.ok
+    ? Object.fromEntries(loader.machines.data.map((fact) => [fact.machine.id, fact.machine.name]))
+    : undefined;
   const machineFactsError = !loader.infoHub.ok
     ? loader.infoHub.error
     : !loader.executions.ok
@@ -202,6 +207,7 @@ function ChatsLayout() {
                 <WorkspacePreviewPane
                   projectId={projectId}
                   chatId={chatId}
+                  machineId={search.machine}
                   inspectorOpen={open}
                   filesOpen={filesOpen}
                   onToggleInspector={() => setOpen(!open)}
@@ -218,6 +224,8 @@ function ChatsLayout() {
                 <WorkspaceSidePanel
                   projectId={projectId}
                   chatId={chatId}
+                  machineId={search.machine}
+                  machineNames={machineNames}
                   onClose={() => setOpen(false)}
                 />
               ) : selected && !diagnostic ? (
@@ -236,6 +244,7 @@ function ChatsLayout() {
                   projectProfiles={profiles}
                   machineFacts={machineFacts}
                   machineFactsError={machineFactsError}
+                  onBrowseMachine={browseMachine}
                   continuation={
                     selected.continuation.ok
                       ? {

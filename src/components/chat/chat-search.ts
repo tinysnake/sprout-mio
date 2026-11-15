@@ -20,6 +20,11 @@ export const chatsSearchSchema = z.object({
   file: z.string().min(1).optional().catch(undefined),
   /** 中栏打开着的文件页签，逗号分隔、逐段 URI 编码；详情见 decodeOpenFiles。 */
   files: z.string().optional().catch(undefined),
+  /**
+   * 右栏的文件树改看哪台机器上的项目目录。缺省是本 Chat 的工作区；
+   * 机器在不在线、能不能读由服务端判，URL 只记用户点了哪台。
+   */
+  machine: z.string().min(1).optional().catch(undefined),
 });
 
 export type ChatsSearch = z.infer<typeof chatsSearchSchema>;
@@ -86,6 +91,36 @@ export function useChatFilesEntry(projectId: string, chatId?: string) {
     setPane(filesOpen ? "info" : "files");
   }, [filesOpen, setPane]);
   return { filesOpen, toggleFiles };
+}
+
+/**
+ * 从租约那一行跳到那台机器的文件树：换的是右栏的文件来源，不换对话、
+ * 不要求租约还在手上。传 `undefined` 回到 Chat 自己的工作区。
+ */
+export function useMachineBrowse(projectId: string, chatId?: string) {
+  const search = useSearch({ from: CHATS_ROUTE_ID });
+  const navigate = useNavigate();
+  const current = search.machine;
+  return useCallback(
+    (machineId?: string) => {
+      if (!chatId) return;
+      const switching = machineId !== current;
+      void navigate({
+        to: "/projects/$projectId/chats/$chatId",
+        params: { projectId, chatId },
+        search: (previous) => ({
+          ...previous,
+          info: 1,
+          pane: "files",
+          machine: machineId,
+          // 换来源时页签一起收起：机器上的路径回到本机工作区就是另一份文件。
+          ...(switching ? { file: undefined, files: undefined } : {}),
+        }),
+        replace: true,
+      });
+    },
+    [chatId, current, navigate, projectId],
+  );
 }
 
 /** 逗号在文件名里是合法字符，所以路径先整段编码再拼，解码时逐段还原。 */

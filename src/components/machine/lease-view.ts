@@ -64,6 +64,16 @@ export function visibleLeases(leases: readonly LeaseView[], projectId: string): 
   return leases.filter((lease) => lease.projectId === projectId);
 }
 
+/**
+ * 最近一次申请或释放的排前面：浏览入口跟着这条顺序，
+ * 人看到的第一个就是刚用过的那台机器，不用先想「哪台有我要看的东西」。
+ */
+export function leasesByRecency(leases: readonly LeaseView[]): LeaseView[] {
+  return [...leases].sort(
+    (left, right) => Date.parse(right.changedAt) - Date.parse(left.changedAt),
+  );
+}
+
 export function leasesForMachine(
   leases: readonly LeaseView[],
   machineId: string,

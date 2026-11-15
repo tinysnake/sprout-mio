@@ -51,6 +51,7 @@ import { Route as AuthedProjectsProjectIdChatsChatIdRouteImport } from './routes
 import { Route as AuthedProjectsProjectIdSettingsIndexRouteImport } from './routes/_authed/projects.$projectId.settings.index'
 import { Route as AuthedProjectsProjectIdTasksTaskIdRouteImport } from './routes/_authed/projects.$projectId.tasks.$taskId'
 import { Route as AuthedProjectsProjectIdChatsChatIdIndexRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.index'
+import { Route as AuthedProjectsProjectIdMachinesMachineIdFilesRouteImport } from './routes/_authed/projects.$projectId.machines.$machineId.files'
 import { Route as AuthedProjectsProjectIdSettingsCronRuleIdRouteImport } from './routes/_authed/projects.$projectId.settings.cron.$ruleId'
 import { Route as AuthedProjectsProjectIdSettingsCronNewRouteImport } from './routes/_authed/projects.$projectId.settings.cron.new'
 import { Route as AuthedProjectsProjectIdSettingsWebhooksRuleIdRouteImport } from './routes/_authed/projects.$projectId.settings.webhooks.$ruleId'
@@ -282,6 +283,12 @@ const AuthedProjectsProjectIdChatsChatIdIndexRoute =
     path: '/',
     getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
   } as any)
+const AuthedProjectsProjectIdMachinesMachineIdFilesRoute =
+  AuthedProjectsProjectIdMachinesMachineIdFilesRouteImport.update({
+    id: '/machines/$machineId/files',
+    path: '/machines/$machineId/files',
+    getParentRoute: () => AuthedProjectsProjectIdRoute,
+  } as any)
 const AuthedProjectsProjectIdSettingsCronRuleIdRoute =
   AuthedProjectsProjectIdSettingsCronRuleIdRouteImport.update({
     id: '/cron/$ruleId',
@@ -362,6 +369,7 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
   '/projects/$projectId/settings/': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/projects/$projectId/machines/$machineId/files': typeof AuthedProjectsProjectIdMachinesMachineIdFilesRoute
   '/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
   '/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
   '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
@@ -404,6 +412,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/projects/$projectId/chats': typeof AuthedProjectsProjectIdChatsIndexRoute
   '/projects/$projectId/settings': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/projects/$projectId/machines/$machineId/files': typeof AuthedProjectsProjectIdMachinesMachineIdFilesRoute
   '/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
   '/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
   '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
@@ -455,6 +464,7 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId/tasks/$taskId': typeof AuthedProjectsProjectIdTasksTaskIdRoute
   '/_authed/projects/$projectId/chats/': typeof AuthedProjectsProjectIdChatsIndexRoute
   '/_authed/projects/$projectId/settings/': typeof AuthedProjectsProjectIdSettingsIndexRoute
+  '/_authed/projects/$projectId/machines/$machineId/files': typeof AuthedProjectsProjectIdMachinesMachineIdFilesRoute
   '/_authed/projects/$projectId/settings/cron/$ruleId': typeof AuthedProjectsProjectIdSettingsCronRuleIdRoute
   '/_authed/projects/$projectId/settings/cron/new': typeof AuthedProjectsProjectIdSettingsCronNewRoute
   '/_authed/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
@@ -506,6 +516,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats/'
     | '/projects/$projectId/settings/'
+    | '/projects/$projectId/machines/$machineId/files'
     | '/projects/$projectId/settings/cron/$ruleId'
     | '/projects/$projectId/settings/cron/new'
     | '/projects/$projectId/settings/webhooks/$ruleId'
@@ -548,6 +559,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/tasks/$taskId'
     | '/projects/$projectId/chats'
     | '/projects/$projectId/settings'
+    | '/projects/$projectId/machines/$machineId/files'
     | '/projects/$projectId/settings/cron/$ruleId'
     | '/projects/$projectId/settings/cron/new'
     | '/projects/$projectId/settings/webhooks/$ruleId'
@@ -598,6 +610,7 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId/tasks/$taskId'
     | '/_authed/projects/$projectId/chats/'
     | '/_authed/projects/$projectId/settings/'
+    | '/_authed/projects/$projectId/machines/$machineId/files'
     | '/_authed/projects/$projectId/settings/cron/$ruleId'
     | '/_authed/projects/$projectId/settings/cron/new'
     | '/_authed/projects/$projectId/settings/webhooks/$ruleId'
@@ -925,6 +938,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdIndexRouteImport
       parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
     }
+    '/_authed/projects/$projectId/machines/$machineId/files': {
+      id: '/_authed/projects/$projectId/machines/$machineId/files'
+      path: '/machines/$machineId/files'
+      fullPath: '/projects/$projectId/machines/$machineId/files'
+      preLoaderRoute: typeof AuthedProjectsProjectIdMachinesMachineIdFilesRouteImport
+      parentRoute: typeof AuthedProjectsProjectIdRoute
+    }
     '/_authed/projects/$projectId/settings/cron/$ruleId': {
       id: '/_authed/projects/$projectId/settings/cron/$ruleId'
       path: '/cron/$ruleId'
@@ -1088,6 +1108,7 @@ interface AuthedProjectsProjectIdRouteChildren {
   AuthedProjectsProjectIdSettingsRoute: typeof AuthedProjectsProjectIdSettingsRouteWithChildren
   AuthedProjectsProjectIdTasksRoute: typeof AuthedProjectsProjectIdTasksRouteWithChildren
   AuthedProjectsProjectIdIndexRoute: typeof AuthedProjectsProjectIdIndexRoute
+  AuthedProjectsProjectIdMachinesMachineIdFilesRoute: typeof AuthedProjectsProjectIdMachinesMachineIdFilesRoute
 }
 
 const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren =
@@ -1101,6 +1122,8 @@ const AuthedProjectsProjectIdRouteChildren: AuthedProjectsProjectIdRouteChildren
     AuthedProjectsProjectIdTasksRoute:
       AuthedProjectsProjectIdTasksRouteWithChildren,
     AuthedProjectsProjectIdIndexRoute: AuthedProjectsProjectIdIndexRoute,
+    AuthedProjectsProjectIdMachinesMachineIdFilesRoute:
+      AuthedProjectsProjectIdMachinesMachineIdFilesRoute,
   }
 
 const AuthedProjectsProjectIdRouteWithChildren =

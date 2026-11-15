@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { encodeOpenFiles } from "../../components/chat/chat-search";
 import { Icon } from "../../components/ui/icon";
-import { workspaceFileUrl } from "../../components/workspace/workspace-api";
+import { fileUrlOf } from "../../components/workspace/workspace-api";
 import { WorkspacePreview } from "../../components/workspace/workspace-preview";
 
 /**
@@ -20,6 +20,7 @@ function WorkspaceFilePage() {
   const { projectId } = Route.useParams();
   const { chatId, path } = Route.useSearch();
   const name = path.split("/").pop() ?? path;
+  const source = { kind: "workspace", projectId, chatId } as const;
   const back = {
     projectId,
     chatId,
@@ -51,7 +52,7 @@ function WorkspaceFilePage() {
         </div>
         <div className="min-w-0 flex-1" />
         <a
-          href={workspaceFileUrl({ projectId, chatId, path })}
+          href={fileUrlOf(source, path)}
           target="_blank"
           rel="noreferrer"
           className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground hover:text-foreground"
@@ -60,7 +61,7 @@ function WorkspaceFilePage() {
           原始文件
         </a>
       </header>
-      <WorkspacePreview projectId={projectId} chatId={chatId} path={path} name={name} />
+      <WorkspacePreview source={source} path={path} name={name} />
     </section>
   );
 }

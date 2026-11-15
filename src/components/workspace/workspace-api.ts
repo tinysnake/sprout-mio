@@ -1,35 +1,46 @@
 import { useEffect, useState } from "react";
-import type { WorkspaceTree } from "../../contracts/workspace";
+import type { WorkspaceEntry } from "../../contracts/workspace";
 import { workspaceTreeSchema } from "../../contracts/workspace";
+import { machineTreeSchema } from "../../contracts/machine-browse";
 
-/** 三个入口共用一个查询串拼法：树、内嵌预览、新标签页打开，参数必须一致。 */
-export type WorkspaceQuery = {
-  readonly projectId: string;
-  readonly chatId?: string;
-  readonly path: string;
-};
+/**
+ * 树、预览、新标签页三个入口都从同一个来源算 URL，参数不能各拼各的：
+ * workspace 读 server 本机的工作区，machine 读那台机器上的项目工作目录。
+ */
+export type WorkspaceSource =
+  | { readonly kind: "workspace"; readonly projectId: string; readonly chatId?: string }
+  | { readonly kind: "machine"; readonly projectId: string; readonly machineId: string };
 
-function query(input: WorkspaceQuery) {
-  const params = new URLSearchParams({ projectId: input.projectId, path: input.path });
-  if (input.chatId) params.set("chatId", input.chatId);
+function query(source: WorkspaceSource, path: string) {
+  const params = new URLSearchParams({ projectId: source.projectId, path });
+  if (source.kind === "workspace" && source.chatId) params.set("chatId", source.chatId);
+  if (source.kind === "machine") params.set("machineId", source.machineId);
   return params.toString();
 }
 
-export function workspaceFileUrl(input: WorkspaceQuery) {
-  return `/api/workspace/file?${query(input)}`;
+export function fileUrlOf(source: WorkspaceSource, path: string) {
+  const prefix = source.kind === "machine" ? "/api/machine/file" : "/api/workspace/file";
+  return `${prefix}?${query(source, path)}`;
 }
 
-export function workspaceTreeUrl(input: WorkspaceQuery) {
-  return `/api/workspace/tree?${query(input)}`;
+export function treeUrlOf(source: WorkspaceSource, path: string) {
+  const prefix = source.kind === "machine" ? "/api/machine/tree" : "/api/workspace/tree";
+  return `${prefix}?${query(source, path)}`;
 }
 
 /**
  * 「新标签页打开」指向应用自己的整页预览，不是字节接口：
  * md / csv 这类文件的响应类型会让浏览器显示源码，整页预览才和嵌入视图一致。
  */
-export function workspaceViewerUrl(input: { projectId: string; chatId: string; path: string }) {
-  const params = new URLSearchParams({ chatId: input.chatId, path: input.path });
-  return `/projects/${input.projectId}/files?${params.toString()}`;
+export function viewerUrlOf(source: WorkspaceSource, path: string, chatId?: string) {
+  const params = new URLSearchParams({ path });
+  if (source.kind === "workspace") {
+    params.set("chatId", source.chatId ?? "");
+    return `/projects/${source.projectId}/files?${params.toString()}`;
+  }
+  // 机器预览页的「回到对话」需要知道是哪个 Chat；从右栏点开时一定有。
+  if (chatId) params.set("chatId", chatId);
+  return `/projects/${source.projectId}/machines/${source.machineId}/files?${params.toString()}`;
 }
 
 export class WorkspaceRequestError extends Error {
@@ -46,11 +57,20 @@ async function readError(response: Response) {
   return body?.error?.message ?? `请求失败（${response.status}）`;
 }
 
-export async function fetchWorkspaceTree(
-  input: WorkspaceQuery,
+export type TreePayload = {
+  readonly entries: readonly WorkspaceEntry[];
+  readonly truncated: boolean;
+  /** 本机工作区的来源；机器树没有这个概念。 */
+  readonly root?: "repository" | "workspace";
+  readonly machineName?: string;
+};
+
+export async function fetchTree(
+  source: WorkspaceSource,
+  path: string,
   signal?: AbortSignal,
-): Promise<WorkspaceTree> {
-  const response = await fetch(workspaceTreeUrl(input), { signal, credentials: "same-origin" });
+): Promise<TreePayload> {
+  const response = await fetch(treeUrlOf(source, path), { signal, credentials: "same-origin" });
   if (!response.ok) throw new WorkspaceRequestError(response.status, await readError(response));
   const body = (await response.json().catch(() => null)) as {
     ok?: boolean;
@@ -59,16 +79,25 @@ export async function fetchWorkspaceTree(
   } | null;
   if (body?.ok !== true)
     throw new WorkspaceRequestError(500, body?.error?.message ?? "工作区响应无法解析");
+  if (source.kind === "machine") {
+    const parsed = machineTreeSchema.safeParse(body.data);
+    if (!parsed.success) throw new WorkspaceRequestError(500, "机器目录响应无法解析");
+    return {
+      entries: parsed.data.entries,
+      truncated: parsed.data.truncated,
+      machineName: parsed.data.machineName,
+    };
+  }
   const parsed = workspaceTreeSchema.safeParse(body.data);
   if (!parsed.success) throw new WorkspaceRequestError(500, "工作区响应无法解析");
-  return parsed.data;
+  return { entries: parsed.data.entries, truncated: parsed.data.truncated, root: parsed.data.root };
 }
 
 /** 文本类预览限制在 2 MiB：再大就不是「看一眼」，而是把整个日志塞进 DOM。 */
 export const WORKSPACE_TEXT_PREVIEW_BYTES = 2 * 1024 * 1024;
 
-export async function fetchWorkspaceText(input: WorkspaceQuery, signal?: AbortSignal) {
-  const response = await fetch(workspaceFileUrl(input), {
+export async function fetchFileText(url: string, signal?: AbortSignal) {
+  const response = await fetch(url, {
     signal,
     credentials: "same-origin",
     headers: { range: `bytes=0-${WORKSPACE_TEXT_PREVIEW_BYTES - 1}` },
