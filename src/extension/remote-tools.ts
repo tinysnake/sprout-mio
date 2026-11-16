@@ -38,7 +38,7 @@ type ToolName = keyof typeof remoteToolInputSchemas;
 
 const descriptions: Record<ToolName, string> = {
   sprout_resource_request:
-    "提交绑定原 run 的 Crew Machine 资源需求，等待 lead 批准；目录范围校验不提供文件系统沙箱。",
+    "提交绑定原 run 的 Crew Machine 资源需求，等待 lead 批准；目录范围校验不提供文件系统沙箱。先用 sprout_info_hub 读取当前 Crew 上下文；crewChatId 是所属 Crew 对话 ID，不能填写委派子对话 ID，crewEpoch 使用当前 Crew 的 epoch。",
   sprout_resource_approve:
     "当前 Crew lead 按 epoch/revision 批准资源请求中明确的 Machine、目录及操作范围。",
   sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；runtime 等待远端排空后归还。",

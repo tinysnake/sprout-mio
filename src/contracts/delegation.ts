@@ -223,6 +223,7 @@ const delegationStartBlockMsSchema = z.number().optional().transform(clampDelega
 
 export const crewDelegationToolInputSchemas = {
   sprout_delegation_start: z.strictObject({
+    resources: z.array(crewResourceScopeSchema).max(16).optional(),
     workerProfileId: z.string().min(1),
     request: z.string().min(1).max(8000),
     blockMs: delegationStartBlockMsSchema,
