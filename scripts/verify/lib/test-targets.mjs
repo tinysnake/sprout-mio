@@ -167,6 +167,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/route-reload.test.ts",
     "tests/storage-snapshot.test.ts",
     "tests/status-facts.test.ts",
+    "tests/step3-ui-forms.test.ts",
     "tests/runtime.test.ts",
     "tests/theme-preference.test.ts",
     "tests/task-agent-tools.test.ts",

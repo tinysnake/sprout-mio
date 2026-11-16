@@ -24,6 +24,7 @@ export const demoProject: Project = {
   id: DEMO_PROJECT_ID,
   name: "Sprout 重构",
   description: "把协作工作台从原型推进到可交付的一期产品。",
+  agentPrompt: "改动前端时遵守 docs/frontend-conventions.md；不要动 A/B 冻结臂。",
   createdAt: "2026-10-01T02:30:00.000Z",
   updatedAt: "2026-10-18T07:12:00.000Z",
 };
@@ -33,6 +34,7 @@ export const demoProfiles: AgentProfile[] = [
     id: "agp_33333333",
     name: "Amenda",
     jobTitle: "全能秘书",
+    description: "整理上下文、拆解任务并盯住收口；把可独立验收的活拆给合适的成员。",
     persona:
       "负责整理上下文、拆解任务并盯住收口。回答先给结论，再给依据；不确定的事实必须标注来源。",
     harness: "pi",
@@ -44,6 +46,7 @@ export const demoProfiles: AgentProfile[] = [
   {
     id: "agp_44444444",
     name: "Repo 分析员",
+    description: "只读仓库与 git 历史，回答依赖关系、变更范围与风险点。",
     persona: "只读仓库事实，按 commit 与文件路径说明结论，不猜测未读取的代码。",
     harness: "pi",
     purpose: "worker",
@@ -122,6 +125,12 @@ export const demoInfoHub: ProjectInfoHub = {
       name: demoProfiles.find((profile) => profile.id === member.agentProfileId)?.name ?? "Agent",
       personaSummary:
         demoProfiles.find((profile) => profile.id === member.agentProfileId)?.persona ?? "",
+      ...(() => {
+        const description = demoProfiles.find(
+          (profile) => profile.id === member.agentProfileId,
+        )?.description;
+        return description ? { description } : {};
+      })(),
       status: "idle",
       error: null,
       ...(index === 0 ? { chatId: "cnv_77777777" } : {}),

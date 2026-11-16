@@ -54,6 +54,14 @@ export function ProjectAgentsPanel({
                       职位：{agent.jobTitle}
                     </p>
                   )}
+                  {agent.description && (
+                    <p
+                      data-testid="info-agent-description"
+                      className="text-xs text-muted-foreground break-words"
+                    >
+                      工作描述：{agent.description}
+                    </p>
+                  )}
                   <AgentStatusFact status={agent.status} error={agent.error} />
                 </div>
                 <div className="flex flex-wrap items-center gap-3">

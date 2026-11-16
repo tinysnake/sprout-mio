@@ -192,6 +192,8 @@ export const projectAgentEntrySchema = z
     name: z.string().min(1),
     /** 人设摘要：列表里既有的身份事实，与职位并列，不互相替代。 */
     personaSummary: z.string().max(600),
+    /** 工作描述：lead 据以选人的第三条身份事实，与职位、人设并列且互不替代。 */
+    description: z.string().max(600).optional(),
     jobTitle: z.string().max(40).optional(),
     instanceId: instanceId.optional(),
     chatId: chatId.optional(),

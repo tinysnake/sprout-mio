@@ -195,6 +195,8 @@ function ProjectSettingsView() {
                   projectId,
                   name: draft.name,
                   description: draft.description ? draft.description : null,
+                  kind: draft.kind,
+                  agentPrompt: draft.agentPrompt ? draft.agentPrompt : null,
                 },
               })
             }

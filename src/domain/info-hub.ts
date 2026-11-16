@@ -223,8 +223,9 @@ export function getProjectInfoHub(
     return {
       agentProfileId: profile.id,
       name: profile.name,
-      // 人设与职位是两件事实：P6b 之前列表只有人设，之后只有职位，这里两个都留着。
+      // 人设与职位是两件事实：P6b 之前列表只有人设，之后只有职位，这里两个都留着；工作描述是第三条。
       personaSummary: profile.persona.slice(0, 600),
+      ...(profile.description ? { description: profile.description.slice(0, 600) } : {}),
       ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
       ...agentState(runs.filter((run) => run.agentProfileId === profile.id)),
       ...(dm ? { instanceId: dm.instanceId, chatId: dm.chatId } : {}),

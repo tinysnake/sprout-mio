@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { cn } from "cn";
 import { ID_PREFIXES, newId } from "../../contracts/ids";
 import { toAppError } from "../../contracts/result";
 import type { AppError } from "../../contracts/result";
-import type { FieldErrors, Project, ProjectResult } from "../../contracts/project";
+import type { FieldErrors, Project, ProjectKind, ProjectResult } from "../../contracts/project";
 import { ResultError } from "./result-error";
 import { SettingsSection } from "./settings-section";
 import { Button } from "../ui/button";
@@ -11,14 +12,36 @@ import { Field } from "../ui/field";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 
-export type ProjectBasicInfoDraft = { name: string; description: string };
+export type ProjectBasicInfoDraft = {
+  name: string;
+  description: string;
+  kind: ProjectKind;
+  agentPrompt: string;
+};
 
-function draftFrom(project: { name: string; description?: string }) {
-  return { name: project.name, description: project.description ?? "" };
+/** 三个互斥的项目类型；数组顺序就是连体选项组里从左到右的顺序。 */
+const PROJECT_KIND_CHOICES: { value: ProjectKind; label: string }[] = [
+  { value: "coding", label: "编程项目" },
+  { value: "work", label: "工作项目" },
+  { value: "custom", label: "自定义" },
+];
+
+function draftFrom(project: {
+  name: string;
+  description?: string;
+  kind: ProjectKind;
+  agentPrompt?: string | null;
+}): ProjectBasicInfoDraft {
+  return {
+    name: project.name,
+    description: project.description ?? "",
+    kind: project.kind,
+    agentPrompt: project.agentPrompt ?? "",
+  };
 }
 
 /**
- * 改名与改描述的呈现。提交函数由调用方注入：正式页面走 updateProject，
+ * 改名、改描述、选项目类型与写项目提示词的呈现。提交函数由调用方注入：正式页面走 updateProject，
  * 开发场景走固定的演示回调；没有改动时保存禁用。
  */
 export function ProjectBasicInfoForm({
@@ -26,7 +49,13 @@ export function ProjectBasicInfoForm({
   submit,
   onSaved,
 }: {
-  project: { id: string; name: string; description?: string };
+  project: {
+    id: string;
+    name: string;
+    description?: string;
+    kind: ProjectKind;
+    agentPrompt?: string | null;
+  };
   submit: (draft: ProjectBasicInfoDraft) => Promise<ProjectResult<Project>>;
   onSaved: () => void;
 }) {
@@ -47,7 +76,9 @@ export function ProjectBasicInfoForm({
     if (
       sameObject &&
       synced.current.draft.name === next.name &&
-      synced.current.draft.description === next.description
+      synced.current.draft.description === next.description &&
+      synced.current.draft.kind === next.kind &&
+      synced.current.draft.agentPrompt === next.agentPrompt
     )
       return;
     synced.current = { id: project.id, draft: next };
@@ -59,7 +90,11 @@ export function ProjectBasicInfoForm({
     }
   }, [project]);
 
-  const dirty = draft.name !== initial.name || draft.description !== initial.description;
+  const dirty =
+    draft.name !== initial.name ||
+    draft.description !== initial.description ||
+    draft.kind !== initial.kind ||
+    draft.agentPrompt !== initial.agentPrompt;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -91,7 +126,7 @@ export function ProjectBasicInfoForm({
     <SettingsSection
       divided={false}
       title="基本信息"
-      description="名称会同步到 Project 选择器；描述用于说明这个 Project 的协作范围。"
+      description="名称会同步到 Project 选择器；描述与类型说明这个 Project 的协作范围，提示词是给成员的补充约定。"
     >
       <form
         onSubmit={handleSubmit}
@@ -129,6 +164,69 @@ export function ProjectBasicInfoForm({
             onChange={(event) => {
               const description = event.target.value;
               setDraft((current) => ({ ...current, description }));
+              setSaved(false);
+              setError(null);
+            }}
+          />
+        </Field>
+        <Field label="项目类型" error={fieldErrors.kind}>
+          <div
+            role="radiogroup"
+            aria-label="项目类型"
+            data-testid="project-edit-kind"
+            className="flex w-full max-w-[22rem] overflow-hidden rounded-control border border-input bg-background"
+          >
+            {PROJECT_KIND_CHOICES.map((choice, index) => {
+              const selected = draft.kind === choice.value;
+              return (
+                <label
+                  key={choice.value}
+                  data-testid={`project-edit-kind-${choice.value}`}
+                  data-checked={selected ? "true" : "false"}
+                  className={cn(
+                    "flex min-h-9.5 min-w-0 flex-1 cursor-pointer items-center justify-center text-[13px] text-foreground transition-colors duration-150 has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring max-desktop:min-h-11",
+                    index > 0 && "border-l border-input",
+                    // 选中格不再跟随 hover 变色，否则指针悬停时看不出哪一格在生效。
+                    selected ? "bg-selected" : "hover:bg-hover",
+                    pending && "pointer-events-none opacity-65",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="project-edit-kind"
+                    value={choice.value}
+                    checked={selected}
+                    disabled={pending}
+                    onChange={() => {
+                      setDraft((current) => ({ ...current, kind: choice.value }));
+                      setSaved(false);
+                      setError(null);
+                    }}
+                    className="sr-only"
+                  />
+                  {choice.label}
+                </label>
+              );
+            })}
+          </div>
+        </Field>
+        <Field
+          label="项目提示词"
+          htmlFor="project-edit-agent-prompt"
+          hint={`可留空，最多 2000 字；下一轮运行生效。${draft.agentPrompt.length} / 2000`}
+          error={fieldErrors.agentPrompt}
+        >
+          <Textarea
+            id="project-edit-agent-prompt"
+            data-testid="project-edit-agent-prompt"
+            value={draft.agentPrompt}
+            rows={5}
+            maxLength={2000}
+            disabled={pending}
+            placeholder="写上本项目与其它项目不同的约定，例如必须遵守的文档路径或禁止改动的目录。"
+            onChange={(event) => {
+              const agentPrompt = event.target.value;
+              setDraft((current) => ({ ...current, agentPrompt }));
               setSaved(false);
               setError(null);
             }}
