@@ -136,3 +136,14 @@
 ## 账本
 
 每行一条 JSON 进 AB_OUT，默认 .verify/crew-prompt-ab.jsonl，字段含 arm、task、repeat、ref、head、model、判定、各阶段墙钟、token。
+
+## 第二批（2026-11-16 预注册，开跑前写死）
+
+第一批 36 格跑完之后，判定器本身被查出四处错误（见 `ORACLE-CORRECTIONS.md`），所以第一批只能给描述性读数。第二批用修正后的 harness 重跑同一套任务，开跑前把下面这些写死：
+
+- 两臂 ref 不变：A `277f506c15fe771bbd337efa259dc517c3ffc1cd`，B `3c0f25c75f77689bfbf79349149cbe2abae6d1a7`。任务集、`AB_REPEAT=3`、`AB_TASK_TIMEOUT_MS=600000` 不变。
+- 档位显式写死 `AB_THINKING=low`。第一批的 `off` 被钳成 `low`，第二批把请求值写成实际能生效的档位，请求与生效都进结果行；两臂同角色生效档位不同就拒绝比较。
+- **主读数是 `verdictCorrected`**：探针委派不判死 `attribution`（改成「至少一条委派点到必需产物」）、`delegate_parallel` 不把探针计入条数、`no_duplicate` 要求最终回复给出核对结论、retry 计数接受「文件名:行号 — 值」。`verdict` 仍然照原预注册门计算并一并报出，用来显示修正带来的差异。
+- `delegate-parallel-two` 用两台 Machine，争用不再把它变成「两臂都启动失败」。
+- 决定规则不变：先看两臂 measured 成功率与逐任务配对表，再用不一致配对的精确二项检验；配对方向一致偏向 B 且差异超过噪声地板才 promote，落在噪声内记 inconclusive，偏向 A 才回滚。
+- 已知局限沿用第一批：live 不落提示词哈希、用户消息里带了资源协议说明。
