@@ -132,13 +132,13 @@ function markRunning(run: ReturnType<typeof runs.listAgentRuns>[number], profile
     ctx,
   );
 }
-function completeRun(run: ReturnType<typeof runs.listAgentRuns>[number]) {
+function completeRun(run: ReturnType<typeof runs.listAgentRuns>[number], profile = worker) {
   const messageId = newId(ID_PREFIXES.message);
   sqlite
     .prepare(
       "INSERT INTO message(id,chat_id,sender_kind,sender_id,body) VALUES (?,?,'agent',?,'Done')",
     )
-    .run(messageId, run.chatId, worker.id);
+    .run(messageId, run.chatId, profile.id);
   runs.transitionAgentRun(
     run.id,
     "completed",
@@ -147,7 +147,7 @@ function completeRun(run: ReturnType<typeof runs.listAgentRuns>[number]) {
   );
 }
 markRunning(leadRun, lead);
-function tool(timeoutMs = 15000, runId = leadRun.id) {
+function tool(timeoutMs = 15000, runId = leadRun.id, remoteGrant = grant) {
   const tools: Tool[] = [];
   registerCrewDelegationTools(
     {
@@ -155,7 +155,7 @@ function tool(timeoutMs = 15000, runId = leadRun.id) {
         tools.push(definition);
       },
     },
-    createRemoteClient(grant, { runId, timeoutMs }),
+    createRemoteClient(remoteGrant, { runId, timeoutMs }),
   );
   return tools.find((definition) => definition.name === "sprout_delegation_start")!;
 }
@@ -300,10 +300,11 @@ describe("dispatch through extension, HTTP gateway and SQLite", () => {
     const a = outcome(first),
       b = outcome(second);
     expect(a.outcome).toBe("timed_out");
-    expect(b).toEqual(a);
+    expect(b).toEqual({ ...a, reused: true });
+    expect(a).toHaveProperty("reused", false);
     expect(childRun(a.childChatId).status).toBe("queued");
   });
-  it("treats a changed request, member or lead run as a new intent", async () => {
+  it("reuses an implicit intent across lead runs, but separates changed text and workers", async () => {
     const before = count().n;
     const a = outcome(await execute("intent A", { blockMs: 0 }));
     const b = outcome(await execute("intent B", { blockMs: 0 }));
@@ -311,8 +312,99 @@ describe("dispatch through extension, HTTP gateway and SQLite", () => {
       await execute("intent A", { blockMs: 0 }, tool(15000, newId(ID_PREFIXES.run))),
     );
     const d = outcome(await execute("intent A", { blockMs: 0, workerProfileId: otherWorker.id }));
-    expect(count().n - before).toBe(4);
-    expect(new Set([a.delegationId, b.delegationId, c.delegationId, d.delegationId]).size).toBe(4);
+    expect(count().n - before).toBe(3);
+    expect(new Set([a.delegationId, b.delegationId, d.delegationId]).size).toBe(3);
+    expect(c).toEqual({ ...a, reused: true });
+  });
+  it("reuses the same worker from an actually later authenticated lead run", async () => {
+    const chat = crew();
+    const handles: InstanceType<typeof PiSessionProcess>[] = [];
+    const runIds: string[] = [];
+    async function nextLeadTool() {
+      chats.sendMessage(
+        chat.id,
+        { senderKind: "human", senderId: ctx.userId, body: "Next lead turn" },
+        ctx,
+      );
+      const run = runs.listAgentRuns(chat.id, ctx).find((item) => item.status === "queued")!;
+      markRunning(run, lead);
+      const handle = new PiSessionProcess(run.id, runnerPath);
+      handles.push(handle);
+      runIds.push(run.id);
+      const remoteGrant = issueRemoteToolGrant(run.id, handle, runtime);
+      return { run, definition: tool(15000, run.id, remoteGrant) };
+    }
+    try {
+      const firstLead = await nextLeadTool();
+      const first = outcome(
+        await execute("cross-run request", { blockMs: 0 }, firstLead.definition),
+      );
+      completeRun(firstLead.run, lead);
+      const secondLead = await nextLeadTool();
+      const second = outcome(
+        await execute("cross-run request", { blockMs: 0 }, secondLead.definition),
+      );
+      expect(secondLead.run.id).not.toBe(firstLead.run.id);
+      expect(second).toEqual({ ...first, reused: true });
+      expect(count(chat.id).n).toBe(1);
+      expect(runs.listAgentRuns(first.childChatId, ctx)).toHaveLength(1);
+    } finally {
+      for (const id of runIds) revokeRemoteToolGrant(id, runtime);
+      await Promise.all(handles.map((handle) => handle.close()));
+    }
+  });
+  it.each(["queued", "running", "blocked", "canceling"])(
+    "reuses a %s delegation after request normalization",
+    async (status) => {
+      const request = `normalized ${status}\n  preserve code spacing`;
+      const first = outcome(await execute(request, { blockMs: 0 }));
+      sqlite.prepare("UPDATE delegation SET status=? WHERE id=?").run(status, first.delegationId);
+      const before = count().n;
+      const second = outcome(
+        await execute(`  ${request.replace(/\n/g, "\r\n")}  `, { blockMs: 0 }),
+      );
+      expect(second.delegationId).toBe(first.delegationId);
+      expect(second).toHaveProperty("reused", true);
+      expect(count().n).toBe(before);
+    },
+  );
+  it.each(["completed", "failed", "canceled"])(
+    "never reuses a %s delegation, even within the same lead run",
+    async (status) => {
+      const request = `terminal ${status}`;
+      const first = outcome(await execute(request, { blockMs: 0 }));
+      sqlite
+        .prepare("UPDATE delegation SET status=?, settled_at=?, terminal_reason=? WHERE id=?")
+        .run(status, Math.floor(Date.now() / 1000), status, first.delegationId);
+      const before = count().n;
+      const second = outcome(await execute(request, { blockMs: 0 }));
+      expect(second.delegationId).not.toBe(first.delegationId);
+      expect(second).toHaveProperty("reused", false);
+      expect(count().n).toBe(before + 1);
+    },
+  );
+  it("keeps internal whitespace, letter case and a different crew as distinct requests", async () => {
+    const first = outcome(await execute("exact  spacing", { blockMs: 0 }));
+    const spacing = outcome(await execute("exact spacing", { blockMs: 0 }));
+    const casing = outcome(await execute("Exact  spacing", { blockMs: 0 }));
+    expect(new Set([first.delegationId, spacing.delegationId, casing.delegationId]).size).toBe(3);
+    const otherCrew = crew();
+    const other = delegations.dispatchDelegation(
+      { chatId: otherCrew.id, workerProfileId: worker.id, request: "exact  spacing" },
+      ctx,
+    );
+    expect(other.delegationId).not.toBe(first.delegationId);
+  });
+  it("serializes simultaneous implicit retries into one child chat and worker run", async () => {
+    const before = count().n;
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => execute("concurrent implicit retry", { blockMs: 0 })),
+    );
+    const values = results.map(outcome);
+    expect(new Set(values.map((value) => value.delegationId)).size).toBe(1);
+    expect(values.filter((value) => "reused" in value && value.reused)).toHaveLength(3);
+    expect(count().n).toBe(before + 1);
+    expect(runs.listAgentRuns(values[0]!.childChatId, ctx)).toHaveLength(1);
   });
   it("gives an explicit clientRequestId priority over implicit intent", async () => {
     const before = count().n;
@@ -320,6 +412,29 @@ describe("dispatch through extension, HTTP gateway and SQLite", () => {
     const b = outcome(await execute("explicit B", { clientRequestId: "explicit", blockMs: 0 }));
     expect(count().n - before).toBe(1);
     expect(b.delegationId).toBe(a.delegationId);
+  });
+  it("preserves explicit key replay of a terminal delegation and separate keys for identical text", async () => {
+    const request = "explicit identical request";
+    const first = outcome(
+      await execute(request, { clientRequestId: "explicit-terminal", blockMs: 0 }),
+    );
+    const separate = outcome(
+      await execute(request, { clientRequestId: "explicit-separate", blockMs: 0 }),
+    );
+    expect(separate.delegationId).not.toBe(first.delegationId);
+    sqlite
+      .prepare(
+        "UPDATE delegation SET status='completed', settled_at=?, terminal_reason='completed' WHERE id=?",
+      )
+      .run(Math.floor(Date.now() / 1000), first.delegationId);
+    const replay = outcome(
+      await execute("Changed request is still the same explicit key", {
+        clientRequestId: "explicit-terminal",
+        blockMs: 0,
+      }),
+    );
+    expect(replay.delegationId).toBe(first.delegationId);
+    expect(replay).not.toHaveProperty("reused");
   });
   it("allows the full block budget before the HTTP transport timeout", async () => {
     const result = outcome(await execute("transport budget", { blockMs: 200 }, tool(100)));

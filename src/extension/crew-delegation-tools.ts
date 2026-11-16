@@ -1,4 +1,3 @@
-import { delegationClientRequestId } from "../lib/delegation-request-id";
 import { crewDelegationToolInputSchemas } from "../contracts/delegation";
 import type { CrewDelegationToolName } from "../contracts/delegation";
 import { remoteAgentRequestSchema } from "../contracts/remote";
@@ -16,7 +15,7 @@ const actions = {
 
 const descriptions: Record<CrewDelegationToolName, string> = {
   sprout_delegation_start:
-    "Delegate one piece of work from this Crew to an Agent member. Waits up to blockMs (default 10000, max 60000) for the real worker run to start. Returns running, queued (blockMs:0), blocked, failed, canceled, or timed_out with the dispatched IDs. queued/timed_out are already dispatched: do not list to confirm or create a second delegation. Completion arrives as a durable event. Retrying identical text and member in this lead run reuses the same intent; explicit clientRequestId takes priority.",
+    "Delegate one piece of work from this Crew to an Agent member. Waits up to blockMs (default 10000, max 60000) for the real worker run to start. Returns running, queued (blockMs:0), blocked, failed, canceled, or timed_out with the dispatched IDs. queued/timed_out are already dispatched: do not list to confirm or create a second delegation. Completion arrives as a durable event. Without clientRequestId, retries for the same Crew, worker and normalized request reuse a non-terminal delegation across lead runs. reused=true means the worker already exists: do not re-dispatch. Terminal delegations allow a fresh dispatch. Normalization trims outer whitespace and converts CRLF/CR to LF; internal spacing and case remain significant. Explicit clientRequestId retains key-based replay.",
   sprout_delegation_input:
     "Send an additional instruction to a running delegation. It is delivered to the worker run without posting into the Crew timeline.",
   sprout_delegation_cancel: "Cancel one delegation of this Crew and stop its worker run.",
@@ -32,14 +31,6 @@ function buildRequest(
     ...crewDelegationToolInputSchemas[name].parse(raw),
     projectId: client.projectId,
   } as Record<string, unknown>;
-  if (name === "sprout_delegation_start" && !input.clientRequestId) {
-    if (!client.runId) throw new Error("Delegation start requires the active lead run identity");
-    input.clientRequestId = delegationClientRequestId(
-      client.runId,
-      String(input.workerProfileId),
-      String(input.request),
-    );
-  }
   return remoteAgentRequestSchema.parse({
     version: 2,
     call: { type: "crew_mutate", input: { ...input, action: actions[name] } },

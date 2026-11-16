@@ -1,4 +1,3 @@
-import { delegationClientRequestId } from "../lib/delegation-request-id";
 import { waitForDelegationStart } from "../domain/delegation-start";
 import { coordinateCrewResource } from "./crew-resource-coordinator";
 import { CrewResourceError } from "../domain/crew-resource";
@@ -273,7 +272,13 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
     const raw = await body(request);
     const current = { ...(await machineRuntimeContext()), requestId };
     const startWait: {
-      dispatch?: { projectId: string; chatId: string; delegationId: string; blockMs: number };
+      dispatch?: {
+        projectId: string;
+        chatId: string;
+        delegationId: string;
+        blockMs: number;
+        reused?: boolean;
+      };
     } = {};
     const data = sqlite
       .transaction(() => {
@@ -356,13 +361,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                       workerProfileId: input.workerProfileId,
                       resources: input.resources,
                       request: input.request,
-                      clientRequestId:
-                        input.clientRequestId ??
-                        delegationClientRequestId(
-                          actorContext.runId,
-                          input.workerProfileId,
-                          input.request,
-                        ),
+                      clientRequestId: input.clientRequestId,
                     },
                     projectContext,
                   );
@@ -371,6 +370,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                     chatId,
                     delegationId: dispatched.delegationId,
                     blockMs: input.blockMs,
+                    ...(input.clientRequestId === undefined ? { reused: !dispatched.created } : {}),
                   };
                   return { projectId, chatId, ...dispatched };
                 }
@@ -497,6 +497,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
       ? crewMutateResponseSchema.parse({
           projectId: startWait.dispatch.projectId,
           chatId: startWait.dispatch.chatId,
+          ...(startWait.dispatch.reused === undefined ? {} : { reused: startWait.dispatch.reused }),
           ...(await waitForDelegationStart(
             startWait.dispatch.delegationId,
             startWait.dispatch.blockMs,

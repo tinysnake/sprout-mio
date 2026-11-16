@@ -114,11 +114,11 @@ function insertEvent(input: {
 
 /**
  * Dispatch is deterministic and durable: the child Chat, delegation row, dispatch event and the
- * worker's first input commit together. Replaying the same clientRequestId returns the existing
- * delegation instead of creating a second worker run.
+ * worker's first input commit together. Explicit clientRequestId replays the existing record;
+ * without a key, only an active delegation with the same Crew, worker and normalized text is reused.
  */
 export function dispatchDelegation(
-  input: DispatchDelegationInput,
+  input: Omit<DispatchDelegationInput, "clientRequestId"> & { clientRequestId?: string },
   ctx: ProjectContext,
 ): { delegationId: string; childChatId: string; status: DelegationStatus; created: boolean } {
   return sqlite
@@ -155,16 +155,47 @@ export function dispatchDelegation(
         )
         .get();
       if (!workerMember) throw new DelegationError("invalid", "该 Agent 不是 Crew 成员");
-      const existing = db
-        .select()
-        .from(delegation)
-        .where(
-          and(
-            eq(delegation.parentCrewChatId, input.chatId),
-            eq(delegation.clientRequestId, input.clientRequestId),
-          ),
-        )
-        .get();
+      if (input.clientRequestId === undefined) {
+        const normalizeRequest = (request: string) => request.replace(/\r\n?/g, "\n").trim();
+        const normalizedRequest = normalizeRequest(input.request);
+        const active = db
+          .select()
+          .from(delegation)
+          .where(
+            and(
+              eq(delegation.parentCrewChatId, input.chatId),
+              eq(delegation.workerProfileId, input.workerProfileId),
+              inArray(delegation.status, ["queued", "running", "blocked", "canceling"]),
+            ),
+          )
+          .orderBy(asc(delegation.createdAt), asc(delegation.id))
+          .all()
+          .find(
+            (row: typeof delegation.$inferSelect) =>
+              normalizeRequest(row.requestSummary) === normalizedRequest,
+          );
+        if (active)
+          return {
+            delegationId: active.id,
+            childChatId: active.childChatId,
+            status: active.status,
+            created: false,
+          };
+      }
+      const clientRequestId = input.clientRequestId ?? newId(ID_PREFIXES.request);
+      const existing =
+        input.clientRequestId === undefined
+          ? undefined
+          : db
+              .select()
+              .from(delegation)
+              .where(
+                and(
+                  eq(delegation.parentCrewChatId, input.chatId),
+                  eq(delegation.clientRequestId, clientRequestId),
+                ),
+              )
+              .get();
       if (existing) {
         const previous = db
           .select()
@@ -172,7 +203,7 @@ export function dispatchDelegation(
           .where(eq(crewResourceRequest.delegationId, existing.id))
           .all()
           .filter((r: typeof crewResourceRequest.$inferSelect) =>
-            r.clientRequestId.startsWith(`dispatch:${input.clientRequestId}:`),
+            r.clientRequestId.startsWith(`dispatch:${clientRequestId}:`),
           );
         const canonical = (
           rows: {
@@ -236,7 +267,7 @@ export function dispatchDelegation(
           workerProfileId: input.workerProfileId,
           requestSummary: input.request,
           status: "running",
-          clientRequestId: input.clientRequestId,
+          clientRequestId,
           startedAt: new Date(),
         })
         .run();
@@ -286,7 +317,7 @@ export function dispatchDelegation(
               delegationId,
               attempt: 1,
               runId: workerRunId,
-              clientRequestId: `dispatch:${input.clientRequestId}:${scope.machineId}`,
+              clientRequestId: `dispatch:${clientRequestId}:${scope.machineId}`,
             },
             resourceActor,
           );

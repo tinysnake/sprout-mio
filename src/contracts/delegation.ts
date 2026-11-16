@@ -274,6 +274,7 @@ const delegationStartIdentity = {
   childChatId: delegationChatIdSchema,
   workerName: z.string(),
   runId: z.string().min(1),
+  reused: z.boolean().optional(),
 };
 
 const delegationStartPendingSchema = z.strictObject({
