@@ -146,7 +146,10 @@ async function open(config) {
   );
   const assistant = config.purpose === "assistant";
   assistantMode = assistant;
-  const remoteClient = createRemoteClient(config.remote, { instanceId: config.instanceId });
+  const remoteClient = createRemoteClient(config.remote, {
+    instanceId: config.instanceId,
+    runId: config.id,
+  });
   const { registerAssistantTools } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/assistant-tools.ts"),
   );

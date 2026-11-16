@@ -1106,7 +1106,7 @@ describe("真实 HTTP transport", () => {
       for (status of [200, 401])
         expect(await tool.execute("probe", { machineId })).toMatchObject({
           isError: true,
-          details: { outcome: "failed" },
+          details: { outcome: "rejected", status, error: { code: "lease_not_holder" } },
         });
     } finally {
       http.close();

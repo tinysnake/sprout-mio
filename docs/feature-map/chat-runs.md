@@ -2,6 +2,12 @@
 
 用户从项目成员发起 DM，在固定 Chat 中发送消息，查看运行状态并在刷新或重启后继续访问历史。契约见 [Chat DM](../p2/chat-dm.md)、[Pi session](../p3/pi-session.md)、[Turn semantics](../p3/turn-semantics.md)及 [Repo entry](../p3/repo-entry.md)。
 
+## Crew delegation start 重试契约
+
+`sprout_delegation_start` 省略 `clientRequestId` 时，在同一个 immediate 事务内按 Crew、worker profile 和规范化正文查找 `queued` / `running` / `blocked` / `canceling` 委派，跨 lead run 复用已有 child Chat 和 worker run；响应 `reused:true` 表示复用，`false` 表示新建。正文规范化只去掉首尾空白，并将 CRLF/CR 换行转为 LF；内部空格、大小写及标点保留。`completed` / `failed` / `canceled` 委派不参与隐式复用，即使同一 lead run 再发相同请求也可新建。
+
+显式 `clientRequestId` 继续按 Crew 与 key 重放原记录（包括终态），并保留既有资源 payload 一致性检查。隐式复用不会追加输入、改派 worker、更新资源或清理历史重复记录；后续指令使用 `sprout_delegation_input`。不同 Crew、worker、规范化正文或不同显式 key 不会因此合并，也不识别语义近似或改写后的请求。资源字段与 blockMs 不属于隐式身份，复用时不会据此扩大已有授权。验证入口是 `tests/delegation-start.test.ts` 的 extension → HTTP gateway → SQLite 场景。
+
 ## Sub-features
 
 - `dm-entry` 首次发起 DM，重复入口回到同一 Chat 与 AgentInstance。

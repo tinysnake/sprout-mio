@@ -46,7 +46,9 @@ export function registerDelegationTools(
     pi.registerTool({
       name,
       label: name,
-      description: descriptions[name],
+      description:
+        descriptions[name] +
+        " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试；worker 无法继续时用 sprout_delegation_block 报告原因。",
       parameters: objectToolParameters(delegationToolInputSchemas[name]),
       async execute(_toolCallId, parameters, signal) {
         let request: RemoteAgentRequest;

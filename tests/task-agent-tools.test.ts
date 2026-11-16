@@ -222,8 +222,16 @@ async function data(name: string, input: unknown = {}, member = false): Promise<
 async function rejected(name: string, input: unknown, code: string, member = false) {
   const { result, envelope } = await invoke(name, input, member);
   expect(result.isError).toBe(true);
-  expect(envelope.success, JSON.stringify(result.details)).toBe(true);
-  expect(envelope.success && envelope.data).toMatchObject({ ok: false, error: { code } });
+  if (code === "validation_failed") {
+    expect(envelope.success, JSON.stringify(result.details)).toBe(true);
+    expect(envelope.success && envelope.data).toMatchObject({ ok: false, error: { code } });
+  } else {
+    expect(result.details).toMatchObject({
+      outcome: "rejected",
+      status: expect.any(Number),
+      error: { code },
+    });
+  }
 }
 afterAll(async () => {
   for (const run of [ownerRun, memberRun]) revokeRemoteToolGrant(run.id, runtime);
@@ -305,8 +313,9 @@ describe("run-scoped Agent Task/Chat tools", () => {
       call: { type: "task_list", input: { projectId: newId(ID_PREFIXES.project) } },
     };
     expect(await clients[0]!.request(forged)).toMatchObject({
-      outcome: "response",
-      result: { ok: false, error: { code: "not_found" } },
+      outcome: "rejected",
+      status: 200,
+      error: { code: "not_found" },
     });
     const anonymous = await gateway(
       new Request(grants[0]!.endpoint, { method: "POST", body: JSON.stringify(forged) }),

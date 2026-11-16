@@ -73,6 +73,8 @@ Crew 是 Project 内的多人协作 Chat，取代旧的 Group 与 Public Channel
 ## 委派
 
 - lead 通过 `sprout_delegation_start` 发起委派，也可以由有权限的 Human 经 server function 发起；worker 必须是本 Crew 的 Agent 成员，不能是 lead 自己。相同 `clientRequestId` 在同一个 Crew 内重放返回原委派，不新建子对话。
+- start 的 `blockMs` 默认 10 秒，负数夹到 0，最多 60 秒。等待在 dispatch 事务提交后进行，以 `agent_run.status` 与实际 `startedAt` 确认启动；`delegation.status='running'` 仅表示已经派发。`outcome: running` 返回 delegation、child chat、worker 名称、run 与实际启动时间；快速完成的 run 也保留这份启动事实，不代表任务已完成。`blockMs: 0` 时尚未启动返回 `queued`，正预算用尽返回 `timed_out`，两者都已派发并保留相同标识。`blocked`、`failed`、`canceled` 直接返回原因；成员、Crew 停止和自派发校验仍是 tool error。
+- 缺省 `clientRequestId` 按 `(leadRunId, workerProfileId, request)` 派生：同一 lead run 内相同成员与相同原文视为同一次意图，改文本、换成员或进入新 run 才是新意图；显式 ID 优先。`queued` / `timed_out` 后不需要再 list 确认，重试保持原意图或原显式 ID，等待完成/阻塞事件回流。
 - 委派创建 `chat.kind='delegation'` 子对话，`parent_crew_chat_id` 指向 Crew，并固定 dispatch 时的 lead、`crew_epoch`、worker、请求摘要和 worker instance。子对话不进入普通 Chat 列表，也不参与 Crew 唤醒。
 - 子对话的可读成员由父 Crew 派生：当前 lead、该委派的 worker、能读父 Crew 的 Human。其他 worker 读不到 sibling 子对话；成员移除后访问立即失效。
 - 父 Crew 右栏按进行中优先展示委派，进行中显示最新 run 的 activity；非进行中只保留最近 24 小时，并折叠超出首屏的条目。终态委派在父 Crew 时间线写入一条 `delegation_event` 系统卡片，点击可回到子对话；卡片不进入 lead 输入，也不触发唤醒。

@@ -145,7 +145,11 @@ export async function catalog(
     },
   });
   const response: RemoteToolResponse = await remote.request(request);
-  if (response.outcome !== "response")
+  if (response.outcome === "rejected")
+    throw new Error(
+      `Sprout 拒绝目录查询（HTTP ${response.status}）：${response.error.code}: ${response.error.message}`,
+    );
+  if (response.outcome === "unknown")
     throw new Error(`Sprout 目录查询结果未知：${response.reason}`);
   if (!response.result.ok) throw new Error(`Sprout 拒绝目录查询：${response.result.error.code}`);
   return response.result.data as McpCatalogView;

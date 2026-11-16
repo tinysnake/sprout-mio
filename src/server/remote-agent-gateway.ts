@@ -1,3 +1,4 @@
+import { waitForDelegationStart } from "../domain/delegation-start";
 import { coordinateCrewResource } from "./crew-resource-coordinator";
 import { CrewResourceError } from "../domain/crew-resource";
 import { assistantCallSchema } from "../contracts/assistant";
@@ -270,6 +271,15 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
     sqlite.transaction(() => authenticate(request, ctx)).immediate();
     const raw = await body(request);
     const current = { ...(await machineRuntimeContext()), requestId };
+    const startWait: {
+      dispatch?: {
+        projectId: string;
+        chatId: string;
+        delegationId: string;
+        blockMs: number;
+        reused?: boolean;
+      };
+    } = {};
     const data = sqlite
       .transaction(() => {
         const actorContext = authenticate(request, current);
@@ -351,15 +361,18 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                       workerProfileId: input.workerProfileId,
                       resources: input.resources,
                       request: input.request,
-                      clientRequestId: input.clientRequestId ?? newId(ID_PREFIXES.request),
+                      clientRequestId: input.clientRequestId,
                     },
                     projectContext,
                   );
-                  return crewMutateResponseSchema.parse({
+                  startWait.dispatch = {
                     projectId,
                     chatId,
-                    ...dispatched,
-                  });
+                    delegationId: dispatched.delegationId,
+                    blockMs: input.blockMs,
+                    ...(input.clientRequestId === undefined ? { reused: !dispatched.created } : {}),
+                  };
+                  return { projectId, chatId, ...dispatched };
                 }
                 if (input.action === "input")
                   return crewMutateResponseSchema.parse({
@@ -480,8 +493,19 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
         }
       })
       .immediate();
-    const payload =
-      "hold" in data && data.hold ? await mcpSessionExchange(data.hold, data.context) : data;
+    const payload = startWait.dispatch
+      ? crewMutateResponseSchema.parse({
+          projectId: startWait.dispatch.projectId,
+          chatId: startWait.dispatch.chatId,
+          ...(startWait.dispatch.reused === undefined ? {} : { reused: startWait.dispatch.reused }),
+          ...(await waitForDelegationStart(
+            startWait.dispatch.delegationId,
+            startWait.dispatch.blockMs,
+          )),
+        })
+      : "hold" in data && data.hold
+        ? await mcpSessionExchange(data.hold, data.context)
+        : data;
     const encoded = JSON.stringify({ ok: true, data: payload, requestId });
     if (Buffer.byteLength(encoded) > 512 * 1024) throw new RemoteError("too_many_requests");
     return new Response(encoded, { headers: { ...headers, "content-type": "application/json" } });

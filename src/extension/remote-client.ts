@@ -1,3 +1,9 @@
+import {
+  clampDelegationStartBlockMs,
+  crewMutateResponseSchema,
+  delegationMutateResponseSchema,
+  delegationStartOutcomeSchema,
+} from "../contracts/delegation";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { z } from "zod";
@@ -14,7 +20,7 @@ import {
   assistantWatchResponseSchema,
   type AssistantResponse,
 } from "../contracts/assistant-response";
-import type { AppResult } from "../contracts/result";
+import type { AppError, AppResult } from "../contracts/result";
 import {
   mcpCatalogViewSchema,
   mcpSessionCloseOutputSchema,
@@ -56,6 +62,8 @@ type RemoteData =
   | z.infer<typeof taskGetResponseSchema>
   | z.infer<typeof taskListResponseSchema>
   | z.infer<typeof taskMutateResponseSchema>
+  | z.infer<typeof crewMutateResponseSchema>
+  | z.infer<typeof delegationMutateResponseSchema>
   | z.infer<typeof chatGetResponseSchema>
   | z.infer<typeof chatSendResponseSchema>
   | z.infer<typeof executionViewSchema>
@@ -70,12 +78,14 @@ type RemoteData =
   | z.infer<typeof mcpSessionExchangeOutputSchema>;
 export type RemoteToolResponse =
   | { outcome: "response"; result: AppResult<RemoteData> }
+  | { outcome: "rejected"; status: number; error: AppError; requestId: string }
   | {
       outcome: "unknown";
       reason: "transport_timeout" | "cancelled" | "transport_error" | "invalid_response";
     };
 export interface RemoteToolClient {
   readonly projectId: string;
+  readonly runId?: string;
   /**
    * 本 worker 的实例身份，由宿主（Pi host runner 的 `open` 配置）注入。
    * 只用于本地判定「这台 Machine 是不是已经握在自己手里」；绝不进请求体，
@@ -85,11 +95,33 @@ export interface RemoteToolClient {
   request(request: RemoteAgentRequest, signal?: AbortSignal): Promise<RemoteToolResponse>;
 }
 
-function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolResponse {
+function readResponse(
+  value: unknown,
+  request: RemoteAgentRequest,
+  status: number,
+): RemoteToolResponse {
   const envelope = envelopeSchema.safeParse(value);
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
-  if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
+  if (!envelope.data.ok)
+    return {
+      outcome: "rejected",
+      status,
+      error: envelope.data.error,
+      requestId: envelope.data.requestId,
+    };
+  if (status !== 200) return { outcome: "unknown", reason: "invalid_response" };
   const { call } = request;
+  if (call.type === "delegation_mutate") {
+    const parsed = delegationMutateResponseSchema.safeParse(envelope.data.data);
+    return parsed.success &&
+      parsed.data.projectId === call.input.projectId &&
+      parsed.data.delegationId === call.input.delegationId
+      ? {
+          outcome: "response",
+          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
+        }
+      : { outcome: "unknown", reason: "invalid_response" };
+  }
   if (call.type === "info_hub_get")
     return (
       readInfoHubResponse(envelope.data, request) ?? {
@@ -285,6 +317,15 @@ export function readTaskChatResponse(
     result: { ok: true, data, requestId: envelope.requestId },
   });
   switch (call.type) {
+    case "crew_mutate": {
+      const parsed = crewMutateResponseSchema.safeParse(envelope.data);
+      if (!parsed.success || parsed.data.projectId !== call.input.projectId) return bad;
+      if (call.input.action === "dispatch") {
+        const { projectId: _projectId, chatId: _chatId, ...start } = parsed.data;
+        if (!delegationStartOutcomeSchema.safeParse(start).success) return bad;
+      }
+      return ok(parsed.data);
+    }
     case "task_get": {
       const parsed = taskGetResponseSchema.safeParse(envelope.data);
       return parsed.success &&
@@ -409,17 +450,27 @@ function readMcpResponse(
 /** Direct HTTP deliberately bypasses environment/global fetch proxies and never follows redirects. */
 export function createRemoteClient(
   config: RemoteToolGrant,
-  { timeoutMs = 15000, instanceId }: { timeoutMs?: number; instanceId?: string } = {},
+  {
+    timeoutMs = 15000,
+    instanceId,
+    runId,
+  }: { timeoutMs?: number; instanceId?: string; runId?: string } = {},
 ): RemoteToolClient {
   const { endpoint, secret, projectId } = remoteToolGrantSchema.parse(config);
   const url = new URL(endpoint);
   return {
     projectId,
     instanceId,
+    runId,
     async request(input, signal) {
       const parsed = remoteAgentRequestSchema.safeParse(input);
       if (!parsed.success) return { outcome: "unknown", reason: "invalid_response" };
       const body = JSON.stringify(parsed.data);
+      const call = parsed.data.call;
+      const requestTimeoutMs =
+        call.type === "crew_mutate" && call.input.action === "dispatch"
+          ? timeoutMs + clampDelegationStartBlockMs(call.input.blockMs)
+          : timeoutMs;
       return new Promise<RemoteToolResponse>((resolve) => {
         let finished = false;
         const finish = (result: RemoteToolResponse) => {
@@ -437,7 +488,7 @@ export function createRemoteClient(
         const timer = setTimeout(() => {
           finish({ outcome: "unknown", reason: "transport_timeout" });
           controller.abort();
-        }, timeoutMs);
+        }, requestTimeoutMs);
         if (signal?.aborted) return abort();
         signal?.addEventListener("abort", abort, { once: true });
         const send = url.protocol === "https:" ? httpsRequest : httpRequest;
@@ -465,32 +516,13 @@ export function createRemoteClient(
             response.on("error", () => finish({ outcome: "unknown", reason: "transport_error" }));
             response.on("end", () => {
               try {
-                const taskChatCall = [
-                  "task_get",
-                  "task_list",
-                  "task_mutate",
-                  "chat_get",
-                  "chat_send",
-                ].includes(parsed.data.call.type);
-                if (
-                  response.statusCode !== 200 &&
-                  response.statusCode !== 401 &&
-                  !(taskChatCall && response.statusCode === 403)
-                ) {
-                  finish({ outcome: "unknown", reason: "invalid_response" });
-                  return;
-                }
-                const result = readResponse(
-                  JSON.parse(Buffer.concat(chunks).toString("utf8")),
-                  parsed.data,
+                finish(
+                  readResponse(
+                    JSON.parse(Buffer.concat(chunks).toString("utf8")),
+                    parsed.data,
+                    response.statusCode ?? 0,
+                  ),
                 );
-                if (
-                  (response.statusCode === 401 || response.statusCode === 403) &&
-                  result.outcome === "response" &&
-                  result.result.ok
-                )
-                  finish({ outcome: "unknown", reason: "invalid_response" });
-                else finish(result);
               } catch {
                 finish({ outcome: "unknown", reason: "invalid_response" });
               }
