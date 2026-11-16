@@ -23,7 +23,11 @@ export function fixtureDefinition(name) {
         "utils/format.js": "exports.round = value => Math.floor(value * 100) / 100;\n",
         "test/format.test.js": `const {test}=require('node:test'); const assert=require('node:assert/strict'); const {round}=require('../utils/format'); test('rounds to nearest hundredth',()=>{${roundingCases.map(([input, expected]) => `assert.equal(round(${input}),${expected});`).join("")}});\n`,
       },
-      expected: { roundingCases, testCommand: ["npm", "test"] },
+      expected: {
+        roundingCases,
+        testCommand: ["npm", "test"],
+        delegationArtifacts: ["utils/format.js"],
+      },
     },
     "sandbox-parallel": {
       files: {
@@ -34,14 +38,17 @@ export function fixtureDefinition(name) {
       },
       expected: {
         nodeLine: "Requires Node 22.",
-        oldNodeVersion: "18",
+        oldNodeLine: "Requires Node 18.",
         retryFiles: Object.keys(retryCounts),
+        retryCounts,
+        delegationArtifacts: ["README.md", ...Object.keys(retryCounts)],
       },
     },
     "sandbox-review": {
       files: { "src/queue.js": queue },
       expected: {
         file: "src/queue.js",
+        delegationArtifacts: ["src/queue.js"],
         defectLine: queue.split("\n").findIndex((line) => line.includes("handler(queue[0])")) + 1,
         defectSourceLine: queue.split("\n").find((line) => line.includes("handler(queue[0])")),
         defectLines: queue

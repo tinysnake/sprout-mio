@@ -26,6 +26,11 @@ const facts = (overrides = {}) => ({
   completeEventTimes: [20],
   delegationsPerArtifact: {},
   artifactAssertions: [{ exitCode: 0 }],
+  requiredDelegationArtifacts: ["utils/format.js"],
+  delegationEvidence: [
+    { requestArtifacts: ["utils/format.js"], workerArtifacts: ["utils/format.js"] },
+  ],
+  artifactToolCalls: ["docs/usage.md"],
   ...overrides,
 });
 function withFixture(name, action) {
@@ -73,12 +78,37 @@ test("project test and direct rounding probe both detect planted floor defect", 
 });
 test("parallel needs README 22, no old version, both retry paths and two completed workers", () => {
   withFixture("sandbox-parallel", (root, { expected }) => {
-    const f = { leadFinalReplyText: expected.retryFiles.join(" ") };
+    const f = {
+      leadFinalReplyText: Object.entries(expected.retryCounts)
+        .map(([file, value]) => `${file}: ${value}`)
+        .join("\n"),
+    };
     assert(!pass(checks("sandbox-parallel", root, f)));
     writeFileSync(join(root, "README.md"), expected.nodeLine + "\n");
     assert(pass(checks("sandbox-parallel", root, f)));
     assert(!pass(checks("sandbox-parallel", root, { leadFinalReplyText: expected.retryFiles[0] })));
-    writeFileSync(join(root, "README.md"), expected.nodeLine + "\nOld: " + expected.oldNodeVersion);
+    writeFileSync(join(root, "README.md"), expected.nodeLine + "\nIssue 18 is resolved.");
+    assert(pass(checks("sandbox-parallel", root, f)));
+    assert(
+      !pass(
+        checks("sandbox-parallel", root, { leadFinalReplyText: expected.retryFiles.join(" ") }),
+      ),
+    );
+    assert(
+      !pass(
+        checks("sandbox-parallel", root, {
+          leadFinalReplyText: f.leadFinalReplyText.replace(": 3", ": 30"),
+        }),
+      ),
+    );
+    assert(
+      !pass(
+        checks("sandbox-parallel", root, {
+          leadFinalReplyText: "src/retry.js: 5\nconfig/retry.json: 3",
+        }),
+      ),
+    );
+    writeFileSync(join(root, "README.md"), expected.nodeLine + "\n" + expected.oldNodeLine);
     assert(!pass(checks("sandbox-parallel", root, f)));
   });
   const f = facts({
@@ -87,6 +117,10 @@ test("parallel needs README 22, no old version, both retry paths and two complet
     workerRunTerminalStatuses: ["completed", "completed"],
     workerReportedComplete: [true, true],
     completeEventTimes: [20, 21],
+    delegationEvidence: [
+      { requestArtifacts: ["utils/format.js"], workerArtifacts: ["utils/format.js"] },
+      { requestArtifacts: ["utils/format.js"], workerArtifacts: ["utils/format.js"] },
+    ],
   });
   assert(judge("delegate_parallel", f));
   for (const patch of [
@@ -295,7 +329,7 @@ const pair = () => [
     head: "b".repeat(40),
     status: "failed",
     passed: false,
-    runs: [run("lead", "b".repeat(64))],
+    runs: [{ ...run("lead", "b".repeat(64)), systemPromptChars: 20 }],
   },
 ];
 test("comparison rejects equal commits, same hashes, missing fields and tool mismatches by role", () => {
@@ -317,7 +351,11 @@ test("comparison rejects equal commits, same hashes, missing fields and tool mis
   }
   const rows = pair();
   rows[0].runs.push({ ...run("worker", "c".repeat(64)), availableTools: ["worker_only"] });
-  rows[1].runs.push({ ...run("worker", "d".repeat(64)), availableTools: ["worker_only"] });
+  rows[1].runs.push({
+    ...run("worker", "d".repeat(64)),
+    systemPromptChars: 30,
+    availableTools: ["worker_only"],
+  });
   assert.deepEqual(comparisonReasons(rows, { dry: true }), []);
 });
 test("batch plan alternates arms and all anomalies stay outside denominator", () => {

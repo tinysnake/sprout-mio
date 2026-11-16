@@ -16,7 +16,16 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { startModelFixture } from "../../verify/lib/model-fixture.mjs";
 import { createCrewFixture } from "../../../tests/fixtures/crew-live.mjs";
-import { seedFixture, judge, classifyRuns, unknownEvidence } from "./core.mjs";
+import {
+  seedFixture,
+  fixtureDefinition,
+  judge,
+  classifyRuns,
+  unknownEvidence,
+  forbiddenDelegation,
+  errorStatus,
+  preserveOutcome,
+} from "./core.mjs";
 import { artifactAssertions } from "./artifacts.mjs";
 import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
 
@@ -352,6 +361,7 @@ export async function runTask({
       signature = "";
     await until(() => {
       latest = readEvidence(env, input, Math.min(30000, remaining()));
+      if (forbiddenDelegation(task.oracle, latest.delegations.length)) return true;
       const terminalFailure = classifyRuns(latest.runs);
       if (terminalFailure) {
         const error = new Error(`agent run terminated ${terminalFailure}`);
@@ -367,12 +377,17 @@ export async function runTask({
       return Date.now() - stableSince >= 1000;
     }, "Crew settle");
     next("judge");
-    Object.assign(row, factsFrom(latest, crew.id, Object.keys(initial)));
-    row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
-    assert(
-      row.runs.some((r) => r.startedAt && r.transcript && r.tokens !== null),
-      "missing actual lead execution/token evidence",
+    Object.assign(
+      row,
+      factsFrom(
+        latest,
+        crew.id,
+        Object.keys(initial),
+        fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [],
+      ),
     );
+    row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
+    assert(row.runs.length > 0, "missing actual execution evidence");
     if (fixture) {
       fixture.assertHealthy();
       fixture.assertDrained();
@@ -380,13 +395,7 @@ export async function runTask({
     row.passed = judge(task.oracle, row);
     row.status = row.passed ? "passed" : "failed";
   } catch (error) {
-    row.status =
-      error.runClassification ??
-      (signal?.aborted
-        ? "interrupted"
-        : error.code === "AB_TIMEOUT" || Date.now() - started >= timeoutMs
-          ? "timeout"
-          : "errored");
+    row.status = errorStatus(error, signal?.aborted);
     row.passed = null;
     row.error = { message: error.message, stack: error.stack };
     if (env && input) {
@@ -398,6 +407,7 @@ export async function runTask({
       }
     }
   } finally {
+    preserveOutcome(row, task.oracle, latest?.delegations.length ?? row.delegatedCount);
     for (const run of row.runs ?? [])
       run.systemPromptHashes = dry ? [...(promptHashes.get(run.runId) ?? [])] : null;
     phases[phase] += Date.now() - at;
@@ -422,9 +432,7 @@ export async function runTask({
     try {
       await fixture?.close();
     } catch (e) {
-      if (!["aborted", "interrupted", "timeout"].includes(row.status)) row.status = "errored";
-      row.passed = null;
-      row.cleanupError = e.message;
+      preserveOutcome(row, task.oracle, row.delegatedCount, e);
     }
     writeFileSync(join(directory, "result.json"), JSON.stringify(row, null, 2) + "\n");
   }

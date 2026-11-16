@@ -16,10 +16,14 @@ switch (kind) {
   case 'parallel': {
     const readme = read('README.md');
     assert(readme.split(/\r?\n/).includes(e.nodeLine), 'README Node version line');
-    assert(!readme.includes(e.oldNodeVersion), 'old Node version removed');
+    assert(!readme.split(/\r?\n/).includes(e.oldNodeLine), 'old Node version line removed');
     for (const file of e.retryFiles) {
       read(file);
       assert(f.leadFinalReplyText.includes(file), 'lead names retry file ' + file);
+      const value = e.retryCounts[file];
+      const escaped = file.replaceAll('.', '\\.');
+      assert(new RegExp(escaped + '[^\\n0-9]*' + value + '(?![0-9])').test(f.leadFinalReplyText),
+        'lead names retry count ' + file + ' = ' + value);
     }
     break;
   }

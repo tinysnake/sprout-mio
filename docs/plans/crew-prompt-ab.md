@@ -101,9 +101,9 @@
 
 领读结论要放最前，写成 faster、slower、no measurable difference 或 inconclusive 之一。数字要带上单位、运行次数、范围与限制因素。
 
-出错单独计数。一次跑崩了既不算成功也不算失败，记为 errored 并单列。settle 超时记 timeout；aborted、interrupted、not_run 独立分类，passed 为 null，不计入成功率分母。批次开始前枚举所有 arm/task/repeat，中断后给未启动项补 not_run；报告 planned、attempted、completed 及全部 anomaly 计数。不完整批次拒绝比较。
+出错单独计数。一次跑崩了既不算成功也不算失败，记为 errored 并单列。settle 超时记 timeout；aborted、interrupted、not_run 独立分类，passed 为 null，不计入成功率分母。但 `no_delegation` 与 `no_delegation_but_work_done` 一旦观察到委派就已构成可测违规，worker 后续挂起、abort 或报错仍计 failed。无关异常即使发生在预算截止后也记 errored；fixture close 错误单独记录，保留已有 measured verdict。批次开始前枚举所有 arm/task/repeat，中断后给未启动项补 not_run；报告 planned、attempted、completed 及全部 anomaly 计数。不完整批次拒绝比较。
 
-两臂先 fetch 再解析并 pin 到完整 commit SHA；相同 SHA 拒绝启动。每个完成 run 保存 ready snapshot 的 systemPromptChars 和 tool allowlist，按 lead/worker 角色核对；缺字段或 tool 集不同拒绝比较。AB_DRY 另存本地模型 fixture 实际收到的 system prompt SHA-256，缺失或两臂相同也拒绝比较，不能用相同长度代替文本证明。临时 Project 关闭 host skills / prompt templates 继承并核对 ready snapshot。
+两臂先 fetch 再解析并 pin 到完整 commit SHA；相同 SHA 拒绝启动。每个完成 run 保存 ready snapshot 的 systemPromptChars 和 tool allowlist，按 lead/worker 角色核对；缺字段或 tool 集不同拒绝比较。每个 task/role 的两臂 systemPromptChars 值集合必须不相交，dry/live 都检查。AB_DRY 另存本地模型 fixture 实际收到的 system prompt SHA-256，缺失或两臂相同也拒绝比较；live batch 启动前每臂先跑一条 dry task，打印实际观察到的 prompt hash，缺失或相同则拒绝开始 live 测量。不同 hash 包含动态路径等因素，不能单独证明预期提示词改动。临时 Project 关闭 host skills / prompt templates 继承并核对 ready snapshot。
 
 每次跑都要证明工作真的发生，worker run 的真实启动、真实工具调用、真实 token 消耗都进结果行，避免「成功」落在一条没跑起来的路径上。
 

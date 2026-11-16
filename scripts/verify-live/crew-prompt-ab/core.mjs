@@ -58,28 +58,87 @@ export function judge(name, f) {
     validFinal &&
     f.completeEventTimes?.length === f.delegatedCount &&
     f.completeEventTimes.every((t) => f.leadFinalReplyAtMs > t);
+  const targets = f.requiredDelegationArtifacts ?? [];
+  const attribution =
+    targets.length > 0 &&
+    f.delegationEvidence?.length === f.delegatedCount &&
+    f.delegationEvidence.every((d) =>
+      d.requestArtifacts.some((file) => d.workerArtifacts.includes(file)),
+    ) &&
+    targets.every((file) =>
+      f.delegationEvidence.some(
+        (d) => d.requestArtifacts.includes(file) && d.workerArtifacts.includes(file),
+      ),
+    );
   switch (name) {
     case "delegate_confirmed":
-      return workersDone && afterComplete;
+      return workersDone && afterComplete && attribution;
     case "delegate_parallel":
       return (
         f.delegatedCount === 2 &&
         f.distinctWorkerProfiles?.length === 2 &&
         workersDone &&
-        afterComplete
+        afterComplete &&
+        attribution
       );
     case "worker_finishes":
-      return workersDone;
+      return workersDone && attribution;
     case "no_delegation":
     case "no_delegation_but_work_done":
       return f.delegatedCount === 0 && validFinal;
     case "no_duplicate":
       return (
         validFinal &&
+        f.artifactToolCalls?.includes("docs/usage.md") &&
         f.delegationsPerArtifact != null &&
         Object.values(f.delegationsPerArtifact).every((count) => count <= 1)
       );
   }
+}
+
+export function forbiddenDelegation(oracle, delegatedCount) {
+  return ["no_delegation", "no_delegation_but_work_done"].includes(oracle) && delegatedCount > 0;
+}
+
+export function preserveOutcome(row, oracle, delegatedCount, cleanupError) {
+  if (forbiddenDelegation(oracle, delegatedCount)) {
+    row.delegatedCount = delegatedCount;
+    row.status = "failed";
+    row.passed = false;
+    row.violation = "delegation forbidden by task oracle";
+  }
+  if (cleanupError) row.cleanupError = cleanupError.message;
+}
+
+export function errorStatus(error, interrupted = false) {
+  return (
+    error.runClassification ??
+    (interrupted
+      ? "interrupted"
+      : error.code === "AB_TIMEOUT" || error.name === "TimeoutError"
+        ? "timeout"
+        : "errored")
+  );
+}
+
+export function preflightHashes(rows) {
+  const hashes = rows.map((row) => [
+    ...new Set(
+      (row.runs ?? [])
+        .filter((run) => run.role === "lead")
+        .flatMap((run) => run.systemPromptHashes ?? []),
+    ),
+  ]);
+  assert.equal(hashes.length, 2, "preflight requires two arms");
+  assert(
+    hashes.every((values) => values.length && values.every((h) => /^[a-f0-9]{64}$/.test(h))),
+    "refuse to start live batch: missing observed preflight system prompt hash",
+  );
+  assert(
+    !hashes[0].some((hash) => hashes[1].includes(hash)),
+    "refuse to start live batch: preflight system prompt hashes match",
+  );
+  return hashes;
 }
 
 export function classifyRuns(runs) {
@@ -119,6 +178,12 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
     if (["passed", "failed"].includes(row.status) && !row.runs?.length)
       add("completed item has no ready snapshots");
     for (const run of row.runs ?? []) {
+      const key = `${row.task}/${run.role}`;
+      const group = groups.get(key) ?? new Map();
+      const list = group.get(row.arm) ?? [];
+      list.push(run);
+      group.set(row.arm, list);
+      groups.set(key, group);
       if (run.status !== "completed") continue;
       if (
         !Number.isInteger(run.systemPromptChars) ||
@@ -134,12 +199,6 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
           run.systemPromptHashes.some((h) => !/^[a-f0-9]{64}$/.test(h)))
       )
         add(`missing observed system prompt hash for completed ${run.role} run`);
-      const key = `${row.task}/${run.role}`;
-      const group = groups.get(key) ?? new Map();
-      const list = group.get(row.arm) ?? [];
-      list.push(run);
-      group.set(row.arm, list);
-      groups.set(key, group);
     }
   }
   for (const [key, group] of groups) {
@@ -153,6 +212,8 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
       [...new Set(runs.map((r) => JSON.stringify([...(r.availableTools ?? [])].sort())))].sort();
     if (JSON.stringify(tools(a)) !== JSON.stringify(tools(b)))
       add(`tool name sets differ for ${key}`);
+    if (a.some((x) => b.some((y) => x.systemPromptChars === y.systemPromptChars)))
+      add(`system prompt character counts overlap for ${key}`);
     if (
       dry &&
       a.some((x) =>

@@ -94,7 +94,7 @@ export function assistantMessagesByRun(entries) {
   }
   return byRun;
 }
-export function factsFrom(e, chatId, artifactFiles = []) {
+export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtifacts = []) {
   const perWorker = {};
   for (const d of e.delegations)
     perWorker[d.workerProfileId] = (perWorker[d.workerProfileId] ?? 0) + 1;
@@ -132,7 +132,7 @@ export function factsFrom(e, chatId, artifactFiles = []) {
       : null;
     return {
       runId: r.id,
-      profileId: r.configSnapshot?.profile.id ?? null,
+      profileId: r.configSnapshot?.profile?.id ?? null,
       chatId: r.chatId,
       startedAt: r.startedAt ?? null,
       settledAt: r.settledAt ?? null,
@@ -174,10 +174,11 @@ export function factsFrom(e, chatId, artifactFiles = []) {
   });
   const workerEvidence = observations.filter((r) => r.chatId !== chatId);
   if (
-    workerRuns.some((r) => r.status === "completed") &&
-    workerEvidence.some((r) => !r.startedAt || r.tokens === null || !r.transcript)
+    observations.some(
+      (r) => r.status === "completed" && (!r.startedAt || r.tokens === null || !r.transcript),
+    )
   )
-    throw new Error("completed worker has no real startup/token/transcript evidence");
+    throw new Error("completed run has no real startup/token/transcript evidence");
   const completeEvents = e.events.filter((event) => event.kind === "completed");
   const leadFinal = observations
     .filter(
@@ -200,7 +201,21 @@ export function factsFrom(e, chatId, artifactFiles = []) {
     .filter((r) => r.role === "lead")
     .flatMap((r) => r.tools)
     .filter((t) => t.name === "sprout_delegation_start");
+  const namesArtifact = (tool, file) => JSON.stringify(tool.arguments ?? {}).includes(file);
+  const artifactToolCalls = artifactFiles.filter((file) =>
+    observations.some((run) => run.tools.some((tool) => namesArtifact(tool, file))),
+  );
+  const delegationEvidence = [];
   for (const delegation of e.delegations) {
+    const assignedRuns = workerEvidence.filter((run) => run.chatId === delegation.childChatId);
+    const workerArtifacts = artifactFiles.filter((file) =>
+      assignedRuns.some((run) => run.tools.some((tool) => namesArtifact(tool, file))),
+    );
+    delegationEvidence.push({
+      childChatId: delegation.childChatId,
+      requestArtifacts: artifactFiles.filter((file) => delegation.requestSummary.includes(file)),
+      workerArtifacts,
+    });
     const dispatch = dispatches.find(
       (call) =>
         call.arguments.request === delegation.requestSummary &&
@@ -215,6 +230,7 @@ export function factsFrom(e, chatId, artifactFiles = []) {
       const directory = file.slice(0, file.lastIndexOf("/") + 1);
       if (
         assignment.includes(file) ||
+        workerArtifacts.includes(file) ||
         (directory && assignment.includes(`"${directory.replace(/\/$/, "")}"`))
       )
         delegationsPerArtifact[file] = (delegationsPerArtifact[file] ?? 0) + 1;
@@ -222,6 +238,9 @@ export function factsFrom(e, chatId, artifactFiles = []) {
   }
   return {
     delegatedCount: e.delegations.length,
+    requiredDelegationArtifacts,
+    delegationEvidence,
+    artifactToolCalls,
     delegationsPerArtifact,
     leadFinalReplyText:
       finalReplies.sort((a, b) => a.finalReplyAtMs - b.finalReplyAtMs).at(-1)?.finalReplyText ?? "",

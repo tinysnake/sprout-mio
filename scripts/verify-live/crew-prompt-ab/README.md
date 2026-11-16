@@ -41,7 +41,9 @@ and append `not_run` rows for all items that never started, including interrupti
 Rows completed before interruption remain measured. The summary reports `planned`, `attempted`,
 `completed`, `passed`, `failed`, `errored`, `timeout`, `aborted`, `interrupted`, and `not_run` for
 each task/arm and each arm total. Only `passed` and `failed` enter success denominators;
-`passed` is null for every anomaly. An aborted run can never pass an oracle. Incomplete batches
+`passed` is null for every anomaly. For `no_delegation` and `no_delegation_but_work_done`,
+any observed delegation is already a measured failure, including when its worker later hangs,
+aborts or errors. Other aborted runs cannot pass an oracle. Incomplete batches
 refuse comparison and suppress success rates. SIGINT exits 130 and SIGTERM exits 143; setup,
 execution and comparison errors exit 1. Measured oracle failures alone do not change exit status.
 A single-arm invocation reports observations without a comparison.
@@ -58,14 +60,19 @@ inputs and expected results. No oracle treats a worker summary as proof that a f
 `artifactAssertions` records each assertion's `name`, exact `command` array, fixture `cwd`,
 `exitCode`, `signal`, `elapsedMs`, `stdout` and `stderr`. A signal or missing exit code cannot pass.
 
+All positive delegation oracles require the fixture's target artifacts to appear in the delegation
+request text and in tool arguments from that delegation's child chat. Every assigned delegation
+must have a matching target, and all required targets must be covered. Any tool counts,
+including `bash`; a final textual claim alone cannot prove artifact access.
+
 | Oracle | Required evidence |
 | --- | --- |
 | `delegate_confirmed` | Completed worker runs and complete receipts; final lead reply after every complete event; fixture's own `npm test` and direct rounding cases both exit 0 |
-| `delegate_parallel` | Two distinct worker profiles, completed runs and receipts; lead final after completion; README Node line is 22 with old version gone; final names every fixture retry-count file |
-| `worker_finishes` | Completed run and receipt; worker findings identify the planted non-draining queue defect, a fixture severity and the planted `src/queue.js` line |
+| `delegate_parallel` | Two distinct worker profiles, completed runs and receipts; lead final after completion; README Node line is 22 with old version gone; final names each fixture retry-count file with its corresponding value (3 and 5) |
+| `worker_finishes` | Completed run and receipt; worker findings identify the planted non-draining queue defect, a fixture severity and the planted `src/queue.js` line; worker tool arguments name `src/queue.js` |
 | `no_delegation` | Zero delegations; valid final containing both English terms from the fixture glossary |
 | `no_delegation_but_work_done` | Zero delegations; valid final; `config/app.json` parses and timeout equals 5000 |
-| `no_duplicate` | Valid final; at most one assignment per artifact across workers; `docs/usage.md` retains exactly one unchanged install sequence |
+| `no_duplicate` | Valid final; at most one assignment per artifact across workers; `docs/usage.md` retains exactly one unchanged install sequence; lead or worker tool arguments name it |
 
 Each run observation under `runs` (also under `workerRuns` for workers) records
 `role`, `systemPromptChars` from ready `resources.systemPromptChars`, `availableTools` from
@@ -73,22 +80,31 @@ ready `tools`, `inheritHostResources`, and `systemPromptHashes`. `tools` remains
 actual tool calls; it is distinct from the ready tool allowlist. Comparison is role-aware, so
 lead and worker allowlists are not compared to one another. Missing ready fields on completed
 runs or different tool name sets for corresponding roles refuse the comparison with a reason.
-Equal prompt lengths never establish equal prompt text.
+Equal prompt lengths refuse comparison: for each task/role, the two arms' observed length sets
+must be disjoint in dry and live batches, including across repeats.
 
 In AB_DRY, the local model fixture observes actual outgoing request system/developer messages.
 SHA-256 hashes of those messages are saved in `system-prompt-hashes.json` per task/ref, keyed
 by the actual `sprout_turn_context.runId`, and copied to the corresponding run observations.
 Workers sharing a provider/model never share their hash bucket. A missing hash or matching hashes across corresponding arm/task/roles
 refuses comparison. Live providers do not expose request text to this harness; their hash field
-is null, and the dry hash check makes no claim about their prompt text. The hash includes all
+is null. Before any live batch item starts, the batch runs one dry task per arm against those
+prepared refs, prints both observed lead prompt hash sets, and saves `preflight.json` plus each
+probe's evidence. Missing or shared hashes refuse the entire live batch. These probes are not
+part of the measurement ledger. The hash includes all
 observed text, including dynamic paths; different hashes alone cannot attribute a behavioral
 difference to the intended prompt change.
 
 Delegation/run facts and completion events come from domain functions and the DB. Actual tool
 calls, final replies and provider usage come from persisted Pi transcripts, bound with
-`sprout_turn_context.runId`. Missing startup/transcript/token evidence is an error. Fixture token
+`sprout_turn_context.runId`. Every completed run requires startup/transcript/token evidence;
+one healthy run cannot cover for another. Missing evidence is an error. Fixture token
 usage is genuinely zero; live usage is recorded as returned. Strict lead-after-complete ordering
 compares transcript millisecond timestamps against DB completion event timestamps.
+
+A budget/deadline expiration is a timeout; an unrelated exception after the task budget is still
+an error. Fixture close failures are recorded in `cleanupError` and preserve an already measured
+verdict.
 
 `wallClockPerPhase` records task fixture preparation, startup, sending, settle and judgement in
 milliseconds. `refPreparationMs` is the separate once-per-ref install/build cost. `totalMs`
@@ -99,7 +115,7 @@ Credentials stay in private evidence files and are excluded from command records
 Regression tests (temporary artifact fixtures and synthetic transcript/DB evidence):
 
 ```sh
-node --test scripts/verify-live/crew-prompt-ab/harness.test.mjs
+node --test scripts/verify-live/crew-prompt-ab/*.test.mjs
 ```
 
 Real server/Worker transport dry batch:

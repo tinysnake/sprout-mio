@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskSet, summarize, unknownEvidence, planBatch } from "./core.mjs";
+import { taskSet, summarize, unknownEvidence, planBatch, preflightHashes } from "./core.mjs";
 import { runTask } from "./run-task.mjs";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -115,8 +115,13 @@ async function command(executable, args, log, timeout = 300000) {
     log,
   };
   appendFileSync(join(evidence, "commands.jsonl"), JSON.stringify(record) + "\n");
+  if (expired) {
+    const error = new Error(`command exceeded bounded budget: ${executable}; log ${log}`);
+    error.code = "AB_TIMEOUT";
+    throw error;
+  }
   assert(
-    !expired && result.code === 0,
+    result.code === 0,
     `command failed (${result.code}): ${executable} ${args.join(" ")}; log ${log}`,
   );
   return readFileSync(log, "utf8").trim();
@@ -182,6 +187,40 @@ try {
       arm.error = error.message;
     }
     arm.prepareMs = Date.now() - prepareAt;
+  }
+  if (batch && !dry && !cancellation.signal.aborted) {
+    const probes = [];
+    for (const arm of arms) {
+      assert(!arm.error, `preflight preparation failed for ${arm.arm}: ${arm.error}`);
+      process.chdir(arm.checkout);
+      const probe = await runTask({
+        task: selected[0],
+        repeat: 0,
+        arm: arm.arm,
+        ref: arm.ref,
+        head: arm.head,
+        model,
+        dry: true,
+        timeoutMs,
+        directory: join(evidence, `preflight-${arm.arm}`),
+        command,
+        signal: cancellation.signal,
+      });
+      probes.push(probe);
+      console.log(
+        `Preflight ${arm.arm} system prompt hashes: ${JSON.stringify(
+          (probe.runs ?? [])
+            .filter((run) => run.role === "lead")
+            .flatMap((run) => run.systemPromptHashes ?? []),
+        )}`,
+      );
+    }
+    writeFileSync(join(evidence, "preflight.json"), JSON.stringify(probes, null, 2));
+    preflightHashes(probes);
+    assert(
+      probes.every((probe) => ["passed", "failed"].includes(probe.status)),
+      "refuse to start live batch: preflight task did not complete",
+    );
   }
   for (const item of plan) {
     if (cancellation.signal.aborted) break;
