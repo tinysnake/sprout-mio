@@ -20,6 +20,7 @@ import {
 import { ID_PREFIXES } from "../../contracts/ids";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { and, asc, eq } from "drizzle-orm";
 import {
   AgentRunError,
   completeAgentRun,
@@ -34,6 +35,7 @@ import {
 } from "../../domain/agent-run";
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
+import { readRunScope } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
 import { admitAutomationInput } from "../../domain/automation-input";
 import { admitTaskStartInput } from "../../domain/task-input";
@@ -53,7 +55,11 @@ import type { PiSessionProcess } from "./process";
 import { clearRunActivity, recordRunActivity } from "./run-activity";
 import { prepareInheritedResources } from "./skills";
 import { filterMemorySkillPaths } from "../../contracts/memory";
+import { chatDisplayTitle } from "../../contracts/chat";
+import type { Situation } from "../../contracts/prompt";
+import { getChat } from "../../domain/chat";
 import { db } from "../../db";
+import { agentProfile, chatEffectiveMember, delegation } from "../../db/schema";
 import { config } from "../../lib/config";
 import { resolveMemoryRuntime } from "../memory-runtime";
 
@@ -69,6 +75,65 @@ const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
  */
 const NOTICE_ID_PREFIX = "notice:";
 const NOTICE_RETRY_MS = 1_000;
+
+/**
+ * 从 run 自身的记录认定这次运行的处境。resolver 在 open 边界跑，只信 run、chat 与
+ * delegation 行组成的复合事实，不信队列里的选择，也不信调用方声明。
+ *
+ * - crew 对话里对不上当前 lead 的运行：直接失败，不静默降级成 dm_worker；
+ * - delegation 子对话的运行：必须与 delegation 行（childChatId + workerProfileId）对上，
+ *   delegationId 也从那一行取。
+ */
+export function resolveRunSituation(
+  runId: string,
+  ctx: ProjectContext,
+  profile: { id: string; name: string; purpose: "worker" | "assistant" },
+): Situation {
+  const scope = readRunScope(runId);
+  if (!scope) throw new Error("run 身份不存在，拒绝认定运行处境");
+  if (profile.purpose === "assistant") return { kind: "assistant" };
+  const chat = getChat(scope.chatId, ctx);
+  if (chat.kind === "crew") {
+    if (chat.leadProfileId !== profile.id)
+      throw new Error("Crew 对话的运行身份与当前 lead 不一致，拒绝打开");
+    return { kind: "crew_lead", crewName: crewDisplayName(chat) };
+  }
+  if (chat.kind === "delegation") {
+    const row = db.select().from(delegation).where(eq(delegation.childChatId, chat.id)).get();
+    if (!row || row.workerProfileId !== profile.id)
+      throw new Error("委派运行的 worker 身份与 delegation 行不一致，拒绝打开");
+    const lead = db
+      .select({ name: agentProfile.name })
+      .from(agentProfile)
+      .where(eq(agentProfile.id, row.dispatchLeadProfileId))
+      .get();
+    return {
+      kind: "delegation_worker",
+      delegationId: row.id,
+      ...(lead ? { leadName: lead.name } : {}),
+    };
+  }
+  return { kind: "dm_worker" };
+}
+
+/** Crew 展示名走与读模型同一条回落链：标题优先，缺省回落到参与者名字。 */
+function crewDisplayName(chat: ReturnType<typeof getChat>): string {
+  const names = db
+    .select({ name: agentProfile.name })
+    .from(agentProfile)
+    .innerJoin(
+      chatEffectiveMember,
+      and(
+        eq(chatEffectiveMember.memberKind, "agent"),
+        eq(chatEffectiveMember.memberId, agentProfile.id),
+      ),
+    )
+    .where(eq(chatEffectiveMember.chatId, chat.id))
+    .orderBy(asc(agentProfile.id))
+    .all()
+    .map((row: { name: string }) => row.name);
+  return chatDisplayTitle(chat, names);
+}
 
 export function executeRun(
   work: Work,
@@ -164,6 +229,7 @@ export function executeRun(
                   : resources,
               memory,
               remote,
+              situation: resolveRunSituation(run.id, ctx, profile),
               profile: {
                 id: profile.id,
                 purpose: profile.purpose,

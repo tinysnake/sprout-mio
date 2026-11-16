@@ -9,6 +9,7 @@ import {
 import type { InfoHubHint } from "../../contracts/info-hub-hint";
 import type { RunConfigSnapshot } from "../../contracts/agent-run";
 import { RUN_ACTIVITY_KINDS } from "../../contracts/agent-run";
+import { situationSchema, type Situation } from "../../contracts/prompt";
 import type { RemoteToolGrant } from "../../contracts/remote";
 
 export type OpenSession = {
@@ -29,6 +30,8 @@ export type OpenSession = {
   memory?: MemoryRuntime;
   purpose: "worker" | "assistant";
   profile: RunConfigSnapshot["profile"];
+  /** 与 `profile` 平级：应由服务端认定的运行处境，旧宿主可能缺省。 */
+  situation?: Situation;
   remote: RemoteToolGrant;
 };
 export type PiHostCommand =
@@ -53,6 +56,9 @@ export type PiHostCommand =
 const snapshotSchema = z.object({
   memory: memorySnapshotSchema.optional(),
   purpose: z.enum(["worker", "assistant"]).optional(),
+  // 与 `profile` 平级。与 OpenSession 共用同一个 schema，抄一份形状会让字段在
+  // ready 事件校验时被静默剥掉。旧快照没有，所以可选。
+  situation: situationSchema.optional(),
   model: z.string().min(1),
   provider: z.string().min(1),
   thinking: z.string().min(1),

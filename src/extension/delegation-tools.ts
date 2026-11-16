@@ -14,7 +14,7 @@ const descriptions: Record<DelegationToolName, string> = {
   sprout_delegation_complete:
     "Report this delegation finished. The result goes to the Crew lead as a durable event; it never posts into the Crew timeline. Provide a short summary and, for reports longer than 200 characters, an HTML artifact.",
   sprout_delegation_block:
-    "Report this delegation blocked. Use needs_input for a decision only a human can make, resource_unavailable when the required machine or workspace is missing, out_of_scope when the request cannot be done as stated. The lead is resumed with this event.",
+    "Report this delegation blocked. Use needs_input for a decision requiring Human 或 Crew lead, resource_unavailable when the required machine or workspace is missing, out_of_scope when the request cannot be done as stated, failed when the attempt did not succeed. The lead is resumed with this event.",
 };
 
 function buildRequest(
