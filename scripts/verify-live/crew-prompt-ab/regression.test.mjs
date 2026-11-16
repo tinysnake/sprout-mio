@@ -11,6 +11,7 @@ import {
   errorStatus,
   preserveOutcome,
   summarize,
+  retryTransient,
 } from "./core.mjs";
 
 function transcriptCase(action) {
@@ -221,4 +222,24 @@ test("live preflight requires two valid, distinct hashes observed on lead runs",
   assert.deepEqual(preflightHashes([probe(a), probe(b)]), [[a], [b]]);
   assert.throws(() => preflightHashes([probe(a), probe(a)]), /hashes match/);
   assert.throws(() => preflightHashes([probe(a), probe(null)]), /missing observed/);
+});
+
+test("a transient ref fetch is retried before the batch is abandoned", async () => {
+  const attempts = [];
+  const outcome = await retryTransient(async (attempt) => {
+    attempts.push(attempt);
+    if (attempt < 3) throw new Error(`TLS connect error on attempt ${attempt}`);
+    return "fetched";
+  });
+  assert.equal(outcome, "fetched");
+  assert.deepEqual(attempts, [1, 2, 3]);
+  const always = [];
+  await assert.rejects(
+    retryTransient(async (attempt) => {
+      always.push(attempt);
+      throw new Error("command exceeded bounded budget: git");
+    }),
+    /bounded budget/,
+  );
+  assert.deepEqual(always, [1, 2, 3]);
 });

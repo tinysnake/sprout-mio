@@ -201,6 +201,19 @@ export function evaluateOracle(name, f, { corrected = false } = {}) {
   return { oracle: name, passed: failedGates.length === 0, failedGates, gates };
 }
 
+// A dropped TLS connection or a slow fetch must not waste a whole A/B batch.
+export async function retryTransient(run, { attempts = 3 } = {}) {
+  let last;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await run(attempt);
+    } catch (error) {
+      last = error;
+    }
+  }
+  throw last;
+}
+
 export function usageReviewConclusion(text = "") {
   return (
     /(?:^|[^\w/.-])docs\/usage\.md(?![\w/.-])/.test(text) &&

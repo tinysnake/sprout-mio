@@ -20,6 +20,7 @@ import {
   planBatch,
   preflightHashes,
   finalizeVerdict,
+  retryTransient,
 } from "./core.mjs";
 import { runTask } from "./run-task.mjs";
 
@@ -143,11 +144,15 @@ try {
   for (const arm of arms) {
     if (cancellation.signal.aborted) break;
     const objectRef = /^(?:[a-f0-9]{7,40}|HEAD(?:[~^][0-9]*)?)$/.test(arm.ref);
-    await command(
-      "git",
-      ["fetch", "origin", ...(objectRef ? [] : [arm.ref.replace(/^origin\//, "")])],
-      log("fetch-ref"),
-      60000,
+    await retryTransient(
+      () =>
+        command(
+          "git",
+          ["fetch", "origin", ...(objectRef ? [] : [arm.ref.replace(/^origin\//, "")])],
+          log("fetch-ref"),
+          60000,
+        ),
+      { attempts: 3 },
     );
     arm.head = await command(
       "git",
