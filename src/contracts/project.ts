@@ -4,6 +4,7 @@ import { appIdPattern, ID_PREFIXES } from "./ids";
 import { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
 
 export const projectKindSchema = z.enum(["coding", "work", "custom"]);
+export type ProjectKind = z.infer<typeof projectKindSchema>;
 
 const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 

@@ -22,6 +22,7 @@ export function AgentEditForm({
             agentProfileId: profile.id,
             name: draft.name,
             jobTitle: draft.jobTitle.trim() || null,
+            description: draft.description.trim() || null,
             persona: draft.persona,
             model: draft.model.trim() || null,
             effort: draft.effort.trim() || null,

@@ -271,12 +271,14 @@ function AgentDetailScene({ embedded }: { embedded: boolean }) {
     await delay(700);
     if (fail) return demoFailure("forbidden", "没有修改此 profile 的权限。");
     const jobTitle = draft.jobTitle.trim();
+    const description = draft.description.trim();
     const model = draft.model.trim();
     const effort = draft.effort.trim();
     const next: AgentProfile = {
       ...editingProfile,
       name: draft.name,
       jobTitle: jobTitle || undefined,
+      description: description || undefined,
       persona: draft.persona,
       model: model || undefined,
       effort: effort || undefined,
@@ -480,6 +482,8 @@ function SettingsScene({ embedded }: { embedded: boolean }) {
       ...project,
       name: draft.name,
       description: draft.description || undefined,
+      kind: draft.kind,
+      agentPrompt: draft.agentPrompt || undefined,
       updatedAt: new Date().toISOString(),
     };
     setProject(next);

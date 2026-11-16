@@ -14,6 +14,7 @@ type Evidence = {
       agentProfileId: string;
       name: string;
       personaSummary: string;
+      description: string | null;
       chatId: string | null;
       instanceId: string | null;
     }[];
@@ -96,7 +97,7 @@ beforeAll(() => {
       const userB = await signUp("info-hub-b");
       const project = await projects.createProjectBoundary({ name: "A 的 Info Hub Project" }, userA.headers, "req_j1");
       const projectId = project.data.id;
-      const joined = await agents.createAgentProfileBoundary({ name: "已加入 Agent", persona: "人设正文" }, userA.headers, "req_j2");
+      const joined = await agents.createAgentProfileBoundary({ name: "已加入 Agent", persona: "人设正文", description: "负责仓库分析与结论复核" }, userA.headers, "req_j2");
       const outsider = await agents.createAgentProfileBoundary({ name: "未加入 Agent", persona: "不该出现在聚合里" }, userA.headers, "req_j3");
       await agents.addProjectMemberBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j4");
       const dm = await chats.createDirectChatBoundary({ projectId, agentProfileId: joined.data.id }, userA.headers, "req_j5");
@@ -136,6 +137,7 @@ beforeAll(() => {
             agentProfileId: entry.agentProfileId,
             name: entry.name,
             personaSummary: entry.personaSummary,
+            description: entry.description ?? null,
             chatId: entry.chatId ?? null,
             instanceId: entry.instanceId ?? null,
           })),
@@ -239,6 +241,10 @@ describe("Info Hub 聚合与数据库一致", () => {
     );
     // 列表里的人设事实（P6b 之前就在这里）不能被职位替换掉。
     expect(evidence.hub?.agents[0]?.personaSummary).toBe("人设正文");
+  });
+
+  it("成员的工作描述随 Project agents 条目返回，供 lead 按描述选人", () => {
+    expect(evidence.hub?.agents[0]?.description).toBe("负责仓库分析与结论复核");
   });
 
   it("Agent 视角一次读回 status、活动 run 与完整分身清单，未加入的 Agent 是 not_found", () => {

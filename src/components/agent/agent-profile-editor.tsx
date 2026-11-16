@@ -17,6 +17,7 @@ import { AgentOptionField } from "./agent-option-field";
 export type AgentProfileDraft = {
   name: string;
   jobTitle: string;
+  description: string;
   persona: string;
   model: string;
   effort: string;
@@ -26,6 +27,7 @@ export function draftFromProfile(profile: AgentProfile): AgentProfileDraft {
   return {
     name: profile.name,
     jobTitle: profile.jobTitle ?? "",
+    description: profile.description ?? "",
     persona: profile.persona,
     model: profile.model ?? "",
     effort: profile.effort ?? "",
@@ -36,6 +38,7 @@ function sameDraft(left: AgentProfileDraft, right: AgentProfileDraft) {
   return (
     left.name === right.name &&
     left.jobTitle === right.jobTitle &&
+    left.description === right.description &&
     left.persona === right.persona &&
     left.model === right.model &&
     left.effort === right.effort
@@ -123,6 +126,7 @@ export function AgentProfileEditor({
         </span>
       }
     >
+      {" "}
       <form
         onSubmit={handleSubmit}
         aria-busy={pending}
@@ -151,6 +155,22 @@ export function AgentProfileEditor({
             maxLength={40}
             disabled={pending}
             onChange={(event) => change("jobTitle", event.target.value)}
+          />
+        </Field>
+        <Field
+          label="工作描述"
+          htmlFor="agent-edit-description"
+          hint={`可留空，最多 500 字；说明擅长什么、边界在哪，供 lead 按描述选人。下一轮 run 才会使用新的工作描述。${draft.description.length} / 500`}
+          error={fieldErrors.description}
+        >
+          <Textarea
+            id="agent-edit-description"
+            data-testid="agent-edit-description"
+            value={draft.description}
+            rows={4}
+            maxLength={500}
+            disabled={pending}
+            onChange={(event) => change("description", event.target.value)}
           />
         </Field>
         <Field
