@@ -304,7 +304,10 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
               return coordinateCrewResource(parsed.call.input.command, actorContext);
             } catch (error) {
               if (error instanceof CrewResourceError)
-                throw new RemoteError(error.code === "invalid" ? "validation_failed" : error.code);
+                throw new RemoteError(
+                  error.code === "invalid" ? "validation_failed" : error.code,
+                  error.message,
+                );
               throw error;
             }
           case "info_hub_get":
@@ -514,7 +517,7 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
     const unauthorized =
       appError.code === "remote_grant_invalid" || appError.code === "remote_run_inactive";
     return Response.json(
-      { ok: false, error: { ...appError, message: appError.code }, requestId },
+      { ok: false, error: appError, requestId },
       { status: unauthorized ? 401 : appError.code === "forbidden" ? 403 : 200, headers },
     );
   }

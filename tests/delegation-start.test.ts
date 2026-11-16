@@ -196,6 +196,112 @@ afterAll(async () => {
 });
 
 describe("delegation start contract", () => {
+  it("preserves the real Crew epoch rejection reason through the gateway and model tool", async () => {
+    const { registerRemoteTools } = await import("../src/extension/remote-tools");
+    const tools: Tool[] = [];
+    registerRemoteTools(
+      {
+        registerTool: (definition) => {
+          tools.push(definition);
+        },
+      },
+      createRemoteClient(grant),
+    );
+    const response = await tools
+      .find((definition) => definition.name === "sprout_resource_request")!
+      .execute("stale-crew", {
+        crewChatId: target.id,
+        crewEpoch: 999,
+        subjectKind: "lead_run",
+        runId: leadRun.id,
+        machineId: "mch_00000000",
+        membershipEpoch: 1,
+        directoryRealPath: "/workspace",
+        directoryRevision: 1,
+        operations: ["shell"],
+        clientRequestId: "stale-crew-context",
+      });
+    expect(response.isError).toBe(true);
+    expect(response.details).toMatchObject({
+      outcome: "rejected",
+      status: 403,
+      error: { code: "forbidden", message: "crew_epoch_changed" },
+    });
+    const content = response.content[0]!;
+    expect(content.type).toBe("text");
+    if (content.type === "text") expect(JSON.parse(content.text)).toEqual(response.details);
+  });
+
+  it("publishes resources and passes them through the real gateway into approved Crew requests", async () => {
+    const { createMachine, saveProjectMachineBinding } = await import("../src/domain/machine");
+    const machineContext = { ...runtime, userId: ctx.userId, now: new Date() };
+    const machineId = createMachine({ name: "Delegated resource" }, machineContext).detail.machine
+      .id;
+    saveProjectMachineBinding(
+      { projectId: project.id, machineId, description: "", expectedRevision: null },
+      machineContext,
+    );
+    sqlite
+      .prepare(
+        "INSERT OR IGNORE INTO project_machine_membership(project_id,machine_id,epoch,state,joined_at) VALUES (?,?,1,'active',1)",
+      )
+      .run(project.id, machineId);
+    sqlite
+      .prepare(
+        "INSERT INTO machine_connection(machine_id,generation,attempt_id,boot_id,status,opened_at,last_seen_at) VALUES (?,1,?,?,'open',1,1)",
+      )
+      .run(machineId, newId(ID_PREFIXES.request), runtime.bootId);
+    sqlite
+      .prepare(
+        "INSERT INTO directory_observation(machine_id,generation,project_id,revision,seq,checked_at,kind,real_path) VALUES (?,1,?,1,1,1,'accessible','/workspace')",
+      )
+      .run(machineId, project.id);
+    const scope = {
+      machineId,
+      membershipEpoch: 1,
+      directoryRealPath: "/workspace",
+      directoryRevision: 1,
+      operations: ["shell", "file_read"],
+    };
+    expect(start.parameters.properties).toHaveProperty("resources");
+    const result = outcome(
+      await execute("Dispatch with resource scope", { blockMs: 0, resources: [scope] }),
+    );
+    expect(result.outcome).toBe("queued");
+    expect(
+      sqlite
+        .prepare(
+          "SELECT crew_chat_id, delegation_id, run_id, machine_id, membership_epoch, directory_real_path, directory_revision, operations_json, approval, approved_by_profile_id FROM crew_resource_request WHERE delegation_id=?",
+        )
+        .all(result.delegationId),
+    ).toEqual([
+      {
+        crew_chat_id: target.id,
+        delegation_id: result.delegationId,
+        run_id: result.runId,
+        machine_id: machineId,
+        membership_epoch: 1,
+        directory_real_path: "/workspace",
+        directory_revision: 1,
+        operations_json: JSON.stringify([...scope.operations].sort()),
+        approval: "approved",
+        approved_by_profile_id: lead.id,
+      },
+    ]);
+    const before = count().n;
+    const denied = await execute("Invalid resource scope", {
+      blockMs: 0,
+      resources: [{ ...scope, membershipEpoch: 2 }],
+    });
+    expect(denied.isError).toBe(true);
+    expect(denied.details).toMatchObject({
+      outcome: "rejected",
+      status: 403,
+      error: { code: "forbidden" },
+    });
+    expect(count().n).toBe(before);
+  });
+
   it("clamps the default, zero, negative, fractional and maximum budgets for both input surfaces", () => {
     for (const [value, expected] of [
       [undefined, 10000],
