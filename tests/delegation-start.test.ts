@@ -329,14 +329,14 @@ describe("dispatch through extension, HTTP gateway and SQLite", () => {
     for (const workerProfileId of [outsider.id, lead.id]) {
       const result = await execute("invalid", { workerProfileId, blockMs: 0 });
       expect(result.isError).toBe(true);
-      expect(result.details).not.toHaveProperty("outcome");
+      expect(result.details).toMatchObject({ outcome: "rejected", status: expect.any(Number) });
     }
     const human = { kind: "human" as const, userId: ctx.userId, ctx };
     setCrewMode(target.id, "stopped", chats.getChat(target.id, ctx).governanceRevision, human);
     try {
       const result = await execute("stopped", { blockMs: 0 });
       expect(result.isError).toBe(true);
-      expect(result.details).not.toHaveProperty("outcome");
+      expect(result.details).toMatchObject({ outcome: "rejected", status: expect.any(Number) });
     } finally {
       setCrewMode(target.id, "active", chats.getChat(target.id, ctx).governanceRevision, human);
     }

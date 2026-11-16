@@ -1,6 +1,7 @@
 import {
   clampDelegationStartBlockMs,
   crewMutateResponseSchema,
+  delegationMutateResponseSchema,
   delegationStartOutcomeSchema,
 } from "../contracts/delegation";
 import { request as httpRequest } from "node:http";
@@ -19,7 +20,7 @@ import {
   assistantWatchResponseSchema,
   type AssistantResponse,
 } from "../contracts/assistant-response";
-import type { AppResult } from "../contracts/result";
+import type { AppError, AppResult } from "../contracts/result";
 import {
   mcpCatalogViewSchema,
   mcpSessionCloseOutputSchema,
@@ -62,6 +63,7 @@ type RemoteData =
   | z.infer<typeof taskListResponseSchema>
   | z.infer<typeof taskMutateResponseSchema>
   | z.infer<typeof crewMutateResponseSchema>
+  | z.infer<typeof delegationMutateResponseSchema>
   | z.infer<typeof chatGetResponseSchema>
   | z.infer<typeof chatSendResponseSchema>
   | z.infer<typeof executionViewSchema>
@@ -76,6 +78,7 @@ type RemoteData =
   | z.infer<typeof mcpSessionExchangeOutputSchema>;
 export type RemoteToolResponse =
   | { outcome: "response"; result: AppResult<RemoteData> }
+  | { outcome: "rejected"; status: number; error: AppError; requestId: string }
   | {
       outcome: "unknown";
       reason: "transport_timeout" | "cancelled" | "transport_error" | "invalid_response";
@@ -92,11 +95,33 @@ export interface RemoteToolClient {
   request(request: RemoteAgentRequest, signal?: AbortSignal): Promise<RemoteToolResponse>;
 }
 
-function readResponse(value: unknown, request: RemoteAgentRequest): RemoteToolResponse {
+function readResponse(
+  value: unknown,
+  request: RemoteAgentRequest,
+  status: number,
+): RemoteToolResponse {
   const envelope = envelopeSchema.safeParse(value);
   if (!envelope.success) return { outcome: "unknown", reason: "invalid_response" };
-  if (!envelope.data.ok) return { outcome: "response", result: envelope.data };
+  if (!envelope.data.ok)
+    return {
+      outcome: "rejected",
+      status,
+      error: envelope.data.error,
+      requestId: envelope.data.requestId,
+    };
+  if (status !== 200) return { outcome: "unknown", reason: "invalid_response" };
   const { call } = request;
+  if (call.type === "delegation_mutate") {
+    const parsed = delegationMutateResponseSchema.safeParse(envelope.data.data);
+    return parsed.success &&
+      parsed.data.projectId === call.input.projectId &&
+      parsed.data.delegationId === call.input.delegationId
+      ? {
+          outcome: "response",
+          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
+        }
+      : { outcome: "unknown", reason: "invalid_response" };
+  }
   if (call.type === "info_hub_get")
     return (
       readInfoHubResponse(envelope.data, request) ?? {
@@ -491,32 +516,13 @@ export function createRemoteClient(
             response.on("error", () => finish({ outcome: "unknown", reason: "transport_error" }));
             response.on("end", () => {
               try {
-                const taskChatCall = [
-                  "task_get",
-                  "task_list",
-                  "task_mutate",
-                  "chat_get",
-                  "chat_send",
-                ].includes(parsed.data.call.type);
-                if (
-                  response.statusCode !== 200 &&
-                  response.statusCode !== 401 &&
-                  !(taskChatCall && response.statusCode === 403)
-                ) {
-                  finish({ outcome: "unknown", reason: "invalid_response" });
-                  return;
-                }
-                const result = readResponse(
-                  JSON.parse(Buffer.concat(chunks).toString("utf8")),
-                  parsed.data,
+                finish(
+                  readResponse(
+                    JSON.parse(Buffer.concat(chunks).toString("utf8")),
+                    parsed.data,
+                    response.statusCode ?? 0,
+                  ),
                 );
-                if (
-                  (response.statusCode === 401 || response.statusCode === 403) &&
-                  result.outcome === "response" &&
-                  result.result.ok
-                )
-                  finish({ outcome: "unknown", reason: "invalid_response" });
-                else finish(result);
               } catch {
                 finish({ outcome: "unknown", reason: "invalid_response" });
               }

@@ -7,7 +7,11 @@ export async function readResponseForProbe(
   request: RemoteAgentRequest,
 ): Promise<unknown> {
   const response = await remote.request(request);
-  if (response.outcome !== "response") throw new Error(`real HTTP 结果未知：${response.reason}`);
+  if (response.outcome === "rejected")
+    throw new Error(
+      `real HTTP 拒绝（HTTP ${response.status}）：${response.error.code}: ${response.error.message}`,
+    );
+  if (response.outcome === "unknown") throw new Error(`real HTTP 结果未知：${response.reason}`);
   if (!response.result.ok) throw new Error(`real HTTP 拒绝：${response.result.error.code}`);
   return response.result.data;
 }

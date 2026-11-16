@@ -145,7 +145,11 @@ export class SproutRelayTransport implements McpTransport {
     await this.waitAttached();
   }
   private sessionOf(response: RemoteToolResponse): McpSession {
-    if (response.outcome !== "response") throw new Error(`Sprout 通道不可用：${response.reason}`);
+    if (response.outcome === "rejected")
+      throw new Error(
+        `Sprout 拒绝 MCP session（HTTP ${response.status}）：${response.error.code}: ${response.error.message}`,
+      );
+    if (response.outcome === "unknown") throw new Error(`Sprout 通道不可用：${response.reason}`);
     if (!response.result.ok)
       throw new Error(`Sprout 拒绝 MCP session：${response.result.error.code}`);
     const data = response.result.data as { session?: McpSession };
@@ -324,7 +328,15 @@ export class SproutRelayTransport implements McpTransport {
       }
       if (this.closed) return;
       if (response.outcome === "unknown" && response.reason === "cancelled") continue;
-      if (response.outcome !== "response") {
+      if (response.outcome === "rejected") {
+        this.fail(
+          new Error(
+            `Sprout 拒绝 MCP exchange（HTTP ${response.status}）：${response.error.code}: ${response.error.message}`,
+          ),
+        );
+        return;
+      }
+      if (response.outcome === "unknown") {
         this.fail(new Error(`Sprout MCP exchange 结果未知：${response.reason}`));
         return;
       }

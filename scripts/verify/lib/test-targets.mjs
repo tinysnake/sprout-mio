@@ -150,6 +150,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/project.test.ts",
     "tests/quota-scope.test.ts",
     "tests/rate-limit.test.ts",
+    "tests/remote-client-delegation.test.ts",
     "tests/remote-tools.test.ts",
     "tests/pi-host-liveness.test.ts",
     "tests/run-attention-domain.test.ts",
