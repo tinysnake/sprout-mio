@@ -165,6 +165,9 @@ async function open(config) {
   const { situationSchema } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/prompt.ts"),
   );
+  const { composeSystemPrompt } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/agent-prompt.ts"),
+  );
   // worker 侧是 JS，TS 的 import 不提供运行时校验；未知字段会被 zod 剥掉，
   // 所以 situation 的形状只能由 src/contracts/prompt.ts 这一份 schema 说了算。
   const situation =
@@ -310,7 +313,14 @@ async function open(config) {
             },
           },
         ],
-    systemPrompt: `${config.profile.persona}${assistant ? ASSISTANT_GUIDE : ""}${HTML_ARTIFACT_GUIDE}`,
+    systemPrompt:
+      situation?.kind === "crew_lead" || situation?.kind === "delegation_worker"
+        ? composeSystemPrompt({
+            situation,
+            persona: config.profile.persona,
+            htmlGuide: HTML_ARTIFACT_GUIDE,
+          })
+        : `${config.profile.persona}${assistant ? ASSISTANT_GUIDE : ""}${HTML_ARTIFACT_GUIDE}`,
   };
   const baseFactories = loaderOptions.extensionFactories;
   if (memoryFactory) loaderOptions.extensionFactories = [...baseFactories, memoryFactory];
