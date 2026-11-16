@@ -5,7 +5,7 @@ import { chatIdInput } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
 import type { RunRepoSnapshot } from "./repository";
-import type { Situation } from "./prompt";
+import type { ProjectContext, Situation } from "./prompt";
 import type { AppResult } from "./result";
 
 export const AGENT_RUN_STATUSES = [
@@ -86,11 +86,13 @@ export type RunConfigSnapshot = {
   purpose?: "worker" | "assistant";
   /** 与 `profile` 平级，随配置快照落库；旧快照没有，读取侧可选。 */
   situation?: Situation;
+  projectContext?: ProjectContext;
   profile: {
     purpose?: "worker" | "assistant";
     id: string;
     name: string;
     persona: string;
+    description?: string;
     harness: "pi";
     model?: string;
     effort?: string;

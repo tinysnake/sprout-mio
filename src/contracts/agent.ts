@@ -8,6 +8,7 @@ export { fieldErrorsFrom } from "./field-errors";
 export const agentProfileIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.agentProfile));
 const name = z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字");
 const jobTitle = z.string().trim().max(40, "职位最多 40 字");
+const description = z.string().max(500, "工作描述最多 500 字");
 const persona = z.string().max(2000, "人设最多 2000 字");
 const harness = z.literal("pi");
 const option = z.string().trim().min(1).max(200);
@@ -16,6 +17,7 @@ export const createAgentProfileInput = z.object({
   name,
   purpose: z.enum(["worker", "assistant"]).default("worker"),
   jobTitle: jobTitle.optional(),
+  description: description.optional(),
   persona: persona.default(""),
   harness: harness.default("pi"),
   model: option.optional(),
@@ -26,6 +28,7 @@ export type CreateAgentProfileInput = z.input<typeof createAgentProfileInput>;
 export const updateAgentProfileInput = z.object({
   name: name.optional(),
   jobTitle: jobTitle.nullable().optional(),
+  description: description.nullable().optional(),
   persona: persona.optional(),
   harness: harness.optional(),
   model: option.nullable().optional(),

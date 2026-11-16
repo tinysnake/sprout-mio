@@ -42,8 +42,14 @@ sqlite
     "INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES (?,?,?,0,1,1)",
   )
   .run(ctx.userId, ctx.userId, "inheritance@test.example");
-const project = createProject({ name: "Inheritance" }, ctx);
-const profile = createAgentProfile({ name: "Inheritance Agent", persona: "", harness: "pi" }, ctx);
+const project = createProject(
+  { name: "Inheritance", kind: "work", agentPrompt: "[[STEP3-PROMPT-MARKER]]" },
+  ctx,
+);
+const profile = createAgentProfile(
+  { name: "Inheritance Agent", persona: "", description: "[[STEP3-DESC-MARKER]]", harness: "pi" },
+  ctx,
+);
 addProjectMember(project.id, profile.id, ctx);
 
 type ReplyEvent = { type: "settled" | "failure"; text: string };
@@ -91,6 +97,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           systemPromptChars: command.resources.kind === 'enabled' ? 512 : 128,
         },
         profile: command.profile,
+        projectContext: command.projectContext,
       },
     });
   }
@@ -207,7 +214,12 @@ describe("Pi 资源继承开关的父进程接线", () => {
   });
 
   it("open 命令携带服务端认定的 situation，且没有 systemPrompt 字段", async () => {
-    const { open } = await runWithSwitch(false);
+    const { open, snapshot } = await runWithSwitch(false);
+    expect(open.projectContext).toEqual({ kind: "work" });
+    expect(open.profile.description).toBe("[[STEP3-DESC-MARKER]]");
+    expect(snapshot?.projectContext).toEqual({ kind: "work" });
+    expect(snapshot?.profile.description).toBe("[[STEP3-DESC-MARKER]]");
+    expect(JSON.stringify(open)).not.toContain("[[STEP3-PROMPT-MARKER]]");
     // DM 里的 worker run：处境由 run 自己的记录认定，而不是调用方声明。
     expect(open.situation).toEqual({ kind: "dm_worker" });
     // systemPrompt 由内置 composer 在 runner 进程内组装，不进任何 PiHostCommand 变体。

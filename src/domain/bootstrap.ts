@@ -43,6 +43,7 @@ export function createDefaultProjectForHuman(
       .values({
         id: projectId,
         name: DEFAULT_PROJECT_NAME,
+        kind: "coding",
         description: null,
         createdBy: userId,
         createdAt: at,

@@ -55,6 +55,10 @@ export const project = sqliteTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     wakePolicy: text("wake_policy", { mode: "json" }).$type<ProjectWakePolicy>(),
+    kind: text("kind", { enum: ["coding", "work", "custom"] })
+      .notNull()
+      .default("custom"),
+    agentPrompt: text("agent_prompt"),
     description: text("description"),
     createdBy: text("created_by")
       .notNull()
@@ -66,7 +70,14 @@ export const project = sqliteTable(
       .notNull()
       .default(sql`(unixepoch())`),
   },
-  (table) => [uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy)],
+  (table) => [
+    uniqueIndex("project_id_owner_unique").on(table.id, table.createdBy),
+    check("project_kind_check", sql`${table.kind} IN ('coding', 'work', 'custom')`),
+    check(
+      "project_agent_prompt_check",
+      sql`${table.agentPrompt} IS NULL OR length(${table.agentPrompt}) <= 2000`,
+    ),
+  ],
 );
 
 export const assistantProposal = sqliteTable("assistant_proposal", {
@@ -243,6 +254,7 @@ export const agentProfile = sqliteTable(
       .notNull()
       .default("worker"),
     jobTitle: text("job_title"),
+    description: text("description"),
     persona: text("persona").notNull().default(""),
     harness: text("harness", { enum: ["pi"] })
       .notNull()
@@ -261,7 +273,13 @@ export const agentProfile = sqliteTable(
   },
   // Agent profile 名字是 @mention 的解析键，按 owner 唯一：同一个人的名下不能重名，
   // 不同用户各自的默认 Agent 都叫 Amenda 才不会互相撞车。
-  (table) => [uniqueIndex("agent_profile_owner_name_unique").on(table.createdBy, table.name)],
+  (table) => [
+    uniqueIndex("agent_profile_owner_name_unique").on(table.createdBy, table.name),
+    check(
+      "agent_profile_description_check",
+      sql`${table.description} IS NULL OR length(${table.description}) <= 500`,
+    ),
+  ],
 );
 
 export const projectProfile = sqliteTable("project_profile", {

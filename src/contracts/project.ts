@@ -3,23 +3,29 @@ import type { AppResult } from "./result";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
 
+export const projectKindSchema = z.enum(["coding", "work", "custom"]);
+
 const projectIdSchema = z.string().regex(appIdPattern(ID_PREFIXES.project));
 
 /** 边界校验拒绝空白名称与超长文本，description 可以省略，错误消息直接展示在输入旁。 */
 export const createProjectInput = z.object({
   name: z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字"),
   description: z.string().max(500, "描述最多 500 字").optional(),
+  kind: projectKindSchema.default("coding"),
+  agentPrompt: z.string().max(2000, "项目提示词最多 2000 字").nullable().optional(),
 });
 /** 由边界 schema 推导，输入规则与消费者的字段形状保持一致。 */
-export type CreateProjectInput = z.infer<typeof createProjectInput>;
+export type CreateProjectInput = z.input<typeof createProjectInput>;
 
 /** 改名与改描述，两者都可单独提交；空对象在边界被拒，避免无意义的事务。 */
 export const updateProjectInput = z
   .object({
     name: z.string().trim().min(1, "名称不能为空").max(80, "名称最多 80 字").optional(),
     description: z.string().max(500, "描述最多 500 字").nullable().optional(),
+    kind: projectKindSchema.optional(),
+    agentPrompt: z.string().max(2000, "项目提示词最多 2000 字").nullable().optional(),
   })
-  .refine((value) => value.name !== undefined || value.description !== undefined, {
+  .refine((value) => Object.values(value).some((field) => field !== undefined), {
     message: "至少提交一个字段",
   });
 export type UpdateProjectInput = z.infer<typeof updateProjectInput>;

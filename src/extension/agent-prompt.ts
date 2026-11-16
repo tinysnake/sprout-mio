@@ -1,4 +1,4 @@
-import type { Situation } from "../contracts/prompt";
+import type { ProjectContext, Situation } from "../contracts/prompt";
 
 /**
  * 角色感知的 system prompt composer。它只做组装：处境事实由 `resolveRunSituation`
@@ -6,10 +6,13 @@ import type { Situation } from "../contracts/prompt";
  * 只有 `composeSystemPrompt` 消费它。
  *
  * 预算按 JS `string.length`：事实段（情境/身份）≤350，五个角色段合计 ≤1000，
- * persona ≤2000，HTML guide ≤600，总量 ≤4000。
+ * 工作描述与项目预设各 ≤600，persona ≤2000，HTML guide ≤600，总量 ≤4000；
+ * 新增段落挤占预算时缩短 persona。
  */
 type PromptFacts = {
   situation: Situation;
+  projectContext?: ProjectContext;
+  profile?: { description?: string };
   persona: string;
   htmlGuide: string;
 };
@@ -70,7 +73,23 @@ export function composeSystemPrompt(facts: PromptFacts): string {
       `composeSystemPrompt 只支持 crew_lead 与 delegation_worker，收到 ${situation.kind}`,
     );
   }
-  if (persona.trim()) sections.push(`## 说话风格\n${persona.trim()}`);
-  if (htmlGuide.trim()) sections.push(`## HTML 交付\n${htmlGuide.trim()}`);
+  const description = facts.profile?.description?.trim();
+  if (description) sections.push(`## 工作描述\n${description.slice(0, 500)}`);
+  const kind = facts.projectContext?.kind;
+  if (kind === "coding" || kind === "work") {
+    const preset =
+      kind === "coding"
+        ? "这是一个编程项目。先阅读项目约定与相关实现，修改后运行与变更相称的验证，交付可复核的代码与证据。"
+        : "这是一个工作项目。明确目标、依据与交付标准，整理信息并推进执行；结论注明证据、责任人与未决事项。";
+    sections.push(`## 项目背景\n${preset}\n以下补充要求与本节默认指引冲突时，以补充要求为准`);
+  }
+  const html = htmlGuide.trim() ? `## HTML 交付\n${htmlGuide.trim()}`.slice(0, 600) : "";
+  const remaining =
+    4000 - sections.join("\n\n").length - (html ? html.length + 2 : 0) - "\n\n## 说话风格\n".length;
+  if (persona.trim())
+    sections.push(
+      `## 说话风格\n${persona.trim().slice(0, Math.max(0, Math.min(2000, remaining)))}`,
+    );
+  if (html) sections.push(html);
   return sections.join("\n\n");
 }

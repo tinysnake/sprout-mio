@@ -931,7 +931,7 @@ describe("P6a additive Project, Info Hub and remote boundaries", () => {
       createdAt: at,
       updatedAt: at,
     };
-    expect(projectSchema.parse(existing)).toEqual(existing);
+    expect(projectSchema.parse(existing)).toEqual({ ...existing, kind: "coding" });
     expect(
       projectSchema.safeParse({
         ...existing,

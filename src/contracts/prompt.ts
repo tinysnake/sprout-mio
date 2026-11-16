@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { projectKindSchema } from "./project";
+
+export const projectContextSchema = z.object({ kind: projectKindSchema });
+export type ProjectContext = z.infer<typeof projectContextSchema>;
 
 /**
  * 一次运行的处境：它是 `profile` 的兄弟字段，由服务端在 open 边界从 run 自身的

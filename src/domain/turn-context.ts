@@ -137,7 +137,15 @@ export function captureTurnContext(
       .filter(
         (row) => row.action === "release" || row.action === "handoff" || row.action === "reclaim",
       );
+    const project = assertProjectAccess(ctx, input.projectId);
+    const projectPrompt = project.agentPrompt?.trim()
+      ? `## 项目补充要求\n${project.agentPrompt}`
+      : undefined;
+    const promptCharacters = Array.from(projectPrompt ?? "");
+    while (Buffer.byteLength(JSON.stringify(promptCharacters.join(""))) > 2048)
+      promptCharacters.pop();
     const record: TurnContextRecord = {
+      ...(projectPrompt ? { projectAgentPrompt: promptCharacters.join("") } : {}),
       schemaVersion: 1,
       ...(isAssistant
         ? {
@@ -157,8 +165,17 @@ export function captureTurnContext(
       submittedAt: null,
       failureCode: null,
       injectedIntoPrompt: false,
-      truncated: false,
-      omittedCounts: { members: 0, runs: 0, tasks: 0, leases: 0, pendingLeaseRequests: 0 },
+      truncated: projectPrompt !== undefined && promptCharacters.join("") !== projectPrompt,
+      omittedCounts: {
+        members: 0,
+        runs: 0,
+        tasks: 0,
+        leases: 0,
+        pendingLeaseRequests: 0,
+        ...(projectPrompt && promptCharacters.join("") !== projectPrompt
+          ? { projectAgentPrompt: Array.from(projectPrompt).length - promptCharacters.length }
+          : {}),
+      },
       chatId: scope.chatId,
       instanceId: scope.instanceId,
       agentProfileId: scope.agentProfileId,
@@ -278,6 +295,16 @@ export function captureTurnContext(
       if (!group) {
         if (record.assistantNativeContext?.length) {
           record.assistantNativeContext.shift();
+          record.truncated = true;
+          text = serialize();
+          continue;
+        }
+        if (record.projectAgentPrompt) {
+          const characters = Array.from(record.projectAgentPrompt);
+          characters.pop();
+          record.projectAgentPrompt = characters.join("");
+          record.omittedCounts.projectAgentPrompt =
+            (record.omittedCounts.projectAgentPrompt ?? 0) + 1;
           record.truncated = true;
           text = serialize();
           continue;

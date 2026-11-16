@@ -92,6 +92,75 @@ describe("delegation worker 的 system prompt", () => {
   });
 });
 
+describe("项目与工作描述", () => {
+  it.each(["crew_lead", "delegation_worker"] as const)(
+    "%s 把自身描述和项目预设放在职责之后",
+    (kind) => {
+      const prompt = composeSystemPrompt({
+        situation: { kind },
+        profile: { description: "只负责代码评审" },
+        projectContext: { kind: "coding" },
+        persona,
+        htmlGuide,
+      });
+      expect(prompt).toContain("## 工作描述\n只负责代码评审");
+      expect(prompt).toContain(
+        "## 项目背景\n这是一个编程项目。先阅读项目约定与相关实现，修改后运行与变更相称的验证，交付可复核的代码与证据。",
+      );
+      expect(prompt).toContain("以下补充要求与本节默认指引冲突时，以补充要求为准");
+      expect(prompt.indexOf("## 工作描述")).toBeGreaterThan(prompt.indexOf("## 职责"));
+      expect(prompt.indexOf("## 项目背景")).toBeGreaterThan(prompt.indexOf("## 工作描述"));
+      expect(prompt.indexOf("## 说话风格")).toBeGreaterThan(prompt.indexOf("## 项目背景"));
+      expect(prompt).not.toContain("## 项目补充要求");
+      expect(prompt).not.toContain("成员名册");
+    },
+  );
+  it("custom 与缺省项目不注入预设，work 有自己的文本", () => {
+    for (const projectContext of [undefined, { kind: "custom" as const }]) {
+      expect(
+        composeSystemPrompt({
+          situation: { kind: "crew_lead" },
+          projectContext,
+          profile: { description: "  " },
+          persona: "",
+          htmlGuide: "",
+        }),
+      ).not.toMatch(/## 项目背景|## 工作描述/);
+    }
+    expect(
+      composeSystemPrompt({
+        situation: { kind: "crew_lead" },
+        projectContext: { kind: "work" },
+        persona: "",
+        htmlGuide: "",
+      }),
+    ).toContain(
+      "这是一个工作项目。明确目标、依据与交付标准，整理信息并推进执行；结论注明证据、责任人与未决事项。",
+    );
+  });
+  it.each(["crew_lead", "delegation_worker"] as const)("%s 满字段仍满足分段和总预算", (kind) => {
+    const prompt = composeSystemPrompt({
+      situation: {
+        kind,
+        crewName: "队".repeat(80),
+        leadName: "名".repeat(80),
+        delegationId: "dlg_12345678",
+      },
+      profile: { description: "职".repeat(500) },
+      projectContext: { kind: "coding" },
+      persona: "人".repeat(2000),
+      htmlGuide: "页".repeat(600),
+    });
+    const parts = prompt.split("\n\n");
+    expect(parts[0]!.length).toBeLessThanOrEqual(350);
+    expect(parts.slice(1, 6).join("").length).toBeLessThanOrEqual(1000);
+    expect(parts.find((p) => p.startsWith("## 工作描述"))!.length).toBeLessThanOrEqual(600);
+    expect(parts.find((p) => p.startsWith("## 项目背景"))!.length).toBeLessThanOrEqual(600);
+    expect(parts.find((p) => p.startsWith("## HTML"))!.length).toBeLessThanOrEqual(600);
+    expect(prompt.length).toBeLessThanOrEqual(4000);
+  });
+});
+
 describe("situationSchema 往返", () => {
   it("保留全部字段", () => {
     const value = {

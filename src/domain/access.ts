@@ -79,6 +79,8 @@ export function assertProjectAccess(ctx: ProjectContext, projectId: string): Pro
   return {
     id: row.id,
     name: row.name,
+    kind: row.kind,
+    agentPrompt: row.agentPrompt,
     ...(row.description === null ? {} : { description: row.description }),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),

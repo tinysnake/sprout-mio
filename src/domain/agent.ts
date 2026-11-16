@@ -237,6 +237,7 @@ function toAgentProfile(row: typeof agentProfile.$inferSelect): AgentProfile {
     name: row.name,
     purpose: row.purpose,
     ...(row.jobTitle === null ? {} : { jobTitle: row.jobTitle }),
+    ...(row.description === null ? {} : { description: row.description }),
     persona: row.persona,
     harness: row.harness,
     ...(row.model === null ? {} : { model: row.model }),

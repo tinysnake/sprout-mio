@@ -44,6 +44,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/automation-migration.test.ts",
     "tests/agent-detail-return.test.ts",
     "tests/agent-prompt.test.ts",
+    "tests/project-context.test.ts",
     "tests/agent-prompt-runner.test.ts",
     "tests/agent-run-turn.test.ts",
     "tests/agent-run.test.ts",
