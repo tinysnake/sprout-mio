@@ -13,7 +13,14 @@ import {
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskSet, summarize, unknownEvidence, planBatch, preflightHashes } from "./core.mjs";
+import {
+  taskSet,
+  summarize,
+  unknownEvidence,
+  planBatch,
+  preflightHashes,
+  finalizeVerdict,
+} from "./core.mjs";
 import { runTask } from "./run-task.mjs";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -57,6 +64,7 @@ writeFileSync(join(evidence, "plan.json"), JSON.stringify(plan, null, 2), { mode
 const key = (item) => `${item.arm}/${item.task}/${item.repeat}`;
 const recorded = new Set();
 function record(row) {
+  finalizeVerdict(row);
   assert(!recorded.has(key(row)), "one ledger row per planned item");
   appendFileSync(out, JSON.stringify(row) + "\n", { mode: 0o600 });
   recorded.add(key(row));

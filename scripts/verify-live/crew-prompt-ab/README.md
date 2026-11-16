@@ -101,8 +101,11 @@ epoch, canonical accessible directory and Machine root revision, then watches fo
 runs. In one immediate transaction it calls the frozen arm's `requestCrewResource`,
 `approveCrewResource` and `advanceCrewResources` using the actual current running lead identity.
 It does not write lease tables or provide host write/shell tools. Reconciliation, remote execution
-and draining still use the application. Atomic allocation avoids exposing a queued request to the
-worker startup check, which otherwise fails with `Crew 资源尚未分配`.
+and draining still use the application. Atomic allocation avoids exposing a half-prepared request
+when the scope is available. It does not guarantee allocation under contention: two delegations
+sharing a writable scope can leave one request queued and its startup check can fail with
+`Crew 资源尚未分配`. Treat that as an execution anomaly, not absent model delegation; the
+[six-task sanity diagnosis](SANITY-DIAGNOSIS.md) records this observed limitation.
 
 This is external fixture approval, not an observed model decision. The experiment now measures
 behavior with resources available; it does not measure resource requesting, approval or allocation.
@@ -128,6 +131,19 @@ five seconds; a complete emitted snapshot can survive probe timeout with an inde
 `evidenceProbe` diagnostic. A settled snapshot can still be judged after an observation timeout.
 Later exceptions and fixture close failures preserve a measured verdict; close failures are
 recorded in `cleanupError`.
+
+Each ledger row and saved `result.json` includes `verdict`: `oracle`, `outcome`, `evaluated`,
+`passed`, `failedGates`, and `gates`. Each applicable gate records its boolean subconditions and
+actual evidence (run identity/status/errors, assertion exits/stderr, receipt/timestamp values,
+and request/worker artifact mappings). Attribution also lists unmapped children and uncovered
+targets. Run facts retain product `errorCode`/`errorMessage`; delegation facts retain the original
+request and id. This requires no change to the artifact or attribution thresholds.
+
+`verdict.execution` records the execution reason, error, non-completed runs, evidence probe/error
+and cleanup diagnostics. For `errored`, `timeout`, `aborted`, `interrupted` and `not_run`,
+`evaluated=false` and `passed=null`: unsatisfied gates are incomplete evidence, not a measured
+model failure. Forbidden delegation remains a measured failure even if execution later stops.
+A generic product run error may require `service.log` for its underlying cause.
 
 `wallClockPerPhase` records task fixture preparation, startup, sending, settle and judgement in
 milliseconds. `refPreparationMs` is the separate once-per-ref install/build cost. `totalMs`

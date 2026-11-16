@@ -158,6 +158,8 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
       startedAt: r.startedAt ?? null,
       settledAt: r.settledAt ?? null,
       status: r.status,
+      errorCode: r.errorCode ?? null,
+      errorMessage: r.errorMessage ?? null,
       provider: r.configSnapshot?.provider ?? null,
       model: r.configSnapshot?.model ?? null,
       sdkVersion: r.configSnapshot?.sdkVersion ?? null,
@@ -233,6 +235,9 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
       assignedRuns.some((run) => run.tools.some((tool) => namesArtifact(tool, file))),
     );
     delegationEvidence.push({
+      delegationId: delegation.id,
+      status: delegation.status,
+      requestSummary: delegation.requestSummary,
       childChatId: delegation.childChatId,
       requestArtifacts: artifactFiles.filter((file) => delegation.requestSummary.includes(file)),
       workerArtifacts,

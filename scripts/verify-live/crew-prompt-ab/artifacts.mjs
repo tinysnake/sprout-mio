@@ -31,8 +31,13 @@ switch (kind) {
     const source = read(e.file).split(/\r?\n/);
     assert.equal(source[e.defectLine - 1], e.defectSourceLine, 'planted defect location');
     assert(f.workerFindings.some(text => {
-      const lineRef = new RegExp(e.file.replaceAll('.', '\\.') + '(?::|#L|\\s+line\\s+)(?:' + e.defectLines.join('|') + ')(?![0-9])', 'i');
-      return lineRef.test(text) && new RegExp(e.defectPattern, 'i').test(text) &&
+      const suffix = '(?::|#L|\\s+line\\s+)(?:' + e.defectLines.join('|') + ')(?![0-9])';
+      const path = e.file.replaceAll('.', '\\.');
+      const lineRef = new RegExp('(?:^|[^\\w/.-])' + path + suffix, 'i');
+      const scopedFile = new RegExp('(?:^|[^\\w/.-])' + path + '(?![\\w/-]|\\.[\\w])', 'i');
+      const basenameRef = new RegExp('(?:^|[^\\w/.-])' + e.file.split('/').at(-1).replaceAll('.', '\\.') + suffix, 'i');
+      const identifiesLine = lineRef.test(text) || (scopedFile.test(text) && basenameRef.test(text));
+      return identifiesLine && new RegExp(e.defectPattern, 'i').test(text) &&
         e.severities.some(severity => new RegExp('\\b' + severity + '\\b', 'i').test(text));
     }), 'worker findings identify planted non-draining queue defect, severity and line');
     break;

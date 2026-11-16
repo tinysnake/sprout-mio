@@ -17,6 +17,7 @@ import { artifactAssertions } from "./artifacts.mjs";
 import { factsFrom, assistantMessagesByRun, settled, systemPromptEvidence } from "./evidence.mjs";
 const tasks = taskSet(resolve("docs/plans/crew-prompt-ab.md"));
 const facts = (overrides = {}) => ({
+  runs: [{ runId: "lead", status: "completed" }],
   delegatedCount: 1,
   distinctWorkerProfiles: ["worker"],
   workerRunTerminalStatuses: ["completed"],

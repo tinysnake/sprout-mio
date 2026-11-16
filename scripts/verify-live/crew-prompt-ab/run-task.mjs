@@ -26,6 +26,7 @@ import {
   forbiddenDelegation,
   recordTaskError,
   preserveOutcome,
+  finalizeVerdict,
 } from "./core.mjs";
 import { artifactAssertions } from "./artifacts.mjs";
 import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
@@ -523,6 +524,7 @@ export async function runTask({
     } catch (e) {
       preserveOutcome(row, task.oracle, row.delegatedCount, e);
     }
+    finalizeVerdict(row);
     writeFileSync(join(directory, "result.json"), JSON.stringify(row, null, 2) + "\n");
   }
   return row;

@@ -39,61 +39,156 @@ export const oracleNames = [
   "no_delegation_but_work_done",
   "no_duplicate",
 ];
-export function judge(name, f) {
+export function evaluateOracle(name, f) {
   assert(oracleNames.includes(name), `unknown oracle ${name}`);
-  if (f.runs?.some((r) => r.status !== "completed")) return false;
-  const artifactsPass =
-    Array.isArray(f.artifactAssertions) &&
-    f.artifactAssertions.length > 0 &&
-    f.artifactAssertions.every((check) => check.exitCode === 0);
-  const validFinal = f.leadFinalReplyAtMs != null && Boolean(f.leadFinalReplyText?.trim());
-  if (!artifactsPass) return false;
-  const workersDone =
-    f.delegatedCount > 0 &&
-    f.workerRunTerminalStatuses?.length >= f.delegatedCount &&
-    f.workerRunTerminalStatuses.every((s) => s === "completed") &&
-    f.workerReportedComplete?.length === f.delegatedCount &&
-    f.workerReportedComplete.every(Boolean);
-  const afterComplete =
-    validFinal &&
-    f.completeEventTimes?.length === f.delegatedCount &&
-    f.completeEventTimes.every((t) => f.leadFinalReplyAtMs > t);
-  const targets = f.requiredDelegationArtifacts ?? [];
-  const attribution =
-    targets.length > 0 &&
-    f.delegationEvidence?.length === f.delegatedCount &&
-    f.delegationEvidence.every((d) =>
-      d.requestArtifacts.some((file) => d.workerArtifacts.includes(file)),
-    ) &&
-    targets.every((file) =>
-      f.delegationEvidence.some(
-        (d) => d.requestArtifacts.includes(file) && d.workerArtifacts.includes(file),
-      ),
+  const gates = {};
+  const gate = (name, checks, actual) => {
+    gates[name] = { passed: Object.values(checks).every(Boolean), checks, actual };
+  };
+  gate(
+    "runs",
+    {
+      present: Array.isArray(f.runs) && f.runs.length > 0,
+      allCompleted: f.runs?.every((r) => r.status === "completed") === true,
+    },
+    { runs: f.runs ?? null },
+  );
+  gate(
+    "artifactsPass",
+    {
+      present: Array.isArray(f.artifactAssertions) && f.artifactAssertions.length > 0,
+      allExitZero: f.artifactAssertions?.every((c) => c.exitCode === 0) === true,
+    },
+    { assertions: f.artifactAssertions ?? null },
+  );
+  const validFinal = () =>
+    gate(
+      "validFinal",
+      {
+        timestampPresent: f.leadFinalReplyAtMs != null,
+        nonemptyText: Boolean(f.leadFinalReplyText?.trim()),
+      },
+      { atMs: f.leadFinalReplyAtMs ?? null, text: f.leadFinalReplyText ?? null },
     );
-  switch (name) {
-    case "delegate_confirmed":
-      return workersDone && afterComplete && attribution;
-    case "delegate_parallel":
-      return (
-        f.delegatedCount === 2 &&
-        f.distinctWorkerProfiles?.length === 2 &&
-        workersDone &&
-        afterComplete &&
-        attribution
+  if (["delegate_confirmed", "delegate_parallel", "worker_finishes"].includes(name)) {
+    gate(
+      "workersDone",
+      {
+        delegated: f.delegatedCount > 0,
+        enoughRuns: Boolean(f.workerRunTerminalStatuses?.length >= f.delegatedCount),
+        allCompleted: f.workerRunTerminalStatuses?.every((s) => s === "completed") === true,
+        reportCountMatches: f.workerReportedComplete?.length === f.delegatedCount,
+        reportedComplete: f.workerReportedComplete?.every(Boolean) === true,
+      },
+      {
+        delegatedCount: f.delegatedCount ?? null,
+        terminalStatuses: f.workerRunTerminalStatuses ?? null,
+        reportedComplete: f.workerReportedComplete ?? null,
+        workerRuns: f.workerRuns ?? null,
+      },
+    );
+    const targets = f.requiredDelegationArtifacts ?? [];
+    const evidence = f.delegationEvidence ?? [];
+    const mapped = (d, file) =>
+      d.requestArtifacts.includes(file) && d.workerArtifacts.includes(file);
+    gate(
+      "attribution",
+      {
+        targetsPresent: targets.length > 0,
+        delegationCountMatches: f.delegationEvidence?.length === f.delegatedCount,
+        everyDelegationMapped: evidence.every((d) =>
+          d.requestArtifacts.some((file) => mapped(d, file)),
+        ),
+        allTargetsCovered: targets.every((file) => evidence.some((d) => mapped(d, file))),
+      },
+      {
+        targets,
+        delegatedCount: f.delegatedCount ?? null,
+        delegations: evidence,
+        unmappedDelegations: evidence.filter(
+          (d) => !d.requestArtifacts.some((file) => mapped(d, file)),
+        ),
+        uncoveredTargets: targets.filter((file) => !evidence.some((d) => mapped(d, file))),
+      },
+    );
+    if (name !== "worker_finishes") {
+      validFinal();
+      gate(
+        "afterComplete",
+        {
+          validFinal: gates.validFinal.passed,
+          eventCountMatches: f.completeEventTimes?.length === f.delegatedCount,
+          strictlyAfter: f.completeEventTimes?.every((t) => f.leadFinalReplyAtMs > t) === true,
+        },
+        {
+          completeEventTimes: f.completeEventTimes ?? null,
+          leadFinalReplyAtMs: f.leadFinalReplyAtMs ?? null,
+          delegatedCount: f.delegatedCount ?? null,
+        },
       );
-    case "worker_finishes":
-      return workersDone && attribution;
-    case "no_delegation":
-    case "no_delegation_but_work_done":
-      return f.delegatedCount === 0 && validFinal;
-    case "no_duplicate":
-      return (
-        validFinal &&
-        f.artifactToolCalls?.includes("docs/usage.md") &&
-        f.delegationsPerArtifact != null &&
-        Object.values(f.delegationsPerArtifact).every((count) => count <= 1)
+    }
+    if (name === "delegate_parallel")
+      gate(
+        "parallel",
+        {
+          twoDelegations: f.delegatedCount === 2,
+          twoProfiles: f.distinctWorkerProfiles?.length === 2,
+        },
+        {
+          delegatedCount: f.delegatedCount ?? null,
+          distinctWorkerProfiles: f.distinctWorkerProfiles ?? null,
+        },
+      );
+  } else {
+    validFinal();
+    if (name === "no_duplicate")
+      gate(
+        "noDuplicate",
+        {
+          artifactActivity: f.artifactToolCalls?.includes("docs/usage.md") === true,
+          countsPresent: f.delegationsPerArtifact != null,
+          atMostOne:
+            f.delegationsPerArtifact != null &&
+            Object.values(f.delegationsPerArtifact).every((count) => count <= 1),
+        },
+        {
+          artifactToolCalls: f.artifactToolCalls ?? null,
+          delegationsPerArtifact: f.delegationsPerArtifact ?? null,
+        },
+      );
+    else
+      gate(
+        "noDelegation",
+        { zeroDelegations: f.delegatedCount === 0 },
+        { delegatedCount: f.delegatedCount ?? null },
       );
   }
+  const failedGates = Object.keys(gates).filter((name) => !gates[name].passed);
+  return { oracle: name, passed: failedGates.length === 0, failedGates, gates };
+}
+
+export function judge(name, f) {
+  return evaluateOracle(name, f).passed;
+}
+
+export function finalizeVerdict(row) {
+  const evaluated = ["passed", "failed"].includes(row.status);
+  row.verdict = {
+    ...evaluateOracle(row.oracle, row),
+    evaluated,
+    outcome: row.status,
+    execution: {
+      reason: row.reason ?? row.violation ?? row.error?.message ?? null,
+      error: row.error ?? null,
+      evidenceError: row.evidenceError ?? null,
+      evidenceProbe: row.evidenceProbe ?? null,
+      cleanupError: row.cleanupError ?? null,
+      runs: (row.runs ?? []).filter((run) => run.status !== "completed"),
+    },
+  };
+  // Unobserved or interrupted execution cannot establish an oracle outcome.
+  if (!evaluated) row.verdict.passed = null;
+  return row.verdict;
 }
 
 export function forbiddenDelegation(oracle, delegatedCount) {
