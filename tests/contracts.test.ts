@@ -138,7 +138,10 @@ describe("共享契约", () => {
     ]) {
       expect(createProjectInput.safeParse(input).success).toBe(false);
     }
-    expect(createProjectInput.parse({ name: " Sprout " })).toEqual({ name: "Sprout" });
+    expect(createProjectInput.parse({ name: " Sprout " })).toEqual({
+      name: "Sprout",
+      kind: "coding",
+    });
     expect(
       createProjectInput.safeParse({ name: "a".repeat(80), description: "a".repeat(500) }).success,
     ).toBe(true);
@@ -148,7 +151,7 @@ describe("共享契约", () => {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    expect(projectSchema.parse(project)).toEqual(project);
+    expect(projectSchema.parse(project)).toEqual({ ...project, kind: "coding" });
     expect(projectSchema.safeParse({ ...project, createdAt: "yesterday" }).success).toBe(false);
   });
 });

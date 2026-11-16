@@ -20,6 +20,7 @@ export const DEMO_PROJECT_ID = "prj_11111111";
 export const DEMO_REQUEST_ID = "req_22222222";
 
 export const demoProject: Project = {
+  kind: "custom",
   id: DEMO_PROJECT_ID,
   name: "Sprout 重构",
   description: "把协作工作台从原型推进到可交付的一期产品。",

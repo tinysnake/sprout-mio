@@ -65,7 +65,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
       "schema constraints",
       `
       const expected = {
-        agent_profile: ['id','name','persona','harness','model','effort','created_by','created_at','updated_at','job_title','purpose'],
+        agent_profile: ['id','name','purpose','job_title','description','persona','harness','model','effort','created_by','created_at','updated_at'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
         chat: ['id','project_id','kind','title','parent_crew_chat_id','lead_profile_id','crew_epoch','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],

@@ -56,6 +56,8 @@ function toProject(row: ProjectRow): Project {
   return {
     id: row.id,
     name: row.name,
+    kind: row.kind,
+    agentPrompt: row.agentPrompt,
     ...(row.description === null ? {} : { description: row.description }),
     ...(row.wakePolicy ? { wakePolicy: projectWakePolicySchema.parse(row.wakePolicy) } : {}),
     createdAt: row.createdAt.toISOString(),
@@ -75,6 +77,8 @@ export function createProject(
     const created: Project = {
       id: newId(ID_PREFIXES.project),
       name: input.name,
+      kind: input.kind ?? "coding",
+      agentPrompt: input.agentPrompt ?? null,
       ...(input.description === undefined ? {} : { description: input.description }),
       createdAt: at.toISOString(),
       updatedAt: at.toISOString(),
@@ -83,6 +87,8 @@ export function createProject(
       .values({
         id: created.id,
         name: created.name,
+        kind: created.kind,
+        agentPrompt: created.agentPrompt,
         description: created.description ?? null,
         createdBy: ctx.userId,
         createdAt: at,
@@ -128,6 +134,8 @@ export function updateProject(
       .update(project)
       .set({
         ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.kind === undefined ? {} : { kind: input.kind }),
+        ...(input.agentPrompt === undefined ? {} : { agentPrompt: input.agentPrompt }),
         ...(input.description === undefined ? {} : { description: input.description }),
         updatedAt: at,
       })

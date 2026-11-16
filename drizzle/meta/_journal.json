@@ -477,6 +477,13 @@
       "when": 1794710170144,
       "tag": "0067_adorable_corsair",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1794827262151,
+      "tag": "0068_yielding_chameleon",
+      "breakpoints": true
     }
   ]
 }
