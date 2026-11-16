@@ -132,6 +132,20 @@ function markRunning(run: ReturnType<typeof runs.listAgentRuns>[number], profile
     ctx,
   );
 }
+function completeRun(run: ReturnType<typeof runs.listAgentRuns>[number]) {
+  const messageId = newId(ID_PREFIXES.message);
+  sqlite
+    .prepare(
+      "INSERT INTO message(id,chat_id,sender_kind,sender_id,body) VALUES (?,?,'agent',?,'Done')",
+    )
+    .run(messageId, run.chatId, worker.id);
+  runs.transitionAgentRun(
+    run.id,
+    "completed",
+    { stopReason: "stop", assistantMessageId: messageId },
+    ctx,
+  );
+}
 markRunning(leadRun, lead);
 function tool(timeoutMs = 15000, runId = leadRun.id) {
   const tools: Tool[] = [];
@@ -374,6 +388,115 @@ describe("persisted start failures and early settlement", () => {
     expect(await delegations.waitForDelegationStart(blocked.delegationId, 500)).toMatchObject({
       outcome: "blocked",
       reason: "Need a decision",
+    });
+  });
+  it.each([0, 15])(
+    "retains the launched run after added input queues another run (budget %i)",
+    async (blockMs) => {
+      const sent = dispatch("completed before extra input");
+      const run = childRun(sent.childChatId);
+      const started = markRunning(run);
+      completeRun(run);
+      // queuedAt has second precision; keep the later run deterministic across random IDs.
+      sqlite.prepare("UPDATE agent_run SET queued_at=1 WHERE id=?").run(run.id);
+      delegations.sendDelegationInput(sent.delegationId, "Follow up", ctx);
+      const queued = runs.listAgentRuns(sent.childChatId, ctx).find((item) => item.id !== run.id)!;
+      expect(queued.status).toBe("queued");
+      expect(await delegations.waitForDelegationStart(sent.delegationId, blockMs)).toMatchObject({
+        outcome: "running",
+        runId: run.id,
+        startedAt: started.startedAt,
+      });
+    },
+  );
+  it("retains launch evidence when a fast completion queues follow-up input during the wait", async () => {
+    const sent = dispatch("fast completion with follow-up");
+    const run = childRun(sent.childChatId);
+    const waiting = delegations.waitForDelegationStart(sent.delegationId, 500);
+    const started = markRunning(run);
+    completeRun(run);
+    sqlite.prepare("UPDATE agent_run SET queued_at=1 WHERE id=?").run(run.id);
+    delegations.sendDelegationInput(sent.delegationId, "Follow up inside wait", ctx);
+    expect(runs.listAgentRuns(sent.childChatId, ctx).some((item) => item.status === "queued")).toBe(
+      true,
+    );
+    expect(await waiting).toMatchObject({
+      outcome: "running",
+      runId: run.id,
+      startedAt: started.startedAt,
+    });
+  });
+  it.each(["failed", "aborted"] as const)(
+    "does not let a later %s run override a successful launch",
+    async (status) => {
+      const sent = dispatch(`later ${status}`);
+      const run = childRun(sent.childChatId);
+      markRunning(run);
+      completeRun(run);
+      sqlite.prepare("UPDATE agent_run SET queued_at=1 WHERE id=?").run(run.id);
+      delegations.sendDelegationInput(sent.delegationId, "Later wake", ctx);
+      const followUp = runs
+        .listAgentRuns(sent.childChatId, ctx)
+        .find((item) => item.id !== run.id)!;
+      runs.transitionAgentRun(
+        followUp.id,
+        status,
+        { errorCode: "host_failure", errorMessage: "Later failure", stopReason: "Later stop" },
+        ctx,
+      );
+      expect(await delegations.waitForDelegationStart(sent.delegationId, 0)).toMatchObject({
+        outcome: "running",
+        runId: run.id,
+      });
+    },
+  );
+  it("reports the original launch failure even when a follow-up run is running", async () => {
+    const sent = dispatch("original launch failed");
+    const run = childRun(sent.childChatId);
+    runs.transitionAgentRun(
+      run.id,
+      "failed",
+      { errorCode: "pi_unavailable", errorMessage: "Original launch failure" },
+      ctx,
+    );
+    sqlite.prepare("UPDATE agent_run SET queued_at=1 WHERE id=?").run(run.id);
+    delegations.sendDelegationInput(sent.delegationId, "Try follow-up", ctx);
+    const followUp = runs.listAgentRuns(sent.childChatId, ctx).find((item) => item.id !== run.id)!;
+    markRunning(followUp);
+    expect(await delegations.waitForDelegationStart(sent.delegationId, 0)).toMatchObject({
+      outcome: "failed",
+      runId: run.id,
+      reason: "Original launch failure",
+    });
+  });
+  it.each([
+    ["canceled", "failed", "canceled"],
+    ["failed", "aborted", "failed"],
+    ["blocked", "aborted", "blocked"],
+    ["blocked", "failed", "blocked"],
+  ] as const)("prioritizes delegation %s over run %s", async (status, runStatus, expected) => {
+    const sent = dispatch(`authority ${status} ${runStatus}`);
+    const run = childRun(sent.childChatId);
+    runs.transitionAgentRun(
+      run.id,
+      runStatus,
+      { errorCode: "host_failure", errorMessage: "Run failure", stopReason: "Run stop" },
+      ctx,
+    );
+    sqlite
+      .prepare(
+        "UPDATE delegation SET status=?, terminal_summary=?, terminal_reason=?, settled_at=? WHERE id=?",
+      )
+      .run(
+        status,
+        "Authoritative delegation reason",
+        status === "blocked" ? null : status,
+        status === "blocked" ? null : Math.floor(Date.now() / 1000),
+        sent.delegationId,
+      );
+    expect(await delegations.waitForDelegationStart(sent.delegationId, 0)).toMatchObject({
+      outcome: expected,
+      reason: "Authoritative delegation reason",
     });
   });
   it("retains real startedAt when a fast worker finishes inside the wait window", async () => {

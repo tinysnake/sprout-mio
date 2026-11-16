@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { setTimeout as delay } from "node:timers/promises";
 import { clampDelegationStartBlockMs, type DelegationStartOutcome } from "../contracts/delegation";
 import { db } from "../db";
@@ -21,7 +21,9 @@ function readStart(delegationId: string): DelegationStartOutcome {
         ...(row.workerInstanceId ? [eq(agentRun.instanceId, row.workerInstanceId)] : []),
       ),
     )
-    .orderBy(desc(agentRun.queuedAt), desc(agentRun.id))
+    // Observe the dispatch's first run, not later input/continuation wakes.
+    // queuedAt has second precision and IDs are random; rowid preserves insertion order.
+    .orderBy(sql`${agentRun}.rowid asc`)
     .get();
   // dispatchDelegation commits the child chat and its first run atomically.
   if (!worker || !run) throw new Error("Dispatched worker run missing");
@@ -31,13 +33,13 @@ function readStart(delegationId: string): DelegationStartOutcome {
     workerName: worker.name,
     runId: run.id,
   };
-  if (row.status === "canceled" || row.status === "canceling" || run.status === "aborted")
+  if (row.status === "canceled" || row.status === "canceling")
     return {
       ...identity,
       outcome: "canceled",
       reason: row.terminalSummary ?? run.stopReason ?? "Delegation canceled",
     };
-  if (row.status === "failed" || run.status === "failed" || run.status === "interrupted")
+  if (row.status === "failed")
     return {
       ...identity,
       outcome: "failed",
@@ -50,6 +52,17 @@ function readStart(delegationId: string): DelegationStartOutcome {
     };
   if (row.status === "blocked")
     return { ...identity, outcome: "blocked", reason: row.terminalSummary ?? "Worker is blocked" };
+  // Supplement an unsettled delegation with host-side failure of its original launch only.
+  if (row.status === "queued" || row.status === "running") {
+    if (run.status === "aborted")
+      return { ...identity, outcome: "canceled", reason: run.stopReason ?? "Delegation canceled" };
+    if (run.status === "failed" || run.status === "interrupted")
+      return {
+        ...identity,
+        outcome: "failed",
+        reason: run.errorMessage ?? run.errorCode ?? run.stopReason ?? "Worker run interrupted",
+      };
+  }
   // A fast worker may already be completed; its real startedAt still proves launch.
   // delegation.status/startedAt are optimistic dispatch values, never launch evidence.
   if ((run.status === "running" || run.status === "completed") && run.startedAt)
