@@ -45,23 +45,23 @@ The original task JSON is unchanged. Both arms receive the same extra execution-
 
 ## Verification actually executed
 
-| Check | Exit | Actual outcome |
-| --- | --- | --- |
-| Initial two regression tests, before fixes | 1 | Both failed: pending dispatched event prevented settle; verdict-preservation handler missing. |
-| Additional subprocess/snapshot regression before recovery implementation | 1 | Timed-out probe threw and lost the already emitted snapshot. |
-| Final `node --test scripts/verify-live/crew-prompt-ab/*.test.mjs` | 0 | 22 passed, 0 failed; log `/tmp/ab-pilot-fix1-tests-final.log`. |
-| Targeted `vp lint` on six changed JS modules | 0 | Two pre-existing array-sort warnings in `core.mjs`; no lint errors. |
-| `vp fmt` on six changed JS modules | 0 | Formatted; initial attempt to use unavailable prettier exited 254 before falling back to the repository formatter. |
-| `git diff --check` | 0 | No whitespace errors. |
-| B single-task AB_DRY | 0 | Transport completed; ledger correctly says failed, because scripted dry lead did not delegate/fix the artifact. Both planted artifact assertions exited 1; this is expected, not a live-quality pass. |
-| Unprepared diagnostic B live | 143 | Intentionally interrupted after capturing raw forbidden responses and confirming missing dispatch resources; not counted as a successful task. |
-| First resource-sidecar startup | 1 | Fixture SQL referred to absent `r.created_at`; corrected to rowid before next trial. No agent task ran. |
-| Approved-but-not-atomically-allocated B live | 1 | Captured real worker startup conflict `Crew 资源尚未分配`; corrected fixture setup only. |
-| Atomically prepared B live | 0 | Passed. Two completed delegations, four completed runs, two artifact assertions exited 0. |
-| Original blocked evidence rejudge | 0 | The preserved real snapshot now settles and correctly judges failed, even when assuming artifact checks passed; the worker never reported completion. Log `/tmp/ab-pilot-fix1-original-evidence-rejudge.log`. |
-| Original request replay against copied DB | 0 | Asserted forbidden/crew_epoch_changed and zero resource insertions; original DB untouched. |
-| Captured HTTP response replay through frozen client | 0 | Asserted masked 403 and rejected successful 200 completion. |
-| Full A/B batch, A live, full product suite | skipped | Not required to prove this B single-task setup; no comparison or product correctness claim is made. |
+| Check                                                                    | Exit    | Actual outcome                                                                                                                                                                                                |
+| ------------------------------------------------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initial two regression tests, before fixes                               | 1       | Both failed: pending dispatched event prevented settle; verdict-preservation handler missing.                                                                                                                 |
+| Additional subprocess/snapshot regression before recovery implementation | 1       | Timed-out probe threw and lost the already emitted snapshot.                                                                                                                                                  |
+| Final `node --test scripts/verify-live/crew-prompt-ab/*.test.mjs`        | 0       | 22 passed, 0 failed; log `/tmp/ab-pilot-fix1-tests-final.log`.                                                                                                                                                |
+| Targeted `vp lint` on six changed JS modules                             | 0       | Two pre-existing array-sort warnings in `core.mjs`; no lint errors.                                                                                                                                           |
+| `vp fmt` on six changed JS modules                                       | 0       | Formatted; initial attempt to use unavailable prettier exited 254 before falling back to the repository formatter.                                                                                            |
+| `git diff --check`                                                       | 0       | No whitespace errors.                                                                                                                                                                                         |
+| B single-task AB_DRY                                                     | 0       | Transport completed; ledger correctly says failed, because scripted dry lead did not delegate/fix the artifact. Both planted artifact assertions exited 1; this is expected, not a live-quality pass.         |
+| Unprepared diagnostic B live                                             | 143     | Intentionally interrupted after capturing raw forbidden responses and confirming missing dispatch resources; not counted as a successful task.                                                                |
+| First resource-sidecar startup                                           | 1       | Fixture SQL referred to absent `r.created_at`; corrected to rowid before next trial. No agent task ran.                                                                                                       |
+| Approved-but-not-atomically-allocated B live                             | 1       | Captured real worker startup conflict `Crew 资源尚未分配`; corrected fixture setup only.                                                                                                                      |
+| Atomically prepared B live                                               | 0       | Passed. Two completed delegations, four completed runs, two artifact assertions exited 0.                                                                                                                     |
+| Original blocked evidence rejudge                                        | 0       | The preserved real snapshot now settles and correctly judges failed, even when assuming artifact checks passed; the worker never reported completion. Log `/tmp/ab-pilot-fix1-original-evidence-rejudge.log`. |
+| Original request replay against copied DB                                | 0       | Asserted forbidden/crew_epoch_changed and zero resource insertions; original DB untouched.                                                                                                                    |
+| Captured HTTP response replay through frozen client                      | 0       | Asserted masked 403 and rejected successful 200 completion.                                                                                                                                                   |
+| Full A/B batch, A live, full product suite                               | skipped | Not required to prove this B single-task setup; no comparison or product correctness claim is made.                                                                                                           |
 
 AB_DRY: ledger `/tmp/ab-pilot-fix1-dry.jsonl`; log `/tmp/ab-pilot-fix1-dry.log`; exit marker `/tmp/ab-pilot-fix1-dry.done`; evidence `/tmp/crew-prompt-ab-1794809297685-62020`.
 

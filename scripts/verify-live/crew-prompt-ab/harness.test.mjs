@@ -311,6 +311,8 @@ const run = (role = "lead", hash = "a".repeat(64)) => ({
   systemPromptChars: 10,
   availableTools: ["read", "bash"],
   inheritHostResources: false,
+  thinkingRequested: "low",
+  thinkingEffective: "low",
   systemPromptHashes: [hash],
 });
 const pair = () => [

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // This builder owns both the planted inputs and their expected outcomes.
@@ -83,6 +83,31 @@ export function fixtureDefinition(name) {
   };
   assert(definitions[name], `unknown fixture ${name}`);
   return definitions[name];
+}
+
+export function machineFixtureCount(oracle) {
+  return oracle === "delegate_parallel" ? 2 : 1;
+}
+
+export function scopeForWorker(scopes, workerProfileId) {
+  const scope =
+    scopes.length === 1 ? scopes[0] : scopes.find((s) => s.workerProfileId === workerProfileId);
+  assert(scope, `no fixture machine assigned to worker profile ${workerProfileId}`);
+  return scope;
+}
+
+export function parallelAssertionRoot(scopes, nodeLine) {
+  assert(scopes.length === 2, "parallel fixture requires two independent machines");
+  assert(
+    new Set(scopes.map((scope) => scope.machineId)).size === 2,
+    "parallel machine IDs must differ",
+  );
+  assert(new Set(scopes.map((scope) => scope.worktree)).size === 2, "parallel clones must differ");
+  return (
+    scopes.find((scope) =>
+      readFileSync(join(scope.worktree, "README.md"), "utf8").split(/\r?\n/).includes(nodeLine),
+    ) ?? scopes[0]
+  ).worktree;
 }
 
 export function seedFixture(name, root) {

@@ -25,7 +25,6 @@
 
 每项记录 `task-prompt.txt`、`resource-fixture.json`、`resource-fixture.log` 与去除密钥的 `machine-exchanges.jsonl`。harness 将 `blocked` 视作已观察结果，不要求 `terminalAt`；仅忽略 `dispatched` 记账事件的 pending 状态，真实结果事件仍须消费。证据 probe 单次最多 5 秒；完整快照已输出时，即使 probe 超时也保留快照并单独标记 `evidenceProbe`。超时后仍可由完整收敛快照判定的账本行继续判定，后续异常不得覆盖已测 verdict。
 
-
 ## 实测到的形状来自哪里
 
 任务集从用户 2026 年 11 月的 sprout-mio session 里提炼。382 个 session、606 个人类回合里，最高频的形状依次是排查定位线上问题、分支与 PR 合并、UI 与显示、部署到 prod、派活编排、review 评审、代码库问答。当年第二类高频失败（92 个人类抱怨回合）就是本次要测的东西。lead 声称已派活但没有可观测结果、重复派活、成员在 review 里打转不收尾、把提问当成任务。</s>
@@ -119,6 +118,20 @@
 每次跑都要证明工作真的发生，worker run 的真实启动、真实工具调用、真实 token 消耗都进结果行，避免「成功」落在一条没跑起来的路径上。
 
 限制因素也要写。两臂都到 100% 或都到 0% 时指标饱和，这一轮判定为 inconclusive 并说明。
+
+## 读数与档位（2026-11-16 修订）
+
+**档位。** 三个夹具 profile 固定 `effort: "low"`。不要写 `"off"`：pi-magpie 把 `off` 映射成模型词汇里的 `null`（该模型不支持关闭思考），SDK 的 `clampThinkingLevel` 会把它钳到最近支持档，实测落在 `low`，于是账本记的请求值与实际值不一致。每个 run 记 `thinkingRequested` 与 `thinkingEffective`；完成的 run 缺生效档位、或同一角色两臂的生效档位不同，一律拒绝比较。本批结论只对 `low` 成立（本机产品默认 `high`），要外推必须另跑一批并写死档位。
+
+**两个读数。** `row.verdict` 是预注册判定，只走预注册门，含义不变。`row.verdictCorrected` 是修正判定，处理四类已知判定器缺陷：探针委派不再判死 `attribution`、`delegate_parallel` 不把探针计入条数、`no_duplicate` 要求最终回复给出核对结论、retry 计数接受「文件名:行号 — 值」的写法。报告两组一起给，并说明哪几行翻案。
+
+**重判而不重跑。** `node scripts/verify-live/crew-prompt-ab/rejudge.mjs <ledger.jsonl> <out.jsonl>` 只读原账本、不出网、不执行记录下来的命令，输出独立文件。`AB_TASKS=... AB_ARM=...` 与 `main.mjs --batch` 之外不需要为修正重跑 live。
+
+**两台 Machine。** `delegate-parallel-two` 用两台 Machine（`fixtures.mjs` 的 `machineFixtureCount` / `scopeForWorker`），因为产品对同一 `(project, machine)` 只有一份活跃授权，两个 worker 争一台会让第二个 run 启动前失败。
+
+**live 无法比对提示词哈希。** dry 路径能用本地 fixture 端点截获的 system prompt SHA 证明两臂不同；live 路径没有截获点，`systemPromptHashes` 为空，只能靠「同一角色两臂 `systemPromptChars` 集合不相交 + 工具集相同」证明处理被施加。这比 dry 弱，报告里要写明。
+
+判定器修正的来龙去脉见 `scripts/verify-live/crew-prompt-ab/ORACLE-CORRECTIONS.md`。
 
 ## 账本
 

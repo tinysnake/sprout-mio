@@ -1,24 +1,34 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { scopeForWorker } from "./fixtures.mjs";
 const { sqlite } = await import(pathToFileURL(resolve("src/db/index.ts")).href);
 const { requestCrewResource, approveCrewResource, advanceCrewResources } = await import(
   pathToFileURL(resolve("src/domain/crew-resource.ts")).href
 );
 
-const { chatId, projectId, scope } = JSON.parse(
+const { chatId, projectId, scopes } = JSON.parse(
   readFileSync(process.env.AB_RESOURCE_FIXTURE, "utf8"),
 );
 const leadRun = sqlite.prepare(
   "SELECT r.id, r.instance_id FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id JOIN chat c ON c.id=r.chat_id WHERE r.chat_id=? AND r.status='running' AND i.agent_profile_id=c.lead_profile_id ORDER BY r.rowid DESC LIMIT 1",
 );
 const workers = sqlite.prepare(
-  "SELECT d.id, d.attempt, d.crew_epoch, r.id AS run_id FROM delegation d JOIN agent_run r ON r.chat_id=d.child_chat_id WHERE d.parent_crew_chat_id=? AND d.status='running' AND r.status IN ('queued','running') AND NOT EXISTS (SELECT 1 FROM crew_resource_request cr WHERE cr.run_id=r.id AND cr.machine_id=?)",
+  "SELECT d.id, d.worker_profile_id, d.attempt, d.crew_epoch, r.id AS run_id FROM delegation d JOIN agent_run r ON r.chat_id=d.child_chat_id WHERE d.parent_crew_chat_id=? AND d.status='running' AND r.status IN ('queued','running')",
+);
+const existingRequest = sqlite.prepare(
+  "SELECT 1 FROM crew_resource_request WHERE run_id=? AND machine_id=? LIMIT 1",
 );
 const approveWorkers = sqlite.transaction(() => {
   const lead = leadRun.get(chatId);
   if (!lead) return;
-  for (const worker of workers.all(chatId, scope.machineId)) {
+  for (const worker of workers.all(chatId)) {
+    const {
+      workerProfileId: _profile,
+      worktree: _worktree,
+      ...scope
+    } = scopeForWorker(scopes, worker.worker_profile_id);
+    if (existingRequest.get(worker.run_id, scope.machineId)) continue;
     const actor = { projectId, instanceId: lead.instance_id, runId: lead.id };
     const request = requestCrewResource(
       {

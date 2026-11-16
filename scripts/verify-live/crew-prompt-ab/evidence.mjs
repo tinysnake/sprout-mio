@@ -162,6 +162,8 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
       errorMessage: r.errorMessage ?? null,
       provider: r.configSnapshot?.provider ?? null,
       model: r.configSnapshot?.model ?? null,
+      thinkingRequested: r.configSnapshot?.profile?.effort ?? null,
+      thinkingEffective: r.configSnapshot?.thinking ?? null,
       sdkVersion: r.configSnapshot?.sdkVersion ?? null,
       transcript: r.configSnapshot?.sessionFile ?? null,
       readySnapshot: r.configSnapshot
@@ -236,6 +238,7 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
     );
     delegationEvidence.push({
       delegationId: delegation.id,
+      workerProfileId: delegation.workerProfileId,
       status: delegation.status,
       requestSummary: delegation.requestSummary,
       childChatId: delegation.childChatId,

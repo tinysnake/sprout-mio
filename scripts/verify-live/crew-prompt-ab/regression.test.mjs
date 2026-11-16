@@ -193,6 +193,8 @@ test("live and dry comparisons reject any shared prompt length, including across
       systemPromptChars: count,
       availableTools: ["read"],
       inheritHostResources: false,
+      thinkingRequested: "low",
+      thinkingEffective: "low",
       systemPromptHashes: [arm.toLowerCase().repeat(64)],
     })),
   });

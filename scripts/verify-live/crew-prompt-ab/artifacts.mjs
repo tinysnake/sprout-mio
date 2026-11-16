@@ -1,11 +1,25 @@
 import { spawnSync } from "node:child_process";
 import { fixtureDefinition } from "./fixtures.mjs";
 
+export function retryCountReported(text, file, value, corrected = true) {
+  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!corrected) return new RegExp(escaped + "[^\\n0-9]*" + value + "(?![0-9])").test(text);
+  const line =
+    "(?::\\d+(?![0-9])|#L\\d+(?![0-9])|\\s+line\\s+\\d+(?![0-9])|(?!(?::\\d|#L\\d|\\s+line\\s+\\d)))";
+  return new RegExp(
+    "(?:^|[^\\w/.-])" + escaped + line + "[^\\n0-9;]*" + value + "(?![0-9])",
+    "i",
+  ).test(text);
+}
+
 // Run assertions in a separate process so a failing assertion has a recorded exit code.
-const assertion = String.raw`
+const assertion =
+  retryCountReported.toString() +
+  "\n" +
+  String.raw`
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {kind, expected: e, facts: f} = JSON.parse(process.argv[1]);
+const {kind, expected: e, facts: f, corrected} = JSON.parse(process.argv[1]);
 const read = path => fs.readFileSync(path, 'utf8');
 switch (kind) {
   case 'rounding': {
@@ -21,8 +35,7 @@ switch (kind) {
       read(file);
       assert(f.leadFinalReplyText.includes(file), 'lead names retry file ' + file);
       const value = e.retryCounts[file];
-      const escaped = file.replaceAll('.', '\\.');
-      assert(new RegExp(escaped + '[^\\n0-9]*' + value + '(?![0-9])').test(f.leadFinalReplyText),
+      assert(retryCountReported(f.leadFinalReplyText, file, value, corrected),
         'lead names retry count ' + file + ' = ' + value);
     }
     break;
@@ -71,7 +84,7 @@ switch (kind) {
 console.log('PASS ' + kind);
 `;
 
-export function artifactAssertions(task, root, facts) {
+export function artifactAssertions(task, root, facts, { corrected = true } = {}) {
   const { expected } = fixtureDefinition(task.fixture);
   const commands = [];
   const run = (name, executable, args) => {
@@ -113,6 +126,7 @@ export function artifactAssertions(task, root, facts) {
     assertion,
     JSON.stringify({
       kind,
+      corrected,
       expected,
       facts: {
         leadFinalReplyText: facts.leadFinalReplyText ?? "",

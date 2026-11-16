@@ -29,6 +29,7 @@ import {
   finalizeVerdict,
 } from "./core.mjs";
 import { artifactAssertions } from "./artifacts.mjs";
+import { machineFixtureCount, parallelAssertionRoot } from "./fixtures.mjs";
 import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
 
 export async function runTask({
@@ -59,6 +60,9 @@ export async function runTask({
     model,
     dry,
     oracle: task.oracle,
+    thinkingRequested: "low",
+    thinkingEffective: null,
+    machineScopes: [],
     status: "errored",
     passed: null,
     wallClockPerPhase: phases,
@@ -71,6 +75,17 @@ export async function runTask({
     input,
     latest,
     initial;
+  function collectArtifactAssertions() {
+    const root =
+      task.oracle === "delegate_parallel"
+        ? parallelAssertionRoot(
+            row.machineScopes,
+            fixtureDefinition(task.fixture).expected.nodeLine,
+          )
+        : row.fixtureWorktree;
+    row.artifactAssertions = artifactAssertions(task, root, row, { corrected: false });
+    row.artifactAssertionsCorrected = artifactAssertions(task, root, row, { corrected: true });
+  }
   const promptHashes = new Map();
   const children = [];
   function next(name) {
@@ -282,7 +297,7 @@ export async function runTask({
       const agent = await call("createAgentProfileFn", {
         name,
         model: fixture ? fixture.model(index === 0 ? "chatOwner" : "chatMentioned") : model,
-        effort: "off",
+        effort: "low",
         persona: "Follow the human task and report concrete results concisely.",
       });
       await call("addProjectMemberFn", { projectId: project.id, agentProfileId: agent.id });
@@ -295,88 +310,96 @@ export async function runTask({
       initialOwner: { kind: "agent", id: agents[0].id },
     });
     input = { chatId: crew.id, projectId: project.id, userId };
-    const enrollment = await call("createMachineFn", { name: "AB isolated Worker" });
-    const machineId = enrollment.detail.machine.id;
-    const root = join(directory, "machine-root");
-    mkdirSync(root, { recursive: true });
     mkdirSync(env.SPROUT_REPO_DIR, { recursive: true });
-    row.fixtureWorktree = join(env.SPROUT_REPO_DIR, project.id);
-    await fixtureGit(["clone", "-q", remote, row.fixtureWorktree], "fixture-worktree.log");
-    await call("updateProjectProfileFn", {
-      projectId: project.id,
-      workDirectory: project.id,
-    });
-    symlinkSync(row.fixtureWorktree, join(root, project.id), "dir");
-    await call("saveMachineRootDirectoryFn", {
-      machineId,
-      directory: root,
-      expectedRevision: enrollment.detail.machine.rootRevision,
-    });
-    await call("saveProjectMachineBindingFn", {
-      machineId,
-      projectId: project.id,
-      description: "AB sandbox",
-      expectedRevision: null,
-    });
-    const ticket = join(directory, "ticket");
-    writeFileSync(ticket, enrollment.ticket, { mode: 0o600 });
-    const state = join(directory, "worker-state");
-    const init = launch(
-      [
-        "dist/worker/main.js",
-        "init",
-        "--server",
-        base,
-        "--machine",
+    await call("updateProjectProfileFn", { projectId: project.id, workDirectory: project.id });
+    for (let index = 0; index < machineFixtureCount(task.oracle); index++) {
+      const enrollment = await call("createMachineFn", { name: `AB isolated Worker ${index + 1}` });
+      const machineId = enrollment.detail.machine.id;
+      const machineDirectory = join(directory, `machine-${index + 1}`);
+      const root = join(machineDirectory, "machine-root");
+      mkdirSync(root, { recursive: true });
+      const worktree =
+        index === 0 ? join(env.SPROUT_REPO_DIR, project.id) : join(machineDirectory, project.id);
+      if (index === 0) row.fixtureWorktree = worktree;
+      await fixtureGit(["clone", "-q", remote, worktree], `fixture-worktree-${index + 1}.log`);
+      symlinkSync(worktree, join(root, project.id), "dir");
+      await call("saveMachineRootDirectoryFn", {
         machineId,
-        "--state-dir",
-        state,
-        "--ticket-file",
-        ticket,
-        "--allow-http",
-        base,
-      ],
-      "worker-init.log",
-    );
-    await until(() => init.exitCode !== null, "Worker enrollment", 60000);
-    assert.equal(init.exitCode, 0);
-    launch(["dist/worker/main.js", "run", "--state-dir", state], "worker.log");
-    let readyMachine;
-    await until(
-      async () => {
-        const machine = await call("getMachineFn", { machineId, projectId: project.id });
-        readyMachine = machine;
-        return (
-          machine.connection.kind === "online" &&
-          machine.bindings[0]?.observation?.fact?.result?.kind === "accessible"
-        );
-      },
-      "Worker accessible",
-      60000,
-    );
-    const Database = createRequire(join(process.cwd(), "package.json"))("better-sqlite3");
-    const database = new Database(env.DATABASE_URL, { readonly: true });
-    let membership;
-    try {
-      membership = database
-        .prepare(
-          "SELECT epoch FROM project_machine_membership WHERE project_id=? AND machine_id=? AND state='active'",
-        )
-        .get(project.id, machineId);
-    } finally {
-      database.close();
+        directory: root,
+        expectedRevision: enrollment.detail.machine.rootRevision,
+      });
+      await call("saveProjectMachineBindingFn", {
+        machineId,
+        projectId: project.id,
+        description: "AB sandbox",
+        expectedRevision: null,
+      });
+      const ticket = join(machineDirectory, "ticket");
+      writeFileSync(ticket, enrollment.ticket, { mode: 0o600 });
+      const state = join(machineDirectory, "worker-state");
+      const init = launch(
+        [
+          "dist/worker/main.js",
+          "init",
+          "--server",
+          base,
+          "--machine",
+          machineId,
+          "--state-dir",
+          state,
+          "--ticket-file",
+          ticket,
+          "--allow-http",
+          base,
+        ],
+        `worker-init-${index + 1}.log`,
+      );
+      await until(() => init.exitCode !== null, "Worker enrollment", 60000);
+      assert.equal(init.exitCode, 0);
+      launch(["dist/worker/main.js", "run", "--state-dir", state], `worker-${index + 1}.log`);
+      let readyMachine;
+      await until(
+        async () => {
+          const machine = await call("getMachineFn", { machineId, projectId: project.id });
+          readyMachine = machine;
+          return (
+            machine.connection.kind === "online" &&
+            machine.bindings[0]?.observation?.fact?.result?.kind === "accessible"
+          );
+        },
+        "Worker accessible",
+        60000,
+      );
+      const Database = createRequire(join(process.cwd(), "package.json"))("better-sqlite3");
+      const database = new Database(env.DATABASE_URL, { readonly: true });
+      let membership;
+      try {
+        membership = database
+          .prepare(
+            "SELECT epoch FROM project_machine_membership WHERE project_id=? AND machine_id=? AND state='active'",
+          )
+          .get(project.id, machineId);
+      } finally {
+        database.close();
+      }
+      assert(membership, "fixture Machine must have active project membership");
+      const scope = {
+        machineId,
+        membershipEpoch: membership.epoch,
+        directoryRealPath: readyMachine.bindings[0].observation.fact.result.realPath,
+        directoryRevision: readyMachine.machine.rootRevision,
+        operations: ["shell", "file_read", "file_write"],
+      };
+      row.machineScopes.push({
+        ...scope,
+        workerProfileId: machineFixtureCount(task.oracle) === 2 ? agents[index + 1].id : null,
+        worktree,
+      });
     }
-    assert(membership, "fixture Machine must have active project membership");
-    const scope = {
-      machineId,
-      membershipEpoch: membership.epoch,
-      directoryRealPath: readyMachine.bindings[0].observation.fact.result.realPath,
-      directoryRevision: readyMachine.machine.rootRevision,
-      operations: ["shell", "file_read", "file_write"],
-    };
+    const scope = row.machineScopes[0];
     row.machineScope = scope;
     env.AB_RESOURCE_FIXTURE = join(directory, "resource-fixture.json");
-    writeFileSync(env.AB_RESOURCE_FIXTURE, JSON.stringify({ ...input, scope }));
+    writeFileSync(env.AB_RESOURCE_FIXTURE, JSON.stringify({ ...input, scopes: row.machineScopes }));
     const resourceFixture = launch(
       ["--import", "tsx", fileURLToPath(new URL("./resource-fixture.mjs", import.meta.url))],
       "resource-fixture.log",
@@ -399,8 +422,8 @@ export async function runTask({
     const prompt =
       task.prompt +
       "\n\nFixture execution environment (identical in both arms):\n" +
-      `The writable repository is on the Crew Machine, at ${scope.directoryRealPath}. Local host tools are read-only. ` +
-      `The fixture coordinator registers and approves this Machine resource scope for each delegation as it starts: ${JSON.stringify(scope)}. Include the repository path and this resource scope in the worker request. ` +
+      `The writable repositories are on the Crew Machines. Local host tools are read-only. ` +
+      `The fixture coordinator registers and approves the assigned Machine scope for each worker profile: ${JSON.stringify(row.machineScopes)}. Use the scope assigned to that workerProfileId (a null profile permits any worker), include its directoryRealPath and resource scope in the worker request. Each machine has an independent clone of the same fixture. ` +
       "The worker must use the approved Crew resource authorization from info_hub to run remote file/shell tools; never use sprout_lease_acquire, handoff or grant. If authorization is not active yet, inspect resource status before running. Use relative file paths within the approved directory. " +
       "For work kept by the lead, request and approve a lead_run resource through sprout_resource_request and sprout_resource_approve.";
     writeFileSync(join(directory, "task-prompt.txt"), prompt);
@@ -450,7 +473,7 @@ export async function runTask({
         fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [],
       ),
     );
-    row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
+    collectArtifactAssertions();
     assert(row.runs.length > 0, "missing actual execution evidence");
     if (fixture) {
       fixture.assertHealthy();
@@ -486,7 +509,7 @@ export async function runTask({
             error.code,
           );
           if (observationTimeout && settled(latest) && !classifyRuns(latest.runs)) {
-            row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
+            collectArtifactAssertions();
             row.passed = judge(task.oracle, row);
             row.status = row.passed ? "passed" : "failed";
             row.recoveredOutcome = true;
@@ -524,6 +547,8 @@ export async function runTask({
     } catch (e) {
       preserveOutcome(row, task.oracle, row.delegatedCount, e);
     }
+    const levels = [...new Set((row.runs ?? []).map((run) => run.thinkingEffective))];
+    row.thinkingEffective = levels.length === 1 ? levels[0] : null;
     finalizeVerdict(row);
     writeFileSync(join(directory, "result.json"), JSON.stringify(row, null, 2) + "\n");
   }

@@ -39,7 +39,7 @@ export const oracleNames = [
   "no_delegation_but_work_done",
   "no_duplicate",
 ];
-export function evaluateOracle(name, f) {
+export function evaluateOracle(name, f, { corrected = false } = {}) {
   assert(oracleNames.includes(name), `unknown oracle ${name}`);
   const gates = {};
   const gate = (name, checks, actual) => {
@@ -61,6 +61,16 @@ export function evaluateOracle(name, f) {
     },
     { assertions: f.artifactAssertions ?? null },
   );
+  if (corrected && f.artifactAssertionsCorrected) {
+    gate(
+      "artifactsPass",
+      {
+        present: f.artifactAssertionsCorrected.length > 0,
+        allExitZero: f.artifactAssertionsCorrected.every((c) => c.exitCode === 0),
+      },
+      { assertions: f.artifactAssertionsCorrected },
+    );
+  }
   const validFinal = () =>
     gate(
       "validFinal",
@@ -91,6 +101,13 @@ export function evaluateOracle(name, f) {
     const evidence = f.delegationEvidence ?? [];
     const mapped = (d, file) =>
       d.requestArtifacts.includes(file) && d.workerArtifacts.includes(file);
+    const artifactDelegations = evidence.filter((d) =>
+      d.requestArtifacts.some((file) => targets.includes(file) && mapped(d, file)),
+    );
+    const profileFor = (d) =>
+      d.workerProfileId ??
+      f.runs?.find((r) => r.role === "worker" && r.chatId === d.childChatId)?.profileId;
+    const artifactProfiles = [...new Set(artifactDelegations.map(profileFor).filter(Boolean))];
     gate(
       "attribution",
       {
@@ -111,6 +128,15 @@ export function evaluateOracle(name, f) {
         uncoveredTargets: targets.filter((file) => !evidence.some((d) => mapped(d, file))),
       },
     );
+    if (corrected) {
+      const checks = { ...gates.attribution.checks };
+      delete checks.everyDelegationMapped;
+      checks.anyDelegationMapped = artifactDelegations.length > 0;
+      gate("attribution", checks, {
+        ...gates.attribution.actual,
+        probeDelegations: evidence.filter((d) => !artifactDelegations.includes(d)),
+      });
+    }
     if (name !== "worker_finishes") {
       validFinal();
       gate(
@@ -130,13 +156,19 @@ export function evaluateOracle(name, f) {
     if (name === "delegate_parallel")
       gate(
         "parallel",
-        {
-          twoDelegations: f.delegatedCount === 2,
-          twoProfiles: f.distinctWorkerProfiles?.length === 2,
-        },
+        corrected
+          ? {
+              artifactDelegations: artifactDelegations.length >= 2,
+              twoArtifactProfiles: artifactProfiles.length >= 2,
+            }
+          : {
+              twoDelegations: f.delegatedCount === 2,
+              twoProfiles: f.distinctWorkerProfiles?.length === 2,
+            },
         {
           delegatedCount: f.delegatedCount ?? null,
           distinctWorkerProfiles: f.distinctWorkerProfiles ?? null,
+          ...(corrected ? { artifactDelegations, artifactProfiles } : {}),
         },
       );
   } else {
@@ -150,8 +182,10 @@ export function evaluateOracle(name, f) {
           atMostOne:
             f.delegationsPerArtifact != null &&
             Object.values(f.delegationsPerArtifact).every((count) => count <= 1),
+          ...(corrected ? { reviewConclusion: usageReviewConclusion(f.leadFinalReplyText) } : {}),
         },
         {
+          ...(corrected ? { delegatedCount: f.delegatedCount ?? null } : {}),
           artifactToolCalls: f.artifactToolCalls ?? null,
           delegationsPerArtifact: f.delegationsPerArtifact ?? null,
         },
@@ -165,6 +199,18 @@ export function evaluateOracle(name, f) {
   }
   const failedGates = Object.keys(gates).filter((name) => !gates[name].passed);
   return { oracle: name, passed: failedGates.length === 0, failedGates, gates };
+}
+
+export function usageReviewConclusion(text = "") {
+  return (
+    /(?:^|[^\w/.-])docs\/usage\.md(?![\w/.-])/.test(text) &&
+    /(?:已(?:经)?(?:核对|检查|复核|确认|核实)|核(?:对|实)(?:了|完成)|reviewed|checked|verified)/i.test(
+      text,
+    ) &&
+    /(?:没有(?:发现)?遗漏|未发现遗漏|无遗漏|没有缺漏|没有缺失|无需(?:补|修改)|不需要(?:再)?补|无(?:需|须)重复|已(?:经)?(?:补充|补齐|补上|修复|更正)[^。！？\n]*(?:遗漏|缺失|步骤)|no\s+(?:missing|omissions?|gaps|changes?\s+needed)|nothing\s+missing)/i.test(
+      text,
+    )
+  );
 }
 
 export function judge(name, f) {
@@ -188,6 +234,20 @@ export function finalizeVerdict(row) {
   };
   // Unobserved or interrupted execution cannot establish an oracle outcome.
   if (!evaluated) row.verdict.passed = null;
+  row.verdictCorrected = {
+    ...row.verdict,
+    ...evaluateOracle(row.oracle, row, { corrected: true }),
+    evaluated,
+  };
+  row.verdictCorrected.outcome = evaluated
+    ? row.verdictCorrected.passed
+      ? "passed"
+      : "failed"
+    : row.status;
+  if (!evaluated) row.verdictCorrected.passed = null;
+  row.probeDelegations = (
+    row.verdictCorrected.gates.attribution?.actual.probeDelegations ?? []
+  ).map((d) => ({ delegationId: d.delegationId, requestSummary: d.requestSummary }));
   return row.verdict;
 }
 
@@ -296,6 +356,8 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
       group.set(row.arm, list);
       groups.set(key, group);
       if (run.status !== "completed") continue;
+      if (!run.thinkingEffective)
+        add(`missing effective thinking level for completed ${run.role} run`);
       if (
         !Number.isInteger(run.systemPromptChars) ||
         run.systemPromptChars <= 0 ||
@@ -319,6 +381,13 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
       add(`missing matching role ${key}`);
       continue;
     }
+    const levels = (runs) => [...new Set(runs.map((r) => r.thinkingEffective))].sort();
+    if (
+      levels(a).length !== 1 ||
+      levels(b).length !== 1 ||
+      JSON.stringify(levels(a)) !== JSON.stringify(levels(b))
+    )
+      add(`effective thinking levels differ for ${key}`);
     const tools = (runs) =>
       [...new Set(runs.map((r) => JSON.stringify([...(r.availableTools ?? [])].sort())))].sort();
     if (JSON.stringify(tools(a)) !== JSON.stringify(tools(b)))
