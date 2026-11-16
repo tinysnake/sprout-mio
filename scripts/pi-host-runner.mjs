@@ -159,6 +159,16 @@ async function open(config) {
   const { MEMORY_TOOL_NAMES, filterMemorySkillPaths, memoryExtensionConfig } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/memory.ts"),
   );
+  const { delegationToolNames } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/delegation-surface.ts"),
+  );
+  const { situationSchema } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/prompt.ts"),
+  );
+  // worker 侧是 JS，TS 的 import 不提供运行时校验；未知字段会被 zod 剥掉，
+  // 所以 situation 的形状只能由 src/contracts/prompt.ts 这一份 schema 说了算。
+  const situation =
+    config.situation === undefined ? undefined : situationSchema.parse(config.situation);
   let memory = assistant ? { state: "disabled" } : (config.memory ?? { state: "disabled" });
   let memoryFactory;
   const downgradeMemory = () => {
@@ -356,6 +366,7 @@ async function open(config) {
             // 后续跨 Chat 或 Agent 间通信再启用。
             ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
             ...Object.keys(infoHubToolInputSchemas),
+            ...delegationToolNames(situation),
           ],
       resourceLoader,
       settingsManager,
@@ -558,6 +569,7 @@ async function open(config) {
       cwd: config.cwd,
       sdkVersion: pkg.version,
       purpose: config.purpose ?? "worker",
+      ...(situation ? { situation } : {}),
       profile: config.profile,
     },
   });

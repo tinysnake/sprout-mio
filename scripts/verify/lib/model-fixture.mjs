@@ -189,6 +189,7 @@ export async function startModelFixture({
   );
   let failure;
   let requests = 0;
+  const receivedRequests = [];
   let closed = false;
   const server = createServer(async (request, response) => {
     try {
@@ -204,6 +205,7 @@ export async function startModelFixture({
         assert(Buffer.byteLength(body) <= 4 * 1024 * 1024, "fixture request size");
       }
       const input = JSON.parse(body);
+      receivedRequests.push(structuredClone(input));
       input.tools ??= [];
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
@@ -476,6 +478,9 @@ export async function startModelFixture({
         paidModelCalls: 0,
         paidModelCallsBasis: "private catalog with loopback endpoint and every caller model pinned",
       };
+    },
+    receivedRequests() {
+      return structuredClone(receivedRequests);
     },
     async close() {
       if (closed) return;

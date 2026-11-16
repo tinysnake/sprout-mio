@@ -1,5 +1,6 @@
 export type ToolStep = { name: string; arguments: Record<string, unknown> };
 export type TurnPlan = {
+  isolated?: boolean;
   expectedUserText?: string;
   expectedUserPrefix?: string;
   steps?: ToolStep[];
@@ -20,6 +21,14 @@ export const fixtureProvider: string;
 export const fixtureModels: Readonly<Record<FixtureRole, string>>;
 export function statusTurn(): TurnPlan;
 export function leaseTurn(action: string, parameters: Record<string, unknown>): TurnPlan;
+export type ProviderRequest = {
+  model: string;
+  messages: { role: string; content: string }[];
+  tools: {
+    type: string;
+    function: { name: string; description: string; parameters: Record<string, unknown> };
+  }[];
+};
 export function startModelFixture(options: {
   privateDir: string;
   sourceAgentDir?: string;
@@ -27,6 +36,7 @@ export function startModelFixture(options: {
   agentDir: string;
   model(role: FixtureRole): string;
   arm(role: FixtureRole, turn: TurnPlan): void;
+  receivedRequests(): ProviderRequest[];
   assertHealthy(): void;
   assertDrained(): void;
   metadata(): {

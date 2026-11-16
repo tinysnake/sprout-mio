@@ -5,6 +5,7 @@ import { chatIdInput } from "./chat";
 import { appIdPattern, ID_PREFIXES } from "./ids";
 import type { FieldErrors } from "./project";
 import type { RunRepoSnapshot } from "./repository";
+import type { Situation } from "./prompt";
 import type { AppResult } from "./result";
 
 export const AGENT_RUN_STATUSES = [
@@ -83,6 +84,8 @@ export type RunConfigSnapshot = {
   /** 本轮实际使用的仓库工作副本与 commit；Project 未配置仓库时缺省。 */
   repo?: RunRepoSnapshot;
   purpose?: "worker" | "assistant";
+  /** 与 `profile` 平级，随配置快照落库；旧快照没有，读取侧可选。 */
+  situation?: Situation;
   profile: {
     purpose?: "worker" | "assistant";
     id: string;

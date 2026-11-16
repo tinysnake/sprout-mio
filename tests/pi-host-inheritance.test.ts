@@ -205,6 +205,14 @@ describe("Pi 资源继承开关的父进程接线", () => {
     // 诊断入口现在是工具面的正式成员：registry 与工具面都有它，两张表都随协议完整落库。
     expect(snapshot?.tools).toEqual(["grep", "read", "sprout_status"]);
   });
+
+  it("open 命令携带服务端认定的 situation，且没有 systemPrompt 字段", async () => {
+    const { open } = await runWithSwitch(false);
+    // DM 里的 worker run：处境由 run 自己的记录认定，而不是调用方声明。
+    expect(open.situation).toEqual({ kind: "dm_worker" });
+    // systemPrompt 由内置 composer 在 runner 进程内组装，不进任何 PiHostCommand 变体。
+    expect(open).not.toHaveProperty("systemPrompt");
+  });
 });
 
 /**
