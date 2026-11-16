@@ -692,7 +692,7 @@ export function registerRemoteTools(
       label: name,
       description:
         descriptions[name] +
-        " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试；worker 无法继续时用 sprout_delegation_block 报告原因。",
+        " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
       parameters: objectToolParameters(remoteToolInputSchemas[name], {
         unrepresentable: "any",
       }),
@@ -731,7 +731,7 @@ export function registerRemoteTools(
     label: "sprout_lease_wait",
     description:
       descriptions.sprout_lease_wait +
-      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试；worker 无法继续时用 sprout_delegation_block 报告原因。",
+      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
     parameters: objectToolParameters(leaseWaitToolInputSchema, { unrepresentable: "any" }),
     async execute(_toolCallId, parameters, signal) {
       let input: z.infer<typeof leaseWaitToolInputSchema>;
@@ -750,7 +750,7 @@ export function registerRemoteTools(
     label: "sprout_remote_execution_wait",
     description:
       descriptions.sprout_remote_execution_wait +
-      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试；worker 无法继续时用 sprout_delegation_block 报告原因。",
+      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
     parameters: objectToolParameters(remoteToolInputSchemas.sprout_remote_execution_wait, {
       unrepresentable: "any",
     }),
