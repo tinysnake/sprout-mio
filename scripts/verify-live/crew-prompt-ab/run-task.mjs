@@ -297,7 +297,7 @@ export async function runTask({
       const agent = await call("createAgentProfileFn", {
         name,
         model: fixture ? fixture.model(index === 0 ? "chatOwner" : "chatMentioned") : model,
-        effort: "low",
+        effort: process.env.AB_THINKING ?? "low",
         persona: "Follow the human task and report concrete results concisely.",
       });
       await call("addProjectMemberFn", { projectId: project.id, agentProfileId: agent.id });

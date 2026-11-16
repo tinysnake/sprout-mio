@@ -147,7 +147,7 @@ test("correction 4: no_duplicate needs an artifact-specific review conclusion, n
 
 test("correction 5: pin low and retain requested versus effective thinking", () => {
   const source = readFileSync(new URL("./run-task.mjs", import.meta.url), "utf8");
-  assert.match(source, /effort: "low"/);
+  assert.match(source, /effort: process\.env\.AB_THINKING \?\? "low"/);
   assert.doesNotMatch(source, /effort: "off"/);
   const f = factsFrom(
     {
