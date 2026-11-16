@@ -14,6 +14,7 @@ import {
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { startModelFixture } from "../../verify/lib/model-fixture.mjs";
 import { createCrewFixture } from "../../../tests/fixtures/crew-live.mjs";
 import {
@@ -23,7 +24,7 @@ import {
   classifyRuns,
   unknownEvidence,
   forbiddenDelegation,
-  errorStatus,
+  recordTaskError,
   preserveOutcome,
 } from "./core.mjs";
 import { artifactAssertions } from "./artifacts.mjs";
@@ -67,7 +68,8 @@ export async function runTask({
     fixture,
     env,
     input,
-    latest;
+    latest,
+    initial;
   const promptHashes = new Map();
   const children = [];
   function next(name) {
@@ -173,17 +175,10 @@ export async function runTask({
       row.effectiveModel = fixture.model("chatOwner");
       row.dryLimitation =
         "Scripted local lead answer exercises transport and evidence; delegation behaviour is not a model quality measurement. Positive delegation tasks may fail their oracle.";
-      fixture.arm("chatOwner", {
-        expectedUserText: task.prompt,
-        expectedUserPrefix: task.prompt,
-        steps: [],
-        reply:
-          "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
-      });
     }
     const seed = join(directory, "seed");
     mkdirSync(seed, { recursive: true });
-    const initial = seedFixture(task.fixture, seed);
+    initial = seedFixture(task.fixture, seed);
     await fixtureGit(["init", "-q", "-b", "main", seed], "git-init.log");
     await fixtureGit(["-C", seed, "add", "."], "git-add.log");
     await fixtureGit(
@@ -203,7 +198,9 @@ export async function runTask({
     const remote = join(directory, "remote.git");
     await fixtureGit(["clone", "-q", "--bare", seed, remote], "git-clone.log");
     next("startup");
-    const server = launch([".output/server/index.mjs"], "service.log");
+    env.AB_EXCHANGE_LOG = join(directory, "machine-exchanges.jsonl");
+    const trace = fileURLToPath(new URL("./exchange-trace.mjs", import.meta.url));
+    const server = launch(["--import", trace, ".output/server/index.mjs"], "service.log");
     await until(
       async () => {
         if (server.exitCode !== null) throw new Error("service exited; see service.log");
@@ -343,9 +340,11 @@ export async function runTask({
     await until(() => init.exitCode !== null, "Worker enrollment", 60000);
     assert.equal(init.exitCode, 0);
     launch(["dist/worker/main.js", "run", "--state-dir", state], "worker.log");
+    let readyMachine;
     await until(
       async () => {
         const machine = await call("getMachineFn", { machineId, projectId: project.id });
+        readyMachine = machine;
         return (
           machine.connection.kind === "online" &&
           machine.bindings[0]?.observation?.fact?.result?.kind === "accessible"
@@ -354,13 +353,77 @@ export async function runTask({
       "Worker accessible",
       60000,
     );
+    const Database = createRequire(join(process.cwd(), "package.json"))("better-sqlite3");
+    const database = new Database(env.DATABASE_URL, { readonly: true });
+    let membership;
+    try {
+      membership = database
+        .prepare(
+          "SELECT epoch FROM project_machine_membership WHERE project_id=? AND machine_id=? AND state='active'",
+        )
+        .get(project.id, machineId);
+    } finally {
+      database.close();
+    }
+    assert(membership, "fixture Machine must have active project membership");
+    const scope = {
+      machineId,
+      membershipEpoch: membership.epoch,
+      directoryRealPath: readyMachine.bindings[0].observation.fact.result.realPath,
+      directoryRevision: readyMachine.machine.rootRevision,
+      operations: ["shell", "file_read", "file_write"],
+    };
+    row.machineScope = scope;
+    env.AB_RESOURCE_FIXTURE = join(directory, "resource-fixture.json");
+    writeFileSync(env.AB_RESOURCE_FIXTURE, JSON.stringify({ ...input, scope }));
+    const resourceFixture = launch(
+      ["--import", "tsx", fileURLToPath(new URL("./resource-fixture.mjs", import.meta.url))],
+      "resource-fixture.log",
+    );
+    await until(
+      () => {
+        assert(
+          resourceFixture.exitCode === null,
+          "resource fixture exited; see resource-fixture.log",
+        );
+        return readFileSync(join(directory, "resource-fixture.log"), "utf8").includes(
+          "AB_RESOURCE_FIXTURE_READY",
+        );
+      },
+      "resource fixture ready",
+      30000,
+    );
+    row.resourceFixturePolicy =
+      "approve and allocate delegated Machine scopes atomically through frozen domain APIs as the current lead; service retains reconciliation and drain";
+    const prompt =
+      task.prompt +
+      "\n\nFixture execution environment (identical in both arms):\n" +
+      `The writable repository is on the Crew Machine, at ${scope.directoryRealPath}. Local host tools are read-only. ` +
+      `The fixture coordinator registers and approves this Machine resource scope for each delegation as it starts: ${JSON.stringify(scope)}. Include the repository path and this resource scope in the worker request. ` +
+      "The worker must use the approved Crew resource authorization from info_hub to run remote file/shell tools; never use sprout_lease_acquire, handoff or grant. If authorization is not active yet, inspect resource status before running. Use relative file paths within the approved directory. " +
+      "For work kept by the lead, request and approve a lead_run resource through sprout_resource_request and sprout_resource_approve.";
+    writeFileSync(join(directory, "task-prompt.txt"), prompt);
+    if (fixture)
+      fixture.arm("chatOwner", {
+        expectedUserText: prompt,
+        expectedUserPrefix: prompt,
+        steps: [],
+        reply:
+          "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+      });
     next("sendTask");
-    await call("sendMessageFn", { chatId: crew.id, body: task.prompt });
+    await call("sendMessageFn", { chatId: crew.id, body: prompt });
     next("settle");
     let stableSince = 0,
       signature = "";
     await until(() => {
-      latest = readEvidence(env, input, Math.min(30000, remaining()));
+      assert.equal(
+        resourceFixture.exitCode,
+        null,
+        "resource fixture exited; see resource-fixture.log",
+      );
+      latest = readEvidence(env, input, remaining());
+      if (latest.evidenceProbe) row.evidenceProbe = latest.evidenceProbe;
       if (forbiddenDelegation(task.oracle, latest.delegations.length)) return true;
       const terminalFailure = classifyRuns(latest.runs);
       if (terminalFailure) {
@@ -395,15 +458,41 @@ export async function runTask({
     row.passed = judge(task.oracle, row);
     row.status = row.passed ? "passed" : "failed";
   } catch (error) {
-    row.status = errorStatus(error, signal?.aborted);
-    row.passed = null;
-    row.error = { message: error.message, stack: error.stack };
+    recordTaskError(row, error, signal?.aborted);
     if (env && input) {
       try {
         latest = readEvidence(env, input, 5000);
-        Object.assign(row, factsFrom(latest, input.chatId));
       } catch (e) {
         row.evidenceError = e.message;
+        if (e.code?.startsWith("AB_EVIDENCE_PROBE_"))
+          row.evidenceProbe ??= {
+            status: e.code === "AB_EVIDENCE_PROBE_TIMEOUT" ? "timeout" : "error",
+            reason: e.message,
+          };
+      }
+      if (latest) {
+        try {
+          Object.assign(
+            row,
+            factsFrom(
+              latest,
+              input.chatId,
+              Object.keys(initial ?? {}),
+              fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [],
+            ),
+          );
+          const observationTimeout = ["AB_TIMEOUT", "AB_EVIDENCE_PROBE_TIMEOUT"].includes(
+            error.code,
+          );
+          if (observationTimeout && settled(latest) && !classifyRuns(latest.runs)) {
+            row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
+            row.passed = judge(task.oracle, row);
+            row.status = row.passed ? "passed" : "failed";
+            row.recoveredOutcome = true;
+          }
+        } catch (e) {
+          row.evidenceError = e.message;
+        }
       }
     }
   } finally {

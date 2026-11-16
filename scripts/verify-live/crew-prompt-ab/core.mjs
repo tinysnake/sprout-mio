@@ -110,12 +110,28 @@ export function preserveOutcome(row, oracle, delegatedCount, cleanupError) {
   if (cleanupError) row.cleanupError = cleanupError.message;
 }
 
+export function recordTaskError(row, error, interrupted = false) {
+  const measured = ["passed", "failed"].includes(row.status) && typeof row.passed === "boolean";
+  if (!measured) {
+    row.status = errorStatus(error, interrupted);
+    row.passed = null;
+  }
+  row.error = { message: error.message, stack: error.stack, code: error.code ?? null };
+  if (error.code?.startsWith("AB_EVIDENCE_PROBE_")) {
+    row.evidenceProbe = {
+      status: error.code === "AB_EVIDENCE_PROBE_TIMEOUT" ? "timeout" : "error",
+      reason: error.message,
+    };
+  }
+}
+
 export function errorStatus(error, interrupted = false) {
   return (
     error.runClassification ??
     (interrupted
       ? "interrupted"
-      : error.code === "AB_TIMEOUT" || error.name === "TimeoutError"
+      : ["AB_TIMEOUT", "AB_EVIDENCE_PROBE_TIMEOUT"].includes(error.code) ||
+          error.name === "TimeoutError"
         ? "timeout"
         : "errored")
   );

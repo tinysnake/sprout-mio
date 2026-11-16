@@ -28,6 +28,7 @@ AB_REF_A=baseline-ref AB_REF_B=prompt-ref AB_REPEAT=3 AB_MODEL=provider/model \
 | `AB_TASK_TIMEOUT_MS` | Per-task budget including fixture and startup, default `600000` |
 | `AB_DRY` | `1` uses the private local model fixture; still requires explicit `AB_MODEL` |
 | `AB_TASK_SOURCE` | Optional path to the original task document |
+| `SPROUT_PI_PROVIDER_ROOT` | Required for this live pilot: `/Users/snake/workspace/pi-extensions/pi-magpie` |
 
 Both refs are fetched before resolution and pinned to full commit SHAs before either build.
 Branch refs resolve from their fetch result; object refs and `HEAD` resolve after fetching origin.
@@ -95,6 +96,24 @@ part of the measurement ledger. The hash includes all
 observed text, including dynamic paths; different hashes alone cannot attribute a behavioral
 difference to the intended prompt change.
 
+Live pilot resource setup is identical in both arms. The fixture reads the active membership
+epoch, canonical accessible directory and Machine root revision, then watches for actual delegated
+runs. In one immediate transaction it calls the frozen arm's `requestCrewResource`,
+`approveCrewResource` and `advanceCrewResources` using the actual current running lead identity.
+It does not write lease tables or provide host write/shell tools. Reconciliation, remote execution
+and draining still use the application. Atomic allocation avoids exposing a queued request to the
+worker startup check, which otherwise fails with `Crew 资源尚未分配`.
+
+This is external fixture approval, not an observed model decision. The experiment now measures
+behavior with resources available; it does not measure resource requesting, approval or allocation.
+The bridge is needed because frozen domain dispatch supports `resources` but the exposed
+`sprout_delegation_start` tool schema omits it. Product defects are reported without patching either
+arm. Exact setup is recorded in `task-prompt.txt`, `resource-fixture.json` and `resource-fixture.log`;
+`machine-exchanges.jsonl` captures HTTP remote-agent and nonempty Worker exchanges, with secrets
+redacted. Original unprepared pilot transcripts remain separate evidence; their elapsed times are
+not comparable to the prepared fixture. Use `AB_MODEL=magpie/auto/deepseek-v4.1-flash` and the
+provider root above for live. No display keepalive is used.
+
 Delegation/run facts and completion events come from domain functions and the DB. Actual tool
 calls, final replies and provider usage come from persisted Pi transcripts, bound with
 `sprout_turn_context.runId`. Every completed run requires startup/transcript/token evidence;
@@ -103,8 +122,12 @@ usage is genuinely zero; live usage is recorded as returned. Strict lead-after-c
 compares transcript millisecond timestamps against DB completion event timestamps.
 
 A budget/deadline expiration is a timeout; an unrelated exception after the task budget is still
-an error. Fixture close failures are recorded in `cleanupError` and preserve an already measured
-verdict.
+an error. `blocked` settles without `terminalAt` once actual result events have been consumed.
+A `dispatched` event is bookkeeping and need not be acknowledged. Domain probes are bounded to
+five seconds; a complete emitted snapshot can survive probe timeout with an independent
+`evidenceProbe` diagnostic. A settled snapshot can still be judged after an observation timeout.
+Later exceptions and fixture close failures preserve a measured verdict; close failures are
+recorded in `cleanupError`.
 
 `wallClockPerPhase` records task fixture preparation, startup, sending, settle and judgement in
 milliseconds. `refPreparationMs` is the separate once-per-ref install/build cost. `totalMs`

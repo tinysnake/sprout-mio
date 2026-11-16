@@ -15,6 +15,17 @@
 
 两臂之间只差提示词那一段。两边都不加只在测试里存在的开关，靠 AB_REF 选 ref 跑，这样生产代码里没有测试专用的分支。
 
+### live 试点前置条件（2026-11-16 修订）
+
+固定 A=`277f506c15fe771bbd337efa259dc517c3ffc1cd`、B=`3c0f25c75f77689bfbf79349149cbe2abae6d1a7`；不随分支移动。live 使用 `SPROUT_PI_PROVIDER_ROOT=/Users/snake/workspace/pi-extensions/pi-magpie` 与 `AB_MODEL=magpie/auto/deepseek-v4.1-flash`。
+
+两臂统一使用资源预批准夹具：从真实 Machine 读取当前 membership epoch、可访问目录 realPath 与 root revision；发现真实 delegation run 后，以当前正在运行的 lead 身份调用冻结版本的 `requestCrewResource`、`approveCrewResource`、`advanceCrewResources`，在同一个 immediate 事务内登记、批准、分配。没有直接写租约表，也不给 worker 增加宿主写入或 shell 工具。资源状态协调、远端执行和排空仍由真实应用处理。夹具追加的任务上下文明确 Machine 目录与协调器路径；不改变上方主张与下方任务 JSON。
+
+这是外部准备好的资源条件，不计作模型主动请求或 lead 批准的行为。本轮测量范围收窄为「资源就绪后的派活、执行、回执与 lead 收尾」，不衡量资源请求、批准或分配能力；原始缺资源试点的耗时不能与这一配置直接比较。冻结工具 `sprout_delegation_start` 未暴露 domain 支持的 `resources`，以及资源响应解析/worker 启动时序等产品问题只报告，不改 A/B 产品代码。原先 A 臂反复 sleep/探索和 B 臂 blocked 的 transcript 保留作独立证据。
+
+每项记录 `task-prompt.txt`、`resource-fixture.json`、`resource-fixture.log` 与去除密钥的 `machine-exchanges.jsonl`。harness 将 `blocked` 视作已观察结果，不要求 `terminalAt`；仅忽略 `dispatched` 记账事件的 pending 状态，真实结果事件仍须消费。证据 probe 单次最多 5 秒；完整快照已输出时，即使 probe 超时也保留快照并单独标记 `evidenceProbe`。超时后仍可由完整收敛快照判定的账本行继续判定，后续异常不得覆盖已测 verdict。
+
+
 ## 实测到的形状来自哪里
 
 任务集从用户 2026 年 11 月的 sprout-mio session 里提炼。382 个 session、606 个人类回合里，最高频的形状依次是排查定位线上问题、分支与 PR 合并、UI 与显示、部署到 prod、派活编排、review 评审、代码库问答。当年第二类高频失败（92 个人类抱怨回合）就是本次要测的东西。lead 声称已派活但没有可观测结果、重复派活、成员在 review 里打转不收尾、把提问当成任务。</s>

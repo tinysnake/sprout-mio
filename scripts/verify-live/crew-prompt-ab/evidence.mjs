@@ -9,26 +9,43 @@ import {listAgentRuns} from './src/domain/agent-run.ts';
 import {listMessages} from './src/domain/chat.ts';
 const {chatId,projectId,userId}=JSON.parse(process.env.AB_PROBE);
 const ctx={userId,projectId,requestId:'req_ab_probe'};
+let output;
 try {
  const crew=listCrewDelegations(chatId,ctx);
  const chatIds=[chatId,...crew.delegations.map(d=>d.childChatId)];
- console.log(JSON.stringify({...crew,runs:chatIds.flatMap(id=>listAgentRuns(id,ctx)),messages:listMessages(chatId,ctx)}));
+ output=JSON.stringify({...crew,runs:chatIds.flatMap(id=>listAgentRuns(id,ctx)),messages:listMessages(chatId,ctx)});
 } finally {sqlite.close()}
+process.stdout.write(output+'\\n',()=>process.exit(0));
 `;
-export function readEvidence(env, input, timeoutMs = 30000) {
+export function readEvidence(env, input, timeoutMs = 5000, source = probe) {
   const result = spawnSync(
     process.execPath,
-    ["--import", "tsx", "--input-type=module", "-e", probe],
+    ["--import", "tsx", "--input-type=module", "-e", source],
     {
       cwd: process.cwd(),
       env: { ...env, AB_PROBE: JSON.stringify(input) },
       encoding: "utf8",
-      timeout: timeoutMs,
+      timeout: Math.max(1, Math.min(5000, timeoutMs)),
     },
   );
-  if (result.status !== 0)
-    throw new Error(`domain evidence probe failed: ${result.stderr || result.error}`);
-  return JSON.parse(result.stdout.trim().split("\n").at(-1));
+  let evidence;
+  try {
+    evidence = JSON.parse(result.stdout.trim().split("\n").at(-1));
+  } catch {}
+  if (result.status !== 0 || !evidence) {
+    const error = new Error(
+      `domain evidence probe failed: ${result.stderr || result.error || result.signal || "invalid JSON"}`,
+    );
+    error.code =
+      result.error?.code === "ETIMEDOUT" ? "AB_EVIDENCE_PROBE_TIMEOUT" : "AB_EVIDENCE_PROBE_ERROR";
+    if (
+      error.code === "AB_EVIDENCE_PROBE_TIMEOUT" &&
+      [evidence?.runs, evidence?.delegations, evidence?.events].every(Array.isArray)
+    ) {
+      evidence.evidenceProbe = { status: "timeout", reason: error.message };
+    } else throw error;
+  }
+  return evidence;
 }
 export function systemPromptEvidence(request) {
   const system = request.messages.filter((message) =>
@@ -62,7 +79,11 @@ export function settled(e) {
     e.runs.length > 0 &&
     e.runs.every((r) => !["queued", "running"].includes(r.status)) &&
     e.delegations.every((d) => !["pending", "running", "queued", "canceling"].includes(d.status)) &&
-    e.events.every((event) => !["pending", "bound", "injected"].includes(event.deliveryState))
+    e.events.every(
+      (event) =>
+        event.kind === "dispatched" ||
+        !["pending", "bound", "injected"].includes(event.deliveryState),
+    )
   );
 }
 export function assistantMessagesByRun(entries) {
