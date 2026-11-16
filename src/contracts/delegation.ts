@@ -1,3 +1,4 @@
+import { clampExecutionBlockMs } from "./tool-wait";
 import { z } from "zod";
 import { crewResourceScopeSchema } from "./crew-resource";
 import { agentProfileIdSchema } from "./agent";
@@ -208,10 +209,23 @@ export const delegationMutateInputSchema = z.discriminatedUnion("action", [
 ]);
 export type DelegationMutateInput = z.infer<typeof delegationMutateInputSchema>;
 
+export const DELEGATION_START_BLOCK_DEFAULT_MS = 10_000;
+export const DELEGATION_START_BLOCK_MAX_MS = 60_000;
+
+export function clampDelegationStartBlockMs(requestedMs?: number): number {
+  return Math.min(
+    DELEGATION_START_BLOCK_MAX_MS,
+    clampExecutionBlockMs(requestedMs, DELEGATION_START_BLOCK_DEFAULT_MS),
+  );
+}
+
+const delegationStartBlockMsSchema = z.number().optional().transform(clampDelegationStartBlockMs);
+
 export const crewDelegationToolInputSchemas = {
   sprout_delegation_start: z.strictObject({
     workerProfileId: z.string().min(1),
     request: z.string().min(1).max(8000),
+    blockMs: delegationStartBlockMsSchema,
     clientRequestId: z.string().min(8).max(128).optional(),
   }),
   sprout_delegation_input: z.strictObject({
@@ -233,6 +247,7 @@ export const crewMutateInputSchema = z.discriminatedUnion("action", [
     resources: z.array(crewResourceScopeSchema).max(16).optional(),
     workerProfileId: z.string().min(1),
     request: z.string().min(1).max(8000),
+    blockMs: delegationStartBlockMsSchema,
     clientRequestId: z.string().min(8).max(128).optional(),
   }),
   z.strictObject({
@@ -254,10 +269,45 @@ export const crewMutateInputSchema = z.discriminatedUnion("action", [
 ]);
 export type CrewMutateInput = z.infer<typeof crewMutateInputSchema>;
 
-export const crewMutateResponseSchema = z.looseObject({
-  projectId: z.string(),
-  chatId: z.string(),
+const delegationStartIdentity = {
+  delegationId: delegationIdSchema,
+  childChatId: delegationChatIdSchema,
+  workerName: z.string(),
+  runId: z.string().min(1),
+};
+
+const delegationStartPendingSchema = z.strictObject({
+  ...delegationStartIdentity,
+  reason: z.string().min(1),
 });
+
+export const delegationStartOutcomeSchema = z.discriminatedUnion("outcome", [
+  z.strictObject({
+    ...delegationStartIdentity,
+    outcome: z.literal("running"),
+    startedAt: z.iso.datetime(),
+  }),
+  delegationStartPendingSchema.extend({ outcome: z.literal("queued") }),
+  delegationStartPendingSchema.extend({ outcome: z.literal("blocked") }),
+  delegationStartPendingSchema.extend({ outcome: z.literal("failed") }),
+  delegationStartPendingSchema.extend({ outcome: z.literal("canceled") }),
+  delegationStartPendingSchema.extend({ outcome: z.literal("timed_out") }),
+]);
+export type DelegationStartOutcome = z.infer<typeof delegationStartOutcomeSchema>;
+
+export const crewMutateResponseSchema = z.union([
+  z.discriminatedUnion("outcome", [
+    delegationStartOutcomeSchema.options[0].extend({ projectId: z.string(), chatId: z.string() }),
+    ...delegationStartOutcomeSchema.options
+      .slice(1)
+      .map((option) => option.extend({ projectId: z.string(), chatId: z.string() })),
+  ]),
+  z.looseObject({
+    projectId: z.string(),
+    chatId: z.string(),
+    outcome: z.never().optional(),
+  }),
+]);
 
 export const delegationMutateResponseSchema = z.strictObject({
   projectId: z.string(),

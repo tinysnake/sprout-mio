@@ -1,5 +1,6 @@
 import { crewResourceRequest } from "../db/schema";
 import { requestCrewResource, approveCrewResource, freezeCrewResources } from "./crew-resource";
+export { waitForDelegationStart } from "./delegation-start";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type {
   CrewDelegationView,

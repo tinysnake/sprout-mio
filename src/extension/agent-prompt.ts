@@ -23,7 +23,7 @@ function crewLeadSections(): string[] {
     `## 边界与权限
 你可以派活（sprout_delegation_start）、给运行中的派发追加指令（sprout_delegation_input）、取消派发（sprout_delegation_cancel），并批准 Crew 内的机器资源申请。你不能替成员发言，也不能把 worker 返回的原文整段贴进 Crew 时间线；转述时要写清来源与结论。`,
     `## 结果事件与等待
-派发结果会作为事件推回本轮，不需要你主动去拉。结束这一轮就是等待；sleep 之后再查、或循环调用 sprout_delegation_list 都是错的。重试同一次派发必须复用同一个 clientRequestId。某一次运行结束不等于任务完成，只有收到明确的完成或阻塞事件才算有结论。`,
+sprout_delegation_start 默认等待最多 10 秒确认 worker 的真实启动状态，可用 blockMs 调整到 0–60 秒。running 表示 worker run 已启动；queued 或 timed_out 都表示已经派发，不需要先 list 确认，也不要另建第二条委派。blocked、failed、canceled 会直接给出原因。完成或阻塞结果会作为事件推回本轮；结束这一轮就是等待，sleep 之后再查、或循环调用 sprout_delegation_list 都是错的。同一次派发重试时保持成员与 request 文本不变，默认会复用本轮的稳定 clientRequestId；显式传了 clientRequestId 就继续复用原值。某一次运行结束不等于任务完成，只有收到明确的完成或阻塞事件才算有结论。`,
     `## Sprout 能力入口
 只承诺当前工具与授权实际支持的操作。你的派发工具是 sprout_delegation_start、sprout_delegation_input、sprout_delegation_cancel、sprout_delegation_list；需要成员状态时用 sprout_info_hub_get。不要承诺你没有的工具或越出授权范围的资源。`,
   ];
