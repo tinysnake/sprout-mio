@@ -428,6 +428,7 @@ export const turnStartContextSchema = z
       .nullable(),
     truncated: z.boolean(),
     omittedCounts: z.strictObject({
+      projectAgentPrompt: z.number().int().min(0).optional(),
       members: z.number().int().nonnegative(),
       runs: z.number().int().nonnegative(),
       tasks: z.number().int().nonnegative(),
@@ -440,6 +441,7 @@ export const turnStartContextSchema = z
     agentProfileId: agentProfileIdSchema,
     profileName: z.string().min(1),
     projectName: z.string().min(1),
+    projectAgentPrompt: z.string().optional(),
     chatTitle: z.string(),
     chatKind: chatKindSchema,
     chatArchived: z.boolean(),

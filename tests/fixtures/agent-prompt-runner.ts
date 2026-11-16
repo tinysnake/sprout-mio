@@ -32,6 +32,7 @@ async function request(
   situation: Situation,
   label: string,
   resume?: { sessionFile: string; sessionId: string },
+  projectKind = "coding",
 ) {
   const sessionId = resume?.sessionId ?? randomUUID();
   const sessionFile = resume?.sessionFile;
@@ -98,12 +99,14 @@ async function request(
       extensionPath: join(root, "pi/sprout-extension.ts"),
       purpose: "worker",
       situation,
+      projectContext: { kind: projectKind },
       resources: { kind: "disabled" },
       memory: { state: "disabled" },
       profile: {
         id: "cfg_00000000-0000-4000-8000-000000000000",
         name: "Prompt fixture",
         persona,
+        description: "[[STEP3-DESC-MARKER]] 只负责验证",
         harness: "pi",
         model: fixture.model("status"),
         updatedAt: "2026-10-24T00:00:00.000Z",
@@ -116,6 +119,8 @@ async function request(
       },
     });
     const { snapshot } = await waitFor("ready");
+    assert.deepEqual(snapshot.projectContext, { kind: "coding" });
+    assert.equal(snapshot.profile.description, "[[STEP3-DESC-MARKER]] 只负责验证");
     if (sessionFile)
       assert.equal(snapshot.sessionFile, sessionFile, "resume opens the same session file");
     const text = `PROMPT_FIXTURE_${label}`;
@@ -160,6 +165,14 @@ async function request(
           ? reportTools
           : [];
     assert.deepEqual(tools.sort(), [...expected].sort(), `${label}: exact delegation tool surface`);
+    if (situation.kind === "crew_lead" || situation.kind === "delegation_worker") {
+      assert(system.includes("## 工作描述\n[[STEP3-DESC-MARKER]] 只负责验证"));
+      assert(system.includes("## 项目背景\n这是一个编程项目。"));
+      assert(system.includes("以下补充要求与本节默认指引冲突时，以补充要求为准"));
+      assert(system.indexOf("## 工作描述") < system.indexOf("## 项目背景"));
+      assert(system.indexOf("## 项目背景") < system.indexOf("## 说话风格"));
+      assert(system.length <= 4000);
+    }
     if (situation.kind === "delegation_worker") {
       const block = input.tools.find((tool) => tool.function.name === "sprout_delegation_block");
       assert(block?.function.description.includes("Human 或 Crew lead"));
@@ -205,6 +218,10 @@ try {
   );
   const dmFile = await request({ kind: "dm_worker" }, "dm");
   await request({ kind: "crew_lead", crewName: "恢复后的小队" }, "resumed-crew", dmFile);
+  await assert.rejects(
+    () => request({ kind: "crew_lead" }, "invalid-project", undefined, "invalid"),
+    /Invalid option/,
+  );
   assert.equal(fixture.receivedRequests().length, 4);
   fixture.assertHealthy();
   console.log("agent prompt runner: 4 requests PASS; paidModelCalls=0");

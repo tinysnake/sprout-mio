@@ -53,6 +53,39 @@ function scenario(body: string) {
 }
 
 describe("Agent run 轮次语义", () => {
+  it("项目补充要求随本轮快照注入，UTF-8 与转义文本均受总预算约束", () => {
+    scenario(`
+      const projects = await import('./src/domain/project.ts');
+      const turn = await import('./src/domain/turn-context.ts');
+      const { INFO_HUB_LIMITS } = await import('./src/contracts/info-hub.ts');
+      const marker = '[[STEP3-PROMPT-MARKER]]';
+      projects.updateProject(project.id, { agentPrompt: marker }, ctx);
+      const captured = turn.captureTurnContext({ projectId: project.id, runId: run.id }, ctx);
+      const prompt = turn.prepareTurnContext({ projectId: project.id, runId: run.id }, ctx);
+      assert.ok(prompt.serializedText.includes('## 项目补充要求'));
+      assert.ok(prompt.serializedText.includes(marker));
+      assert.equal(captured.projectAgentPrompt, '## 项目补充要求\\n' + marker);
+      projects.updateProject(project.id, { agentPrompt: 'next round only' }, ctx);
+      assert.equal(turn.captureTurnContext({ projectId: project.id, runId: run.id }, ctx).contentHash, captured.contentHash);
+      for (const text of ['中😀'.repeat(600), String.fromCharCode(0).repeat(2000)]) {
+        runs.abortAgentRun(runs.listAgentRuns(direct.chat.id, ctx).at(-1).id, ctx);
+        projects.updateProject(project.id, { agentPrompt: text }, ctx);
+        send('bounded input');
+        const next = runs.listAgentRuns(direct.chat.id, ctx).at(-1);
+        const context = turn.captureTurnContext({ projectId: project.id, runId: next.id }, ctx);
+        assert.equal(context.truncated, true);
+        assert.ok(Buffer.byteLength(JSON.stringify(context.projectAgentPrompt)) <= 2048);
+        assert.ok(Buffer.byteLength(context.serializedText) <= INFO_HUB_LIMITS.maxTurnContextBytes);
+        assert.ok(!context.projectAgentPrompt.includes('�'));
+        assert.equal(JSON.parse(context.serializedText).projectAgentPrompt, context.projectAgentPrompt);
+      }
+      runs.abortAgentRun(runs.listAgentRuns(direct.chat.id, ctx).at(-1).id, ctx);
+      projects.updateProject(project.id, { agentPrompt: null }, ctx);
+      send('empty project prompt');
+      const emptyRun = runs.listAgentRuns(direct.chat.id, ctx).at(-1);
+      assert.equal(turn.captureTurnContext({ projectId: project.id, runId: emptyRun.id }, ctx).projectAgentPrompt, undefined);
+    `);
+  });
   it("停止 queued run 得 aborted，不写回复，后续消息进入新 run", () => {
     scenario(`
       const stopped = runs.abortAgentRun(run.id, ctx);

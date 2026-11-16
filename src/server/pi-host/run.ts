@@ -35,7 +35,7 @@ import {
 } from "../../domain/agent-run";
 import type { queuedRunWork } from "../../domain/agent-run";
 import type { ProjectContext } from "../../domain/access";
-import { readRunScope } from "../../domain/access";
+import { assertProjectAccess, readRunScope } from "../../domain/access";
 import { prepareRunRepo, recordRunRepoBasis, RepositoryError } from "../../domain/repository";
 import { admitAutomationInput } from "../../domain/automation-input";
 import { admitTaskStartInput } from "../../domain/task-input";
@@ -230,11 +230,13 @@ export function executeRun(
               memory,
               remote,
               situation: resolveRunSituation(run.id, ctx, profile),
+              projectContext: { kind: assertProjectAccess(ctx, run.projectId).kind },
               profile: {
                 id: profile.id,
                 purpose: profile.purpose,
                 name: profile.name,
                 persona: profile.persona,
+                ...(profile.description ? { description: profile.description } : {}),
                 harness: profile.harness,
                 ...(profile.model ? { model: profile.model } : {}),
                 ...(profile.effort ? { effort: profile.effort } : {}),

@@ -165,7 +165,7 @@ async function open(config) {
   const { delegationToolNames } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/delegation-surface.ts"),
   );
-  const { situationSchema } = await jiti.import(
+  const { situationSchema, projectContextSchema } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/contracts/prompt.ts"),
   );
   const { composeSystemPrompt } = await jiti.import(
@@ -175,6 +175,10 @@ async function open(config) {
   // 所以 situation 的形状只能由 src/contracts/prompt.ts 这一份 schema 说了算。
   const situation =
     config.situation === undefined ? undefined : situationSchema.parse(config.situation);
+  const projectContext =
+    config.projectContext === undefined
+      ? undefined
+      : projectContextSchema.parse(config.projectContext);
   let memory = assistant ? { state: "disabled" } : (config.memory ?? { state: "disabled" });
   let memoryFactory;
   const downgradeMemory = () => {
@@ -320,6 +324,8 @@ async function open(config) {
       situation?.kind === "crew_lead" || situation?.kind === "delegation_worker"
         ? composeSystemPrompt({
             situation,
+            projectContext,
+            profile: config.profile,
             persona: config.profile.persona,
             htmlGuide: HTML_ARTIFACT_GUIDE,
           })
@@ -583,6 +589,7 @@ async function open(config) {
       sdkVersion: pkg.version,
       purpose: config.purpose ?? "worker",
       ...(situation ? { situation } : {}),
+      ...(projectContext ? { projectContext } : {}),
       profile: config.profile,
     },
   });
