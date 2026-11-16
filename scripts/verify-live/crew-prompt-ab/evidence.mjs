@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 
@@ -29,6 +30,33 @@ export function readEvidence(env, input, timeoutMs = 30000) {
     throw new Error(`domain evidence probe failed: ${result.stderr || result.error}`);
   return JSON.parse(result.stdout.trim().split("\n").at(-1));
 }
+export function systemPromptEvidence(request) {
+  const system = request.messages.filter((message) =>
+    ["system", "developer"].includes(message.role),
+  );
+  if (!system.length) return null;
+  for (const message of [...request.messages].reverse()) {
+    if (message.role !== "user") continue;
+    const content =
+      typeof message.content === "string"
+        ? message.content
+        : (message.content ?? [])
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("");
+    const firstLine = content.split("\n")[0];
+    if (!firstLine.startsWith('{"channel":"sprout_turn_context"')) continue;
+    const context = JSON.parse(firstLine);
+    if (!context.runId) return null;
+    return {
+      runId: context.runId,
+      model: request.model,
+      hash: createHash("sha256").update(JSON.stringify(system)).digest("hex"),
+    };
+  }
+  return null;
+}
+
 export function settled(e) {
   return (
     e.runs.length > 0 &&
@@ -66,7 +94,7 @@ export function assistantMessagesByRun(entries) {
   }
   return byRun;
 }
-export function factsFrom(e, chatId, changed) {
+export function factsFrom(e, chatId, artifactFiles = []) {
   const perWorker = {};
   for (const d of e.delegations)
     perWorker[d.workerProfileId] = (perWorker[d.workerProfileId] ?? 0) + 1;
@@ -113,6 +141,23 @@ export function factsFrom(e, chatId, changed) {
       model: r.configSnapshot?.model ?? null,
       sdkVersion: r.configSnapshot?.sdkVersion ?? null,
       transcript: r.configSnapshot?.sessionFile ?? null,
+      readySnapshot: r.configSnapshot
+        ? {
+            resources: r.configSnapshot.resources ?? null,
+            tools: r.configSnapshot.tools ?? null,
+          }
+        : null,
+      role: r.chatId === chatId ? "lead" : "worker",
+      systemPromptChars: r.configSnapshot?.resources?.systemPromptChars ?? null,
+      availableTools: r.configSnapshot?.tools ?? null,
+      inheritHostResources: r.configSnapshot?.resources?.inheritHostResources ?? null,
+      cwd: r.configSnapshot?.cwd ?? null,
+      finalReplyText: (
+        messages.findLast((x) => x.message.stopReason === "stop")?.message.content ?? []
+      )
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join("\n"),
       tools: tools.map((t) => ({ id: t.id, name: t.name, arguments: t.arguments })),
       usage,
       tokens,
@@ -143,8 +188,51 @@ export function factsFrom(e, chatId, changed) {
     )
     .map((r) => r.finalReplyAtMs)
     .filter((t) => t !== null);
+  const finalReplies = observations.filter(
+    (r) =>
+      r.chatId === chatId &&
+      r.status === "completed" &&
+      e.runs.find((run) => run.id === r.runId)?.assistantMessageId &&
+      r.finalReplyAtMs !== null,
+  );
+  const delegationsPerArtifact = {};
+  const dispatches = observations
+    .filter((r) => r.role === "lead")
+    .flatMap((r) => r.tools)
+    .filter((t) => t.name === "sprout_delegation_start");
+  for (const delegation of e.delegations) {
+    const dispatch = dispatches.find(
+      (call) =>
+        call.arguments.request === delegation.requestSummary &&
+        call.arguments.workerProfileId === delegation.workerProfileId,
+    );
+    const assignment = JSON.stringify({
+      request: delegation.requestSummary,
+      resources: dispatch?.arguments.resources,
+    });
+    for (const file of artifactFiles) {
+      // A directory scope hands every fixture artifact under it to that member.
+      const directory = file.slice(0, file.lastIndexOf("/") + 1);
+      if (
+        assignment.includes(file) ||
+        (directory && assignment.includes(`"${directory.replace(/\/$/, "")}"`))
+      )
+        delegationsPerArtifact[file] = (delegationsPerArtifact[file] ?? 0) + 1;
+    }
+  }
   return {
     delegatedCount: e.delegations.length,
+    delegationsPerArtifact,
+    leadFinalReplyText:
+      finalReplies.sort((a, b) => a.finalReplyAtMs - b.finalReplyAtMs).at(-1)?.finalReplyText ?? "",
+    workerFindings: workerEvidence.map((r) =>
+      [
+        r.finalReplyText,
+        ...r.tools
+          .filter((t) => t.name === "sprout_delegation_complete")
+          .map((t) => t.arguments.summary ?? ""),
+      ].join("\n"),
+    ),
     distinctWorkerProfiles: Object.keys(perWorker),
     delegationsPerWorker: perWorker,
     workerRunTerminalStatuses: workerRuns.map((r) => r.status),
@@ -163,7 +251,7 @@ export function factsFrom(e, chatId, changed) {
     firstDelegationTerminalAtMs: e.delegations.length
       ? Math.min(...e.delegations.map((d) => d.settledAt ?? Infinity))
       : null,
-    fixtureChangeObserved: changed,
+    artifactAssertions: null,
     workerRuns: workerEvidence,
     runs: observations,
     token: observations.every((r) => r.tokens !== null)

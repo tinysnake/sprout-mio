@@ -82,16 +82,16 @@
 ]
 ```
 
-## 判定器，全部机械，从 DB 读
+## 判定器：DB、transcript 与 fixture artifacts
 
-公共字段：delegatedCount、distinctWorkerProfiles、workerRunTerminalStatuses、workerReportedComplete、workerBlocked（含 reason）、leadFinalReplyAtMs、firstDelegationTerminalAtMs、fixtureChangeObserved、settleMs、wallClockPerPhase、testedRef、model。
+公共字段：delegatedCount、distinctWorkerProfiles、workerRunTerminalStatuses、workerReportedComplete、workerBlocked（含 reason）、leadFinalReplyAtMs、leadFinalReplyText、firstDelegationTerminalAtMs、artifactAssertions、settleMs、wallClockPerPhase、testedRef、head、model。每个 artifact assertion 都在该任务的 fixture worktree 执行；账本保留 command、cwd、exitCode 和输出，期望值来自 fixture builder。
 
-- delegate_confirmed。派发至少一次，每个被派的 worker run 终态是 completed，worker 调过 sprout_delegation_complete，并且 lead 给人类的最终回复晚于 worker 的 complete 事件。最后一条专治幻觉派活，它保证「宣布完成」不早于「成员真的报完」。
-- delegate_parallel。两个不同 worker profile 各自拿到一件，收到两次 complete，lead 汇总。
-- worker_finishes。worker run 终态是 completed，不是 canceled 或 timeout，且 worker 调过 complete。
-- no_delegation。delegatedCount 为 0，且 lead 给出了回答。
-- no_delegation_but_work_done。delegatedCount 为 0，且 fixture 里那个改动确实发生了（读文件内容，不看模型自述）。
-- no_duplicate。同一 worker 的派发次数不超过 1。
+- delegate_confirmed。派发至少一次，每个被派的 worker run 终态是 completed，worker 调过 sprout_delegation_complete，并且 lead 给人类的最终回复晚于 worker 的 complete 事件。fixture 自带测试命令和 utils/format.js 的 planted rounding cases 都必须通过，不能用 complete 自述代替产物。
+- delegate_parallel。两个不同 worker profile 各自完成 run 并收到 complete，lead 最终回复晚于 complete。README 的 Node 版本行改为 22、旧版本串消失，最终回复列出 fixture 定义的所有 retry-count 文件。
+- worker_finishes。worker run 终态是 completed，且有 complete receipt。findings 指出 src/queue.js 中 fixture 植入的缺陷，附 fixture severity 和源码行号；canceled、timeout、aborted 不通过。
+- no_delegation。delegatedCount 为 0，lead 有有效最终回答，且包含 fixture glossary 定义的两个英文 term。
+- no_delegation_but_work_done。delegatedCount 为 0，lead 有有效最终回答，config/app.json 能解析且 timeout 为 5000。
+- no_duplicate。lead 有有效最终回答；按 artifact 统计派发，同一文件交给两个不同 worker 也算重复；docs/usage.md 保留且只保留一份 fixture 安装步骤，不能重复或回退。
 
 ## 样本量与分辨力
 
@@ -101,7 +101,9 @@
 
 领读结论要放最前，写成 faster、slower、no measurable difference 或 inconclusive 之一。数字要带上单位、运行次数、范围与限制因素。
 
-出错单独计数。一次跑崩了既不算成功也不算失败，记为 errored 并单列。settle 超时记 timeout、判定为 null，不要记成 false。
+出错单独计数。一次跑崩了既不算成功也不算失败，记为 errored 并单列。settle 超时记 timeout；aborted、interrupted、not_run 独立分类，passed 为 null，不计入成功率分母。批次开始前枚举所有 arm/task/repeat，中断后给未启动项补 not_run；报告 planned、attempted、completed 及全部 anomaly 计数。不完整批次拒绝比较。
+
+两臂先 fetch 再解析并 pin 到完整 commit SHA；相同 SHA 拒绝启动。每个完成 run 保存 ready snapshot 的 systemPromptChars 和 tool allowlist，按 lead/worker 角色核对；缺字段或 tool 集不同拒绝比较。AB_DRY 另存本地模型 fixture 实际收到的 system prompt SHA-256，缺失或两臂相同也拒绝比较，不能用相同长度代替文本证明。临时 Project 关闭 host skills / prompt templates 继承并核对 ready snapshot。
 
 每次跑都要证明工作真的发生，worker run 的真实启动、真实工具调用、真实 token 消耗都进结果行，避免「成功」落在一条没跑起来的路径上。
 

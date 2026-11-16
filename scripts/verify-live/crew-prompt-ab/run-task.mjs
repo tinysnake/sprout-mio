@@ -1,14 +1,24 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync, readFileSync, readdirSync, openSync, closeSync } from "node:fs";
+import { networkInterfaces } from "node:os";
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  readdirSync,
+  openSync,
+  closeSync,
+  symlinkSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { startModelFixture } from "../../verify/lib/model-fixture.mjs";
 import { createCrewFixture } from "../../../tests/fixtures/crew-live.mjs";
-import { seedFixture, fixtureChanged, judge, unknownEvidence } from "./core.mjs";
-import { readEvidence, settled, factsFrom } from "./evidence.mjs";
+import { seedFixture, judge, classifyRuns, unknownEvidence } from "./core.mjs";
+import { artifactAssertions } from "./artifacts.mjs";
+import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
 
 export async function runTask({
   task,
@@ -49,6 +59,7 @@ export async function runTask({
     env,
     input,
     latest;
+  const promptHashes = new Map();
   const children = [];
   function next(name) {
     signal?.throwIfAborted();
@@ -107,11 +118,15 @@ export async function runTask({
     await new Promise((done) => listener.listen(0, "0.0.0.0", done));
     const port = listener.address().port;
     await new Promise((done) => listener.close(done));
-    const base = `http://127.0.0.1:${port}`;
+    const host = Object.values(networkInterfaces())
+      .flat()
+      .find((address) => address.family === "IPv4" && !address.internal)?.address;
+    assert(host, "temporary fixture requires a LAN IPv4 address");
+    const base = `http://${host}:${port}`;
     env = {
       ...process.env,
-      NO_PROXY: "localhost,127.0.0.1,::1",
-      no_proxy: "localhost,127.0.0.1,::1",
+      NO_PROXY: `localhost,127.0.0.1,::1,${host}`,
+      no_proxy: `localhost,127.0.0.1,::1,${host}`,
       DATABASE_URL: join(directory, "private.sqlite"),
       APP_ORIGIN: base,
       HOST: "0.0.0.0",
@@ -121,12 +136,30 @@ export async function runTask({
       NODE_ENV: "production",
       BETTER_AUTH_SECRET: randomBytes(32).toString("base64url"),
       SPROUT_PI_ENABLED: "true",
+      SPROUT_PI_INHERIT_HOST_RESOURCES: "0",
       SPROUT_PI_DATA_DIR: join(directory, "pi-data"),
       SPROUT_REPO_DIR: join(directory, "repos"),
     };
     delete env.SPROUT_PI_RUNNER;
     if (dry) {
-      fixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
+      fixture = await startModelFixture({
+        privateDir: join(directory, "model-fixture"),
+        onRequest(request) {
+          const observed = systemPromptEvidence(request);
+          if (!observed) return;
+          const hashes = promptHashes.get(observed.runId) ?? new Set();
+          hashes.add(observed.hash);
+          promptHashes.set(observed.runId, hashes);
+          writeFileSync(
+            join(directory, "system-prompt-hashes.json"),
+            JSON.stringify(
+              Object.fromEntries([...promptHashes].map(([runId, values]) => [runId, [...values]])),
+              null,
+              2,
+            ),
+          );
+        },
+      });
       env.PI_CODING_AGENT_DIR = fixture.agentDir;
       row.effectiveModel = fixture.model("chatOwner");
       row.dryLimitation =
@@ -258,8 +291,15 @@ export async function runTask({
     const enrollment = await call("createMachineFn", { name: "AB isolated Worker" });
     const machineId = enrollment.detail.machine.id;
     const root = join(directory, "machine-root");
-    mkdirSync(join(root, project.id), { recursive: true });
-    seedFixture(task.fixture, join(root, project.id));
+    mkdirSync(root, { recursive: true });
+    mkdirSync(env.SPROUT_REPO_DIR, { recursive: true });
+    row.fixtureWorktree = join(env.SPROUT_REPO_DIR, project.id);
+    await fixtureGit(["clone", "-q", remote, row.fixtureWorktree], "fixture-worktree.log");
+    await call("updateProjectProfileFn", {
+      projectId: project.id,
+      workDirectory: project.id,
+    });
+    symlinkSync(row.fixtureWorktree, join(root, project.id), "dir");
     await call("saveMachineRootDirectoryFn", {
       machineId,
       directory: root,
@@ -312,11 +352,12 @@ export async function runTask({
       signature = "";
     await until(() => {
       latest = readEvidence(env, input, Math.min(30000, remaining()));
-      const failed = latest.runs.find((r) => ["failed", "interrupted"].includes(r.status));
-      if (failed)
-        throw new Error(
-          `agent run ${failed.id} ${failed.status}: ${failed.errorCode} ${failed.errorMessage}`,
-        );
+      const terminalFailure = classifyRuns(latest.runs);
+      if (terminalFailure) {
+        const error = new Error(`agent run terminated ${terminalFailure}`);
+        error.runClassification = terminalFailure;
+        throw error;
+      }
       const nextSignature = JSON.stringify(latest);
       if (!settled(latest) || signature !== nextSignature) {
         stableSince = Date.now();
@@ -326,10 +367,8 @@ export async function runTask({
       return Date.now() - stableSince >= 1000;
     }, "Crew settle");
     next("judge");
-    const changed =
-      fixtureChanged(task, join(env.SPROUT_REPO_DIR, project.id), initial) ||
-      fixtureChanged(task, join(root, project.id), initial);
-    Object.assign(row, factsFrom(latest, crew.id, changed));
+    Object.assign(row, factsFrom(latest, crew.id, Object.keys(initial)));
+    row.artifactAssertions = artifactAssertions(task, row.fixtureWorktree, row);
     assert(
       row.runs.some((r) => r.startedAt && r.transcript && r.tokens !== null),
       "missing actual lead execution/token evidence",
@@ -342,18 +381,25 @@ export async function runTask({
     row.status = row.passed ? "passed" : "failed";
   } catch (error) {
     row.status =
-      error.code === "AB_TIMEOUT" || Date.now() - started >= timeoutMs ? "timeout" : "errored";
+      error.runClassification ??
+      (signal?.aborted
+        ? "interrupted"
+        : error.code === "AB_TIMEOUT" || Date.now() - started >= timeoutMs
+          ? "timeout"
+          : "errored");
     row.passed = null;
     row.error = { message: error.message, stack: error.stack };
     if (env && input) {
       try {
-        latest ??= readEvidence(env, input, 5000);
-        Object.assign(row, factsFrom(latest, input.chatId, false));
+        latest = readEvidence(env, input, 5000);
+        Object.assign(row, factsFrom(latest, input.chatId));
       } catch (e) {
         row.evidenceError = e.message;
       }
     }
   } finally {
+    for (const run of row.runs ?? [])
+      run.systemPromptHashes = dry ? [...(promptHashes.get(run.runId) ?? [])] : null;
     phases[phase] += Date.now() - at;
     row.settleMs = phases.settle;
     row.totalMs = Date.now() - started;
@@ -376,7 +422,7 @@ export async function runTask({
     try {
       await fixture?.close();
     } catch (e) {
-      row.status = "errored";
+      if (!["aborted", "interrupted", "timeout"].includes(row.status)) row.status = "errored";
       row.passed = null;
       row.cleanupError = e.message;
     }

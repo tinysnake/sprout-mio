@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { readFileSync } from "node:fs";
+export { seedFixture, fixtureDefinition } from "./fixtures.mjs";
 
 export function taskSet(path) {
   const blocks = [...readFileSync(path, "utf8").matchAll(/```json\s*\n([\s\S]*?)\n```/g)];
@@ -24,9 +24,11 @@ export const unknownEvidence = {
   workerReportedComplete: null,
   workerBlocked: null,
   leadFinalReplyAtMs: null,
+  leadFinalReplyText: null,
   firstDelegationTerminalAtMs: null,
-  fixtureChangeObserved: null,
+  artifactAssertions: null,
   workerRuns: null,
+  runs: null,
   token: null,
 };
 export const oracleNames = [
@@ -39,15 +41,22 @@ export const oracleNames = [
 ];
 export function judge(name, f) {
   assert(oracleNames.includes(name), `unknown oracle ${name}`);
+  if (f.runs?.some((r) => r.status !== "completed")) return false;
+  const artifactsPass =
+    Array.isArray(f.artifactAssertions) &&
+    f.artifactAssertions.length > 0 &&
+    f.artifactAssertions.every((check) => check.exitCode === 0);
+  const validFinal = f.leadFinalReplyAtMs != null && Boolean(f.leadFinalReplyText?.trim());
+  if (!artifactsPass) return false;
   const workersDone =
     f.delegatedCount > 0 &&
-    f.workerRunTerminalStatuses.length >= f.delegatedCount &&
+    f.workerRunTerminalStatuses?.length >= f.delegatedCount &&
     f.workerRunTerminalStatuses.every((s) => s === "completed") &&
-    f.workerReportedComplete.length === f.delegatedCount &&
+    f.workerReportedComplete?.length === f.delegatedCount &&
     f.workerReportedComplete.every(Boolean);
   const afterComplete =
-    f.leadFinalReplyAtMs !== null &&
-    f.completeEventTimes.length === f.delegatedCount &&
+    validFinal &&
+    f.completeEventTimes?.length === f.delegatedCount &&
     f.completeEventTimes.every((t) => f.leadFinalReplyAtMs > t);
   switch (name) {
     case "delegate_confirmed":
@@ -55,103 +64,155 @@ export function judge(name, f) {
     case "delegate_parallel":
       return (
         f.delegatedCount === 2 &&
-        f.distinctWorkerProfiles.length === 2 &&
+        f.distinctWorkerProfiles?.length === 2 &&
         workersDone &&
         afterComplete
       );
     case "worker_finishes":
       return workersDone;
     case "no_delegation":
-      return f.delegatedCount === 0 && f.leadFinalReplyAtMs !== null;
     case "no_delegation_but_work_done":
-      return f.delegatedCount === 0 && f.fixtureChangeObserved;
+      return f.delegatedCount === 0 && validFinal;
     case "no_duplicate":
-      return Object.values(f.delegationsPerWorker).every((n) => n <= 1);
+      return (
+        validFinal &&
+        f.delegationsPerArtifact != null &&
+        Object.values(f.delegationsPerArtifact).every((count) => count <= 1)
+      );
   }
 }
-export function seedFixture(name, root) {
-  const fixtures = {
-    "sandbox-fix": {
-      "package.json": JSON.stringify({
-        private: true,
-        scripts: { test: "node --test test/*.test.js" },
-      }),
-      "utils/format.js": "exports.round = value => Math.floor(value * 100) / 100;\n",
-      "test/format.test.js":
-        "const {test}=require('node:test'); const assert=require('node:assert/strict'); const {round}=require('../utils/format'); test('rounds to nearest hundredth',()=>{assert.equal(round(1.236),1.24);assert.equal(round(2.341),2.34)});\n",
-    },
-    "sandbox-parallel": {
-      "README.md": "# Sandbox\nRequires Node 18.\n",
-      "src/retry.js": "exports.retryCount = 3;\n",
-      "config/retry.json": '{"retryCount":5}\n',
-    },
-    "sandbox-review": {
-      "src/queue.js":
-        "const queue = [];\nexports.enqueue = item => queue.push(item);\nexports.drain = handler => {\n  while (queue.length) {\n    handler(queue[0]);\n  }\n};\n",
-    },
-    "sandbox-question": {
-      "docs/glossary.md":
-        "# Continuation terms\n自动接续: automatic continuation (`auto_continuation`).\n小脑接续: cerebellum continuation (`cerebellum_continuation`).\n",
-    },
-    "sandbox-small-edit": { "config/app.json": '{"timeout":3000}\n' },
-    "sandbox-duplicate": {
-      "docs/usage.md":
-        "# Installation\n1. Install Node 22.\n2. Run npm install.\n3. Run npm test.\n",
-      "package.json": '{"private":true,"scripts":{"test":"node --test"}}\n',
-      "HISTORY.md":
-        "A worker already updated docs/usage.md installation instructions to Node 22, npm install, npm test. Verify before making changes.\n",
-    },
+
+export function classifyRuns(runs) {
+  if (runs.some((r) => r.status === "aborted")) return "aborted";
+  if (runs.some((r) => ["interrupted", "canceled"].includes(r.status))) return "interrupted";
+  if (runs.some((r) => ["timeout", "timed_out"].includes(r.status))) return "timeout";
+  if (runs.some((r) => r.status === "failed")) return "errored";
+  return null;
+}
+
+export function planBatch(arms, tasks, repeats) {
+  const plan = [];
+  for (let repeat = 1; repeat <= repeats; repeat++)
+    for (const task of tasks)
+      for (const arm of repeat % 2 ? arms : [...arms].reverse())
+        plan.push({ arm: arm.arm, ref: arm.ref, task: task.id, repeat });
+  return plan;
+}
+
+export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
+  if (!batch) return ["single arm; comparison requires two arms"];
+  const reasons = [];
+  const add = (reason) => {
+    if (!reasons.includes(reason)) reasons.push(reason);
   };
-  assert(fixtures[name], `unknown fixture ${name}`);
-  for (const [file, content] of Object.entries(fixtures[name])) {
-    mkdirSync(dirname(join(root, file)), { recursive: true });
-    writeFileSync(join(root, file), content);
+  if (rows.some((r) => !["passed", "failed"].includes(r.status)))
+    add("incomplete batch: anomalous or not_run items");
+  const arms = [...new Set(rows.map((r) => r.arm))];
+  if (arms.length !== 2) add("comparison requires two arms");
+  const heads = arms.map((arm) => new Set(rows.filter((r) => r.arm === arm).map((r) => r.head)));
+  if (heads.some((set) => set.size !== 1 || !/^[a-f0-9]{40}$/.test([...set][0] ?? "")))
+    add("missing or unstable resolved commit SHA");
+  if (heads.length === 2 && [...heads[0]].some((sha) => heads[1].has(sha)))
+    add("arms resolve to the same commit SHA");
+  const groups = new Map();
+  for (const row of rows) {
+    if (["passed", "failed"].includes(row.status) && !row.runs?.length)
+      add("completed item has no ready snapshots");
+    for (const run of row.runs ?? []) {
+      if (run.status !== "completed") continue;
+      if (
+        !Number.isInteger(run.systemPromptChars) ||
+        run.systemPromptChars <= 0 ||
+        !Array.isArray(run.availableTools) ||
+        !run.availableTools.length
+      )
+        add(`missing ready resources.systemPromptChars or tools for completed ${run.role} run`);
+      if (run.inheritHostResources !== false) add("host resource inheritance was not disabled");
+      if (
+        dry &&
+        (!run.systemPromptHashes?.length ||
+          run.systemPromptHashes.some((h) => !/^[a-f0-9]{64}$/.test(h)))
+      )
+        add(`missing observed system prompt hash for completed ${run.role} run`);
+      const key = `${row.task}/${run.role}`;
+      const group = groups.get(key) ?? new Map();
+      const list = group.get(row.arm) ?? [];
+      list.push(run);
+      group.set(row.arm, list);
+      groups.set(key, group);
+    }
   }
-  return fixtures[name];
+  for (const [key, group] of groups) {
+    if (arms.length !== 2) continue;
+    const [a, b] = arms.map((arm) => group.get(arm) ?? []);
+    if (!a.length || !b.length) {
+      add(`missing matching role ${key}`);
+      continue;
+    }
+    const tools = (runs) =>
+      [...new Set(runs.map((r) => JSON.stringify([...(r.availableTools ?? [])].sort())))].sort();
+    if (JSON.stringify(tools(a)) !== JSON.stringify(tools(b)))
+      add(`tool name sets differ for ${key}`);
+    if (
+      dry &&
+      a.some((x) =>
+        b.some((y) => x.systemPromptHashes?.some((h) => y.systemPromptHashes?.includes(h))),
+      )
+    )
+      add(`observed system prompt hashes match for ${key}`);
+  }
+  return reasons;
 }
-export function fixtureChanged(task, root, initial) {
-  if (task.oracle === "no_delegation_but_work_done") {
-    const file = join(root, "config/app.json");
-    return existsSync(file) && JSON.parse(readFileSync(file, "utf8")).timeout === 5000;
-  }
-  return Object.entries(initial).some(
-    ([file, content]) =>
-      !existsSync(join(root, file)) || readFileSync(join(root, file), "utf8") !== content,
+
+export function summarize(rows, options = {}) {
+  const reasons = comparisonReasons(rows, options);
+  console.log(
+    reasons.length
+      ? `Comparison refused: ${reasons.join("; ")}`
+      : "Comparison eligible; descriptive results only.",
   );
-}
-export function summarize(rows) {
   const groups = new Map();
   for (const row of rows) {
     for (const key of [`${row.arm} / ${row.task}`, `${row.arm} / ALL`]) {
       const g = groups.get(key) ?? {
         group: key,
-        runs: 0,
+        planned: 0,
+        attempted: 0,
+        completed: 0,
         passed: 0,
         failed: 0,
         errored: 0,
         timeout: 0,
+        aborted: 0,
+        interrupted: 0,
+        not_run: 0,
       };
-      g.runs++;
-      if (row.status === "errored" || row.status === "timeout") g[row.status]++;
-      else g[row.passed ? "passed" : "failed"]++;
+      g.planned++;
+      if (row.status !== "not_run") g.attempted++;
+      if (["passed", "failed"].includes(row.status)) {
+        g.completed++;
+        g[row.status]++;
+      } else if (Object.hasOwn(g, row.status)) g[row.status]++;
+      else throw new Error(`unknown ledger status ${row.status}`);
       groups.set(key, g);
     }
   }
   const totals = [...groups.values()].filter((g) => g.group.endsWith("/ ALL"));
-  const rates = totals.map((g) => g.passed / (g.passed + g.failed));
+  const rates = totals.map((g) => g.passed / g.completed);
   const saturated =
     rates.length === 2 && (rates.every((r) => r === 0) || rates.every((r) => r === 1));
-  console.log(
-    `inconclusive — ${saturated ? "both arms saturated; " : ""}descriptive harness results; no calibrated noise floor or causal speed claim.`,
-  );
   console.table(
     [...groups.values()].map((g) => ({
       ...g,
       successRate:
-        g.passed + g.failed ? `${((100 * g.passed) / (g.passed + g.failed)).toFixed(1)}%` : "n/a",
+        reasons.length || !g.completed ? "n/a" : `${((100 * g.passed) / g.completed).toFixed(1)}%`,
     })),
   );
   console.log(
-    "Limits: 3 repeats × 6 tasks = 18 observations/arm; standard error about ±11 percentage points. Differences below 20 points are unresolved. Errors and timeouts are excluded from success denominators. Both arms at 0% or 100% are saturated/inconclusive. Wall clocks are milliseconds; token records are measured provider usage, not estimates.",
+    `inconclusive — ${saturated ? "both arms saturated; " : ""}no calibrated noise floor or causal speed claim.`,
   );
+  console.log(
+    "Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.",
+  );
+  return { reasons, groups: [...groups.values()] };
 }

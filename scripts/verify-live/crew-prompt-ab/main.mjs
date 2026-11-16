@@ -5,6 +5,7 @@ import {
   mkdirSync,
   appendFileSync,
   readFileSync,
+  writeFileSync,
   openSync,
   closeSync,
   rmSync,
@@ -12,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { taskSet, summarize, unknownEvidence } from "./core.mjs";
+import { taskSet, summarize, unknownEvidence, planBatch } from "./core.mjs";
 import { runTask } from "./run-task.mjs";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
@@ -51,13 +52,25 @@ const evidence = join(dirname(out), `crew-prompt-ab-${Date.now()}-${process.pid}
 mkdirSync(evidence, { recursive: true, mode: 0o700 });
 const rows = [],
   worktrees = [];
+const plan = planBatch(arms, selected, repeats);
+writeFileSync(join(evidence, "plan.json"), JSON.stringify(plan, null, 2), { mode: 0o600 });
+const key = (item) => `${item.arm}/${item.task}/${item.repeat}`;
+const recorded = new Set();
+function record(row) {
+  assert(!recorded.has(key(row)), "one ledger row per planned item");
+  appendFileSync(out, JSON.stringify(row) + "\n", { mode: 0o600 });
+  recorded.add(key(row));
+  rows.push(row);
+  console.log(`${row.status.toUpperCase()} ${row.arm} ${row.task} repeat=${row.repeat} out=${out}`);
+}
+let fatal;
 let sequence = 0;
 let activeCommand;
 const cancellation = new AbortController();
 for (const signal of ["SIGINT", "SIGTERM"])
   process.once(signal, () => {
     cancellation.abort(new Error(`harness interrupted by ${signal}`));
-    process.exitCode = 130;
+    process.exitCode = signal === "SIGINT" ? 130 : 143;
     if (activeCommand?.pid) {
       try {
         process.kill(-activeCommand.pid, "SIGKILL");
@@ -112,17 +125,37 @@ function log(name) {
   return join(evidence, `${++sequence}-${name}.log`);
 }
 try {
+  process.chdir(root);
+  // Fetch each requested ref first; FETCH_HEAD resolves the fetched remote commit, not a stale local branch.
+  for (const arm of arms) {
+    if (cancellation.signal.aborted) break;
+    const objectRef = /^(?:[a-f0-9]{7,40}|HEAD(?:[~^][0-9]*)?)$/.test(arm.ref);
+    await command(
+      "git",
+      ["fetch", "origin", ...(objectRef ? [] : [arm.ref.replace(/^origin\//, "")])],
+      log("fetch-ref"),
+      60000,
+    );
+    arm.head = await command(
+      "git",
+      ["rev-parse", "--verify", `${objectRef ? arm.ref : "FETCH_HEAD"}^{commit}`],
+      log("resolve-ref"),
+      30000,
+    );
+    assert(/^[a-f0-9]{40}$/.test(arm.head), "full resolved commit SHA");
+  }
+  if (batch && !cancellation.signal.aborted)
+    assert.notEqual(
+      arms[0].head,
+      arms[1].head,
+      "refuse to start: both arms resolve to the same commit SHA",
+    );
+  writeFileSync(join(evidence, "refs.json"), JSON.stringify(arms, null, 2));
   for (const arm of arms) {
     if (cancellation.signal.aborted) break;
     const prepareAt = Date.now();
     try {
       process.chdir(root);
-      arm.head = await command(
-        "git",
-        ["rev-parse", "--verify", `${arm.ref}^{commit}`],
-        log("resolve-ref"),
-        30000,
-      );
       const temp = mkdtempSync(join(tmpdir(), "sprout-crew-ab-"));
       const checkout = join(temp, "checkout");
       worktrees.push({ checkout, temp });
@@ -150,61 +183,50 @@ try {
     }
     arm.prepareMs = Date.now() - prepareAt;
   }
-  runRounds: for (let repeat = 1; repeat <= repeats; repeat++) {
-    for (const arm of arms) {
-      for (const task of selected) {
-        if (cancellation.signal.aborted) break runRounds;
-        let row;
-        if (arm.error)
-          row = {
-            ...unknownEvidence,
-            arm: arm.arm,
-            task: task.id,
-            repeat,
-            ref: arm.ref,
-            testedRef: arm.ref,
-            head: arm.head ?? null,
-            model,
-            dry,
-            oracle: task.oracle,
-            status: "errored",
-            passed: null,
-            error: { message: arm.error },
-            settleMs: 0,
-            wallClockPerPhase: {
-              prepare: arm.prepareMs,
-              startup: 0,
-              sendTask: 0,
-              settle: 0,
-              judge: 0,
-            },
-          };
-        else {
-          process.chdir(arm.checkout);
-          row = await runTask({
-            task,
-            repeat,
-            arm: arm.arm,
-            ref: arm.ref,
-            head: arm.head,
-            model,
-            dry,
-            timeoutMs,
-            directory: join(evidence, `${repeat}-${arm.arm}-${task.id}`),
-            command,
-            signal: cancellation.signal,
-          });
-          row.refPreparationMs = arm.prepareMs;
-        }
-        appendFileSync(out, JSON.stringify(row) + "\n", { mode: 0o600 });
-        rows.push(row);
-        console.log(
-          `${row.status.toUpperCase()} ${arm.arm} ${task.id} repeat=${repeat} out=${out}`,
-        );
-      }
-    }
+  for (const item of plan) {
+    if (cancellation.signal.aborted) break;
+    const arm = arms.find((arm) => arm.arm === item.arm);
+    const task = selected.find((task) => task.id === item.task);
+    if (arm.error) continue;
+    process.chdir(arm.checkout);
+    const row = await runTask({
+      task,
+      repeat: item.repeat,
+      arm: arm.arm,
+      ref: arm.ref,
+      head: arm.head,
+      model,
+      dry,
+      timeoutMs,
+      directory: join(evidence, `${item.repeat}-${arm.arm}-${task.id}`),
+      command,
+      signal: cancellation.signal,
+    });
+    row.refPreparationMs = arm.prepareMs;
+    record(row);
   }
+} catch (error) {
+  fatal = error.message;
+  console.error(fatal);
+  if (!cancellation.signal.aborted) process.exitCode = 1;
 } finally {
+  for (const item of plan) {
+    if (recorded.has(key(item))) continue;
+    const arm = arms.find((arm) => arm.arm === item.arm);
+    record({
+      ...unknownEvidence,
+      ...item,
+      testedRef: arm.ref,
+      head: arm.head ?? null,
+      model,
+      dry,
+      oracle: selected.find((task) => task.id === item.task).oracle,
+      status: "not_run",
+      passed: null,
+      reason:
+        cancellation.signal.reason?.message ?? fatal ?? arm.error ?? "batch did not start item",
+    });
+  }
   process.chdir(root);
   for (const { checkout, temp } of worktrees.reverse()) {
     try {
@@ -217,10 +239,15 @@ try {
       rmSync(temp, { recursive: true, force: true });
     } catch (error) {
       console.error(error.message);
-      process.exitCode = 1;
+      if (!cancellation.signal.aborted) process.exitCode = 1;
     }
   }
 }
-summarize(rows);
+const summary = summarize(rows, { batch, dry });
+writeFileSync(join(evidence, "summary.json"), JSON.stringify(summary, null, 2));
 console.log(`Evidence: ${evidence}\nLedger: ${out}`);
-if (rows.some((r) => r.status === "errored" || r.status === "timeout")) process.exitCode = 1;
+if (
+  !cancellation.signal.aborted &&
+  ((batch && summary.reasons.length) || rows.some((r) => !["passed", "failed"].includes(r.status)))
+)
+  process.exitCode = 1;
