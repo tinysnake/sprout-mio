@@ -164,7 +164,23 @@ async function request(
       const block = input.tools.find((tool) => tool.function.name === "sprout_delegation_block");
       assert(block?.function.description.includes("Human 或 Crew lead"));
     }
-    assert.equal(system, legacyPrompt, `${label}: legacy system composition`);
+    if (situation.kind === "crew_lead") {
+      assert(system.includes(situation.crewName!), `${label}: crew name reaches provider`);
+      for (const name of crewTools) assert(system.includes(name), `${label}: prompt names ${name}`);
+      assert(system.includes("结束这一轮就是等待"), `${label}: waiting rule reaches provider`);
+      assert(system.includes("循环调用 sprout_delegation_list 都是错的"));
+      for (const name of reportTools)
+        assert(!system.includes(name), `${label}: no worker role instructions`);
+    } else if (situation.kind === "delegation_worker") {
+      assert(system.includes(situation.delegationId!), `${label}: delegationId reaches provider`);
+      for (const name of reportTools)
+        assert(system.includes(name), `${label}: prompt names ${name}`);
+      assert(system.includes("Human 或 Crew lead"), `${label}: needs_input decision authority`);
+      for (const name of crewTools)
+        assert(!system.includes(name), `${label}: no lead role instructions`);
+    } else {
+      assert.equal(system, legacyPrompt, `${label}: legacy system composition`);
+    }
     const exited = once(child, "exit");
     send({ type: "close", id: "run_00000000" });
     const [code] = await exited;
