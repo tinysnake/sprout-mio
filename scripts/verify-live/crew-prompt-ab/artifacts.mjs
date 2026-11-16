@@ -36,7 +36,9 @@ switch (kind) {
       const lineRef = new RegExp('(?:^|[^\\w/.-])' + path + suffix, 'i');
       const scopedFile = new RegExp('(?:^|[^\\w/.-])' + path + '(?![\\w/-]|\\.[\\w])', 'i');
       const basenameRef = new RegExp('(?:^|[^\\w/.-])' + e.file.split('/').at(-1).replaceAll('.', '\\.') + suffix, 'i');
-      const identifiesLine = lineRef.test(text) || (scopedFile.test(text) && basenameRef.test(text));
+      const detachedLine = new RegExp('(?:^|[^\\w/.:#-])(?:L|lines?\\s+)(?:' + e.defectLines.join('|') + ')(?![0-9])', 'i');
+      const identifiesLine = lineRef.test(text) ||
+        (scopedFile.test(text) && (basenameRef.test(text) || detachedLine.test(text)));
       return identifiesLine && new RegExp(e.defectPattern, 'i').test(text) &&
         e.severities.some(severity => new RegExp('\\b' + severity + '\\b', 'i').test(text));
     }), 'worker findings identify planted non-draining queue defect, severity and line');

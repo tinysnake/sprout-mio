@@ -56,7 +56,7 @@ export function fixtureDefinition(name) {
           .flatMap((line, index) =>
             /while \(queue.length\)|handler\(queue\[0\]\)/.test(line) ? [index + 1] : [],
           ),
-        severities: ["P0", "P1", "P2", "P3", "critical", "high", "medium", "low"],
+        severities: ["P0", "P1", "P2", "P3", "critical", "high", "medium", "low", "blocker"],
         defectPattern:
           "infinite|never.*(?:remov|shift|advanc)|(?:no|not|without|missing|doesn.t).*?(?:remov|shift|advanc)|无限|死循环|未.*(?:移除|出队|删除)|没有.*(?:移除|出队|删除)",
       },
