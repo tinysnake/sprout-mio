@@ -175,6 +175,7 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
       thinkingEffective: r.configSnapshot?.thinking ?? null,
       sdkVersion: r.configSnapshot?.sdkVersion ?? null,
       transcript: r.configSnapshot?.sessionFile ?? null,
+      transcriptObserved: sessions.get(r.configSnapshot?.sessionFile)?.has(r.id) === true,
       readySnapshot: r.configSnapshot
         ? {
             resources: r.configSnapshot.resources ?? null,

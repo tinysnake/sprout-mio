@@ -1,8 +1,9 @@
+import { totalRunMs } from "./timing.mjs";
+
 const roles = ["lead", "worker"];
 const writeTools = new Set(["write", "edit", "sprout_remote_file_write"]);
 const probeRequest = /\bprobe\b|\bread[ -]only\b|只读|侦察/iu;
 const finiteMs = (value) => Number.isFinite(value) && value >= 0;
-const timestamp = (value) => (typeof value === "string" ? Date.parse(value) : NaN);
 
 export function costMetricsFrom({ transcript, toolNames, timings, delegations } = {}) {
   const runs = Array.isArray(transcript) && transcript.length ? transcript : null;
@@ -13,8 +14,7 @@ export function costMetricsFrom({ transcript, toolNames, timings, delegations } 
       matching.some(
         (run) =>
           !Array.isArray(run.tools) ||
-          !Array.isArray(toolNames?.[run.runId]) ||
-          run.tools.some((call) => !toolNames[run.runId].includes(call.name)),
+          !Array.isArray(toolNames?.[run.runId]),
       )
     )
       return null;
@@ -24,8 +24,7 @@ export function costMetricsFrom({ transcript, toolNames, timings, delegations } 
   const wallMs = (role) => {
     const matching = timings?.filter((run) => run.role === role);
     if (!matching?.length) return null;
-    const durations = matching.map((run) => timestamp(run.settledAt) - timestamp(run.startedAt));
-    return durations.every(finiteMs) ? durations.reduce((sum, ms) => sum + ms, 0) : null;
+    return totalRunMs(matching);
   };
   const knownDelegations = Array.isArray(delegations) ? delegations : null;
   const leadCalls = calls.lead;

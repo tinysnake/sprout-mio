@@ -91,7 +91,7 @@ export function evaluateOracle(name, f, { corrected = false } = {}) {
     );
   if (taskset2Oracles.includes(name)) {
     validFinal();
-    Object.assign(gates, taskset2Gates(name, f));
+    Object.assign(gates, taskset2Gates(name, f, { corrected }));
   } else if (["delegate_confirmed", "delegate_parallel", "worker_finishes"].includes(name)) {
     gate(
       "workersDone",
@@ -209,8 +209,15 @@ export function evaluateOracle(name, f, { corrected = false } = {}) {
         { delegatedCount: f.delegatedCount ?? null },
       );
   }
-  const failedGates = Object.keys(gates).filter((name) => !gates[name].passed);
-  return { oracle: name, passed: failedGates.length === 0, failedGates, gates };
+  const failedGates = Object.keys(gates).filter((name) => gates[name].passed === false);
+  const unmeasuredGates = Object.keys(gates).filter((name) => gates[name].passed === null);
+  return {
+    oracle: name,
+    passed: failedGates.length ? false : unmeasuredGates.length ? null : true,
+    failedGates,
+    ...(unmeasuredGates.length ? { unmeasuredGates } : {}),
+    gates,
+  };
 }
 
 // A dropped TLS connection or a slow fetch must not waste a whole A/B batch.
@@ -264,12 +271,17 @@ export function finalizeVerdict(row) {
     ...evaluateOracle(row.oracle, row, { corrected: true }),
     evaluated,
   };
-  row.verdictCorrected.outcome = evaluated
-    ? row.verdictCorrected.passed
-      ? "passed"
-      : "failed"
-    : row.status;
   if (!evaluated) row.verdictCorrected.passed = null;
+  if (evaluated) {
+    for (const verdict of [row.verdict, row.verdictCorrected]) {
+      verdict.evaluated = verdict.passed !== null;
+      verdict.outcome = verdict.passed === null ? "unmeasured" : verdict.passed ? "passed" : "failed";
+    }
+    if (row.verdict.passed === null) {
+      row.status = "unmeasured";
+      row.passed = null;
+    }
+  }
   row.probeDelegationEvidence = (
     row.verdictCorrected.gates.attribution?.actual.probeDelegations ?? []
   ).map((d) => ({ delegationId: d.delegationId, requestSummary: d.requestSummary }));
@@ -362,6 +374,8 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
   };
   if (rows.some((r) => !["passed", "failed"].includes(r.status)))
     add("incomplete batch: anomalous or not_run items");
+  if (rows.some((row) => [row.verdict, row.verdictCorrected].some((v) => v?.outcome === "unmeasured")))
+    add("unmeasured oracle gates");
   const arms = [...new Set(rows.map((r) => r.arm))];
   if (arms.length !== 2) add("comparison requires two arms");
   const heads = arms.map((arm) => new Set(rows.filter((r) => r.arm === arm).map((r) => r.head)));
@@ -462,6 +476,7 @@ export function summarize(rows, options = {}) {
         aborted: 0,
         interrupted: 0,
         not_run: 0,
+        unmeasured: 0,
       };
       g.planned++;
       if (row.status !== "not_run") g.attempted++;

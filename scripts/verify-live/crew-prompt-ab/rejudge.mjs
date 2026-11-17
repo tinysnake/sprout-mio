@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { comparisonReasons, finalizeVerdict } from "./core.mjs";
 import { retryCountReported } from "./artifacts.mjs";
 import { fixtureDefinition } from "./fixtures.mjs";
+import { costMetricsFrom } from "./cost-metrics.mjs";
+import { factsFrom } from "./evidence.mjs";
 import { successCohort, successPopulation } from "./taskset2.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -24,6 +26,25 @@ export function rejudgeRow(input) {
       audit.evidence.push({ path, sha256: hash(bytes) });
     } catch (error) {
       audit.warnings.push(`thinking evidence unavailable: ${error.message}`);
+    }
+  }
+  const leadChatId = row.runs?.find((run) => run.role === "lead")?.chatId;
+  if (leadChatId && [evidence?.runs, evidence?.events, evidence?.delegations].every(Array.isArray)) {
+    try {
+      for (const path of new Set(evidence.runs.map((run) => run.configSnapshot?.sessionFile).filter(Boolean))) {
+        audit.evidence.push({ path, sha256: hash(readFileSync(path)) });
+      }
+      const extracted = factsFrom(evidence, leadChatId);
+      for (const key of Object.keys(costMetricsFrom())) row[key] = extracted[key];
+      row.runs = extracted.runs.map((run) => ({
+        ...row.runs?.find((old) => old.runId === run.runId),
+        ...run,
+      }));
+      row.workerRuns = row.runs.filter((run) => run.role === "worker");
+    } catch (error) {
+      Object.assign(row, costMetricsFrom());
+      row.runs = (row.runs ?? []).map((run) => ({ ...run, transcriptObserved: false }));
+      audit.warnings.push(`metrics evidence unavailable: ${error.message}`);
     }
   }
   row.runs = (row.runs ?? []).map((run) => {
@@ -76,7 +97,13 @@ export function rejudgeRow(input) {
       return entry;
     }
   });
+  if (["passed", "failed"].includes(row.status))
+    audit.originalOutcome = { status: row.status, passed: row.passed ?? null };
   finalizeVerdict(row);
+  if (audit.originalOutcome) {
+    row.status = row.verdict.outcome;
+    row.passed = row.verdict.passed;
+  }
   row.rejudge = audit;
   return row;
 }

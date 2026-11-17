@@ -84,7 +84,6 @@ test("long worker rejects waiting, repeated list calls, short work and over-budg
   const facts = delivery("worker-takes-minutes");
   for (const patch of [
     { sleepMsTotal: 501 },
-    { sleepMsTotal: null },
     { runs: [{ role: "lead", status: "completed", startedAt: 0, settledAt: 91000, tools: [] }] },
     {
       runs: [

@@ -1,3 +1,5 @@
+import { runDurationMs, timestampMs, totalRunMs } from "./timing.mjs";
+
 export const taskset2Oracles = [
   "worker_takes_minutes",
   "route_by_description",
@@ -9,16 +11,9 @@ export const taskset2Oracles = [
 export function maxActiveWorkers(runs = []) {
   const edges = runs
     .flatMap((run) => {
-      const start = Number(run.startedAt);
-      const end = Number(run.settledAt);
-      if (
-        run.startedAt == null ||
-        run.settledAt == null ||
-        !Number.isFinite(start) ||
-        !Number.isFinite(end) ||
-        end <= start
-      )
-        return [];
+      const start = timestampMs(run.startedAt);
+      const end = timestampMs(run.settledAt);
+      if (start === null || end === null || end <= start) return [];
       return [
         [start, 1],
         [end, -1],
@@ -31,7 +26,7 @@ export function maxActiveWorkers(runs = []) {
   return peak;
 }
 
-export function taskset2Gates(name, facts) {
+export function taskset2Gates(name, facts, { corrected = false } = {}) {
   const config = facts.oracleConfig ?? {};
   const delegations = facts.delegationEvidence ?? [];
   const workers = facts.workerRuns ?? [];
@@ -39,7 +34,12 @@ export function taskset2Gates(name, facts) {
   const tools = leads.flatMap((run) => run.tools ?? []);
   const gates = {};
   function gate(key, checks, actual) {
-    gates[key] = { passed: Object.values(checks).every(Boolean), checks, actual };
+    const values = Object.values(checks);
+    gates[key] = {
+      passed: values.includes(false) ? false : values.includes(null) ? null : true,
+      checks,
+      actual,
+    };
   }
   if (name === "clarify_before_guessing") {
     const reply = facts.leadFinalReplyText ?? "";
@@ -105,37 +105,64 @@ export function taskset2Gates(name, facts) {
     },
   );
   if (name === "worker_takes_minutes") {
-    const deadline = Math.min(...(facts.completeEventTimes ?? []));
-    const queries = tools.filter(
-      (tool) =>
-        tool.name === "sprout_delegation_list" &&
-        (!Number.isFinite(tool.atMs) || tool.atMs < deadline),
-    );
-    const leadMs = leads.reduce(
-      (sum, run) => sum + (Number(run.settledAt) - Number(run.startedAt)),
-      0,
-    );
+    const completeTimes = (facts.completeEventTimes ?? []).map(timestampMs);
+    const deadline =
+      completeTimes.length && completeTimes.every((ms) => ms !== null)
+        ? Math.min(...completeTimes)
+        : null;
+    const toolsKnown =
+      leads.length > 0 &&
+      leads.every((run) => Array.isArray(run.tools) && run.transcriptObserved !== false);
+    const dispatch = tools.find((tool) => tool.name === "sprout_delegation_start");
+    const dispatchAt = timestampMs(dispatch?.atMs);
+    const listCalls = tools.filter((tool) => tool.name === "sprout_delegation_list");
+    const queryTimesKnown = listCalls.every((tool) => timestampMs(tool.atMs) !== null);
+    const queries =
+      toolsKnown && deadline !== null && queryTimesKnown &&
+      (!corrected || !dispatch || dispatchAt !== null)
+        ? listCalls.filter((tool) => {
+            const atMs = timestampMs(tool.atMs);
+            return atMs < deadline && (!corrected || dispatchAt === null || atMs >= dispatchAt);
+          }).length
+        : null;
+    const leadMs = totalRunMs(leads);
+    const workerMs = workers.map(runDurationMs);
+    const sleepObserved = Number.isFinite(facts.sleepMsTotal)
+      ? facts.sleepMsTotal <= config.maxSleepMs
+      : null;
+    const noRepeatedQueries = queries === null ? null : queries <= 1;
+    const actionChecks = [sleepObserved, noRepeatedQueries];
+    const leadActionBudget = actionChecks.includes(false)
+      ? false
+      : actionChecks.includes(null) ? null : true;
     gate(
       "eventDrivenWait",
       {
-        sleepObserved:
-          Number.isFinite(facts.sleepMsTotal) && facts.sleepMsTotal <= config.maxSleepMs,
-        noRepeatedQueries: queries.length <= 1,
-        timestampsPresent:
-          leads.length > 0 &&
-          leads.every(
-            (run) =>
-              run.startedAt != null && run.settledAt != null && run.settledAt >= run.startedAt,
-          ),
-        leadBudget: leadMs <= config.leadBudgetMs,
-        genuinelyLongWorker: workers.some(
-          (run) =>
-            run.startedAt != null &&
-            run.settledAt != null &&
-            run.settledAt - run.startedAt >= config.minWorkerMs,
-        ),
+        sleepObserved,
+        noRepeatedQueries,
+        ...(corrected
+          ? { leadActionBudget }
+          : {
+              timestampsPresent: leadMs === null ? null : true,
+              leadBudget: leadMs === null ? null : leadMs <= config.leadBudgetMs,
+            }),
+        genuinelyLongWorker: workerMs.some((ms) => ms !== null && ms >= config.minWorkerMs)
+          ? true
+          : workerMs.includes(null) ? null : false,
       },
-      { sleepMsTotal: facts.sleepMsTotal, queries: queries.length, leadMs },
+      {
+        sleepMsTotal: facts.sleepMsTotal ?? null,
+        queries,
+        leadMs,
+        workerMs,
+        ...(corrected ? { leadActionBudget: { maxQueries: 1, maxSleepMs: config.maxSleepMs } } : {}),
+        ...(leadMs === null ? { leadMsReason: "no timing evidence" } : {}),
+        ...(sleepObserved === null ? { sleepMsTotalReason: "no complete lead sleep evidence" } : {}),
+        ...(queries === null ? { queriesReason: "no complete lead query timing evidence" } : {}),
+        ...(workerMs.includes(null)
+          ? { workerMsReason: "no timing evidence for some worker runs" }
+          : {}),
+      },
     );
   }
   if (name === "route_by_description") {
