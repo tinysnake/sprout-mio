@@ -306,7 +306,18 @@ async function open(config) {
                 machineId: () => target?.machineId ?? null,
                 authorizationGeneration: () => target?.generation ?? null,
               });
-              registerRemoteTools(pi, remote);
+              registerRemoteTools(
+                {
+                  ...pi,
+                  registerTool(tool) {
+                    const isCrew =
+                      situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
+                    if (isCrew && tool.name.startsWith("sprout_lease_")) return;
+                    pi.registerTool(tool);
+                  },
+                },
+                remote,
+              );
               registerTaskTools(pi, remote);
               registerDelegationTools(pi, remote);
               registerCrewDelegationTools(pi, remote);
@@ -377,7 +388,13 @@ async function open(config) {
             ...(memoryFactory ? MEMORY_TOOL_NAMES : []),
             ...hostToolNames(webAccessEntry),
             "mcp__*",
-            ...Object.keys(remoteToolInputSchemas),
+            ...Object.keys(remoteToolInputSchemas).filter(
+              (name) =>
+                !(
+                  (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
+                  name.startsWith("sprout_lease_")
+                ),
+            ),
             // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
             // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
             // 后续跨 Chat 或 Agent 间通信再启用。

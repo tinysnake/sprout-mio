@@ -26,6 +26,10 @@ ${directory}
 </cwd>`;
 const crewTools = ["start", "input", "cancel", "list"].map((name) => `sprout_delegation_${name}`);
 const reportTools = ["complete", "block"].map((name) => `sprout_delegation_${name}`);
+const leaseTools = [
+  "escrow", "wait", "claim", "revoke_grant", "escrow_cancel",
+  "grant", "handoff", "acquire", "release", "get",
+].map((name) => `sprout_lease_${name}`);
 const fixture = await startModelFixture({ privateDir: directory });
 
 async function request(
@@ -165,6 +169,15 @@ async function request(
           ? reportTools
           : [];
     assert.deepEqual(tools.sort(), [...expected].sort(), `${label}: exact delegation tool surface`);
+    const isCrew = situation.kind === "crew_lead" || situation.kind === "delegation_worker";
+    const leases = input.tools
+      .map((tool) => tool.function.name)
+      .filter((name) => name.startsWith("sprout_lease_"));
+    assert.deepEqual(
+      leases.sort(),
+      isCrew ? [] : [...leaseTools].sort(),
+      `${label}: crew uses execution resources; DM keeps all legacy lease tools`,
+    );
     if (situation.kind === "crew_lead" || situation.kind === "delegation_worker") {
       assert(system.includes("## 工作描述\n[[STEP3-DESC-MARKER]] 只负责验证"));
       assert(system.includes("## 项目背景\n这是一个编程项目。"));
