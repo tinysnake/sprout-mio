@@ -23,6 +23,7 @@ import {
   retryTransient,
 } from "./core.mjs";
 import { runTask } from "./run-task.mjs";
+import { runTaskWithLockRetry } from "./lock-retry.mjs";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const model = process.env.AB_MODEL || process.env.SPROUT_VERIFY_PI_MODEL;
@@ -241,19 +242,22 @@ try {
     const task = selected.find((task) => task.id === item.task);
     if (arm.error) continue;
     process.chdir(arm.checkout);
-    const row = await runTask({
-      task,
-      repeat: item.repeat,
-      arm: arm.arm,
-      ref: arm.ref,
-      head: arm.head,
-      model,
-      dry,
-      timeoutMs,
-      directory: join(evidence, `${item.repeat}-${arm.arm}-${task.id}`),
-      command,
-      signal: cancellation.signal,
-    });
+    const row = await runTaskWithLockRetry(
+      {
+        task,
+        repeat: item.repeat,
+        arm: arm.arm,
+        ref: arm.ref,
+        head: arm.head,
+        model,
+        dry,
+        timeoutMs,
+        directory: join(evidence, `${item.repeat}-${arm.arm}-${task.id}`),
+        command,
+        signal: cancellation.signal,
+      },
+      runTask,
+    );
     row.refPreparationMs = arm.prepareMs;
     record(row);
   }
