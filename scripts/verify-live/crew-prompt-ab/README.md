@@ -11,9 +11,12 @@ Single arm:
 prompt contains no tool names or discovery hints. Unlike the other tasks, it disables the
 resource coordinator: only the model's worker request and lead approval can authorize the
 Machine directory. The oracle joins successful transcript calls to persisted request/run,
-delegation, Machine and directory IDs, requires a real `tool_search` call, and checks the
-Machine file changed to `channel=stable` while `retries=2` remains intact. `reportSignals`
-records search count/roles and request/approval call counts. A structured business block needs
+delegation, Machine and directory IDs, and checks the Machine file changed to
+`channel=stable` while `retries=2` remains intact. `tool_search` is an observational signal,
+not a pass condition: `reportSignals` records whether it was used, search count/roles and
+request/approval call counts. The expected paired behavior is that baseline A (`0130cbe`)
+can pass using direct resource tools without search, while the reduced arm must discover
+the deferred resource tools before it can complete the same authorization chain. A structured business block needs
 a persisted resource fault and a successful blocked receipt naming that request and reason;
 missing tools are not a business block. Blocking never waives the artifact assertion.
 

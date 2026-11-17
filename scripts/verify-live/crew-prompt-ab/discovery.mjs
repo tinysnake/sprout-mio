@@ -111,7 +111,6 @@ export function discoveryGates(facts) {
           ),
       ),
   );
-  const signals = discoverySignals(facts);
   const gate = (checks, actual) => ({
     passed: Object.values(checks).every(Boolean),
     checks,
@@ -129,6 +128,5 @@ export function discoveryGates(facts) {
       { workerRequested: requested.length > 0, approvedOrBusinessBlocked: approved || blocked },
       { requests, approved, structuredBusinessBlocked: blocked },
     ),
-    discovery: gate({ searched: signals.toolSearchUsed }, signals),
   };
 }

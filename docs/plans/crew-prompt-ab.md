@@ -6,7 +6,9 @@
 
 `discover-deferred-tool` 是 primary，使用独立 requester 引导语，正文和追加环境信息均不提示工具名、搜索机制或工具暴露策略。Machine 克隆可写，本地副本只读；新题关闭通用资源 coordinator，不预建请求或授权，成员必须申请、负责人必须批准，Machine 写工具由真实 Crew 授权校验保护。
 
-Oracle 要求真实委派、匹配 worker run 与目标目录的持久化资源申请及成功调用、匹配请求 ID 的 lead 批准及数据库批准者、真实 Machine 文件 `channel=stable` 且 `retries=2`、有效最终答复。`tool_search` 必须至少实际调用一次；次数和角色写入 `reportSignals` 与 discovery gate。无搜索、漏申请、空口声称获批、工具调用失败均失败。资源 gate 也识别真实请求的业务故障原因（owner_conflict、directory_changed、membership_changed、machine_offline、drain_unconfirmed）及关联请求 ID/原因的结构化 `resource_unavailable` blocked 回执；找不到工具或普通自然语言放弃不能替代该证据。blocked 不豁免 artifactsPass，未交付产物的格仍判失败。
+Oracle 要求真实委派、匹配 worker run 与目标目录的持久化资源申请及成功调用、匹配请求 ID 的 lead 批准及数据库批准者、真实 Machine 文件 `channel=stable` 且 `retries=2`、有效最终答复。`tool_search` 仅作 discovery 观测信号，是否调用、次数和角色写入 `reportSignals`，不设搜索硬门；无搜索但资源链路和产物均完成可通过。漏申请、空口声称获批、工具调用失败均失败。资源 gate 也识别真实请求的业务故障原因（owner_conflict、directory_changed、membership_changed、machine_offline、drain_unconfirmed）及关联请求 ID/原因的结构化 `resource_unavailable` blocked 回执；找不到工具或普通自然语言放弃不能替代该证据。blocked 不豁免 artifactsPass，未交付产物的格仍判失败。
+
+两臂的预期是：基线 A（`0130cbe`）靠 direct 工具完成资源链路而通过，精简臂必须先发现 deferred 工具才能完成同一链路并通过。因此该题同时提供发现链路的实证，并可用于两臂对跑；不单凭搜索信号判定成功。
 
 ## 主张，跑之前写死
 

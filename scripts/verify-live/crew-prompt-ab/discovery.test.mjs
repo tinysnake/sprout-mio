@@ -68,16 +68,25 @@ test("discovery: skipping resource request fails even with the correct artifact"
   assert.deepEqual(verdict(f).failedGates, ["resourceAuthorization"]);
 });
 
-test("discovery: no tool_search fails even if guessed resource calls succeed", () => {
+test("discovery: direct resource delivery passes without search and reports no search", () => {
   const f = facts();
   for (const run of f.runs) run.tools = run.tools.filter((t) => t.name !== "tool_search");
-  assert.deepEqual(verdict(f).failedGates, ["discovery"]);
-  assert.equal(discoverySignals(f).toolSearchUsed, false);
+  f.reportSignals = discoverySignals(f);
+  assert.equal(verdict(f).passed, true);
+  assert.deepEqual(verdict(f).failedGates, []);
+  assert.deepEqual(f.reportSignals, {
+    toolSearchUsed: false,
+    toolSearchCount: 0,
+    toolSearchRoles: [],
+    resourceRequestCalls: 1,
+    resourceApproveCalls: 1,
+  });
 });
 
-test("discovery: coordinator approval, failed calls and unrelated requests cannot pass", () => {
+test("discovery: approval claims, coordinator approval, failed calls and unrelated requests cannot pass", () => {
   for (const mutate of [
     (f) => {
+      f.leadFinalReplyText = "已批准资源申请并完成修改。";
       f.runs[0].tools = [call("tool_search")];
     },
     (f) => {
