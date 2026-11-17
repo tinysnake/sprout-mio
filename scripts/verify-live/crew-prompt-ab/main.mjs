@@ -310,7 +310,10 @@ try {
 const promptInventories = arms.map((arm) => arm.promptInventory).filter(Boolean);
 const summary = summarize(rows, { batch, dry, promptInventories });
 if (summary.promptSizeComparison)
-  writeFileSync(join(evidence, "prompt-size.md"), renderComparison(summary.promptSizeComparison) + "\n");
+  writeFileSync(
+    join(evidence, "prompt-size.md"),
+    renderComparison(summary.promptSizeComparison) + "\n",
+  );
 writeFileSync(join(evidence, "summary.json"), JSON.stringify(summary, null, 2));
 console.log(`Evidence: ${evidence}\nLedger: ${out}`);
 if (

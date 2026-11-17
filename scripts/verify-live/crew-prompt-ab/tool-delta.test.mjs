@@ -6,21 +6,32 @@ import { summarizeRejudged } from "./rejudge.mjs";
 
 function ledger() {
   return ["A", "B"].map((arm, i) => ({
-    arm, task: "trim", repeat: 1, status: "passed", head: String(i + 1).repeat(40),
-    verdict: { passed: true }, verdictCorrected: { passed: true },
+    arm,
+    task: "trim",
+    repeat: 1,
+    status: "passed",
+    head: String(i + 1).repeat(40),
+    verdict: { passed: true },
+    verdictCorrected: { passed: true },
     probeDelegationEvidence: [],
     runs: ["lead", "worker"].map((role) => ({
-      role, status: "completed", thinkingEffective: "low", inheritHostResources: false,
-      systemPromptChars: 200 - i * 100, systemPromptHashes: [String(i + 1).repeat(64)],
-      availableTools: i ? ["shared", "z_new", "a_new"] :
-        ["sprout_lease_wait", "shared", "sprout_lease_acquire"],
+      role,
+      status: "completed",
+      thinkingEffective: "low",
+      inheritHostResources: false,
+      systemPromptChars: 200 - i * 100,
+      systemPromptHashes: [String(i + 1).repeat(64)],
+      availableTools: i
+        ? ["shared", "z_new", "a_new"]
+        : ["sprout_lease_wait", "shared", "sprout_lease_acquire"],
     })),
   }));
 }
 
 function capture(rows, options) {
   const lines = [];
-  const log = console.log, table = console.table;
+  const log = console.log,
+    table = console.table;
   try {
     console.log = (...args) => lines.push(args.join(" "));
     console.table = () => {};
@@ -52,10 +63,16 @@ test("only the literal environment value 1 opts into tool delta", () => {
     const env = { ...process.env };
     delete env.AB_ALLOW_TOOL_DELTA;
     if (value !== undefined) env.AB_ALLOW_TOOL_DELTA = value;
-    const result = spawnSync(process.execPath, ["--input-type=module", "-e",
-      `import { comparisonReasons } from ${JSON.stringify(new URL("./core.mjs", import.meta.url).href)};
-       console.log(JSON.stringify(comparisonReasons(${JSON.stringify(ledger())})));`],
-    { env, encoding: "utf8" });
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "-e",
+        `import { comparisonReasons } from ${JSON.stringify(new URL("./core.mjs", import.meta.url).href)};
+       console.log(JSON.stringify(comparisonReasons(${JSON.stringify(ledger())})));`,
+      ],
+      { env, encoding: "utf8" },
+    );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(JSON.parse(result.stdout).length, value === "1" ? 0 : 2, String(value));
   }
@@ -75,14 +92,19 @@ test("allowing tool delta preserves every other comparison gate", () => {
     "host resource inheritance was not disabled",
     "missing or unstable resolved commit SHA",
     "observed system prompt hashes match for trim/lead",
-  ]) assert.ok(strict.includes(reason), reason);
-  assert.deepEqual(comparisonReasons(rows, { dry: true, allowToolDelta: true }),
-    strict.filter((reason) => !reason.startsWith("tool name sets differ for ")));
+  ])
+    assert.ok(strict.includes(reason), reason);
+  assert.deepEqual(
+    comparisonReasons(rows, { dry: true, allowToolDelta: true }),
+    strict.filter((reason) => !reason.startsWith("tool name sets differ for ")),
+  );
 });
 
 test("identical tools keep the verdict and report no differences with either setting", () => {
   const rows = ledger();
-  rows[1].runs.forEach((run, i) => { run.availableTools = [...rows[0].runs[i].availableTools].reverse(); });
+  rows[1].runs.forEach((run, i) => {
+    run.availableTools = [...rows[0].runs[i].availableTools].reverse();
+  });
   for (const allowToolDelta of [false, true]) {
     const { summary, report } = capture(rows, { allowToolDelta });
     assert.deepEqual(summary.reasons, []);
