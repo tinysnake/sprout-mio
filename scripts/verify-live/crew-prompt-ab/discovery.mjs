@@ -21,13 +21,18 @@ export function discoveryPrompt(task, scopes) {
 
 export function discoveryWriteAuthorization(facts = {}) {
   const workers = (facts.runs ?? []).filter((run) => run.role === "worker");
-  const remoteCalls = workers.flatMap((run) => (run.tools ?? [])
-    .filter((tool) => tool.isError === false && /^sprout_remote_(?:shell|file_write)$/.test(tool.name))
-    .map((tool) => ({ run, tool })));
+  const remoteCalls = workers.flatMap((run) =>
+    (run.tools ?? [])
+      .filter(
+        (tool) => tool.isError === false && /^sprout_remote_(?:shell|file_write)$/.test(tool.name),
+      )
+      .map((tool) => ({ run, tool })),
+  );
   const authorized = ({ run, tool }) => {
     if (!Number.isFinite(tool.atMs)) return false;
     return (facts.resourceRequests ?? []).some((request) => {
-      if (request.runId !== run.runId || request.machineId !== tool.arguments?.machineId) return false;
+      if (request.runId !== run.runId || request.machineId !== tool.arguments?.machineId)
+        return false;
       const normalize = (path) => path.replace(/^\/private\/tmp(?=\/|$)/, "/tmp");
       const root = normalize(request.directoryRealPath ?? "");
       const target = tool.arguments?.path ?? tool.arguments?.cwd;
@@ -40,21 +45,29 @@ export function discoveryWriteAuthorization(facts = {}) {
         resourceRequests: [request],
         runs: (facts.runs ?? []).map((candidate) => ({
           ...candidate,
-          tools: (candidate.tools ?? []).filter((call) =>
-            Number.isFinite(call.atMs) && call.atMs <= tool.atMs),
+          tools: (candidate.tools ?? []).filter(
+            (call) => Number.isFinite(call.atMs) && call.atMs <= tool.atMs,
+          ),
         })),
       };
       return discoveryGates(beforeWrite).resourceAuthorization.actual.approved;
     });
   };
-  return remoteCalls.length > 0 && remoteCalls.every(authorized) &&
-    !workers.some((run) => (run.tools ?? []).some((tool) =>
-      tool.isError === false && /^(?:write|edit|file_write)$/.test(tool.name)));
+  return (
+    remoteCalls.length > 0 &&
+    remoteCalls.every(authorized) &&
+    !workers.some((run) =>
+      (run.tools ?? []).some(
+        (tool) => tool.isError === false && /^(?:write|edit|file_write)$/.test(tool.name),
+      ),
+    )
+  );
 }
 
 export function discoveryArtifacts(scopes, facts = {}) {
   const authorizationPass = discoveryWriteAuthorization(facts);
-  const passed = authorizationPass &&
+  const passed =
+    authorizationPass &&
     scopes.length > 0 &&
     scopes.some(({ worktree }) => {
       try {
@@ -64,10 +77,14 @@ export function discoveryArtifacts(scopes, facts = {}) {
         return false;
       }
     });
-  return [{ name: "authorized-machine-release-channel", exitCode: passed ? 0 : 1,
-    authorizationPass,
-    ...(!authorizationPass ? { error: "missing or unapproved Machine write provenance" } : {}),
-  }];
+  return [
+    {
+      name: "authorized-machine-release-channel",
+      exitCode: passed ? 0 : 1,
+      authorizationPass,
+      ...(!authorizationPass ? { error: "missing or unapproved Machine write provenance" } : {}),
+    },
+  ];
 }
 
 export function discoverySignals(facts) {

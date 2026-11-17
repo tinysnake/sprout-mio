@@ -23,9 +23,7 @@
       "verdict": {
         "oracle": "clarify_before_guessing",
         "passed": false,
-        "failedGates": [
-          "clarification"
-        ],
+        "failedGates": ["clarification"],
         "gates": {
           "runs": {
             "passed": true,
@@ -217,9 +215,7 @@
       "verdict": {
         "oracle": "clarify_before_guessing",
         "passed": false,
-        "failedGates": [
-          "clarification"
-        ],
+        "failedGates": ["clarification"],
         "gates": {
           "runs": {
             "passed": true,
@@ -411,10 +407,7 @@
       "verdict": {
         "oracle": "resolve_from_context",
         "passed": false,
-        "failedGates": [
-          "artifactsPass",
-          "resolvedContext"
-        ],
+        "failedGates": ["artifactsPass", "resolvedContext"],
         "gates": {
           "runs": {
             "passed": true,
@@ -605,10 +598,7 @@
       "verdict": {
         "oracle": "resolve_from_context",
         "passed": false,
-        "failedGates": [
-          "artifactsPass",
-          "resolvedContext"
-        ],
+        "failedGates": ["artifactsPass", "resolvedContext"],
         "gates": {
           "runs": {
             "passed": true,

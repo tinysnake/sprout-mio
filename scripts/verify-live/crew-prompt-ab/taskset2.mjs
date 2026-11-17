@@ -28,15 +28,31 @@ export function maxActiveWorkers(runs = []) {
 
 export function customerQuestion(text = "") {
   const clauses = (text ?? "").replace(/`([^`]*)`/g, "$1").split(/[。！？?\n]|(?<=[.;])\s+/);
-  const selectionRequest = /(?:please\s+confirm|need from you|tell me|需要你确认|请(?:你)?(?:确认|回复|提供|给出))/i.test(text ?? "");
-  const request = /(?:which|what)\s+(?:[\w'-]+\s+){0,3}customer|哪(?:个|位|家).*客户|客户.*(?:哪|谁)|(?:please\s+confirm|tell me|请(?:你)?(?:确认|回复|提供|给出)).*(?:customer|客户)/i;
+  const selectionRequest =
+    /(?:please\s+confirm|need from you|tell me|需要你确认|请(?:你)?(?:确认|回复|提供|给出))/i.test(
+      text ?? "",
+    );
+  const request =
+    /(?:which|what)\s+(?:[\w'-]+\s+){0,3}customer|哪(?:个|位|家).*客户|客户.*(?:哪|谁)|(?:please\s+confirm|tell me|请(?:你)?(?:确认|回复|提供|给出)).*(?:customer|客户)/i;
   const choices = /Northstar.*(?:or|还是).*Harbor|Harbor.*(?:or|还是).*Northstar/i;
-  const asksMissingFact = clauses.some((clause) => (request.test(clause) || (selectionRequest && choices.test(clause))) &&
-    (!/README|\b(?:missing|requires|blocked|blocker|won't ask|will not ask|cannot determine|can't determine|cannot tell|can't tell|don't know|do not know)\b|无法确定|不知道|缺(?:少|失|的是)|没有.*问/i.test(clause) ||
-      /tell me|need from you|请(?:你)?(?:确认|回复|提供|给出)/i.test(clause)));
+  const asksMissingFact = clauses.some(
+    (clause) =>
+      (request.test(clause) || (selectionRequest && choices.test(clause))) &&
+      (!/README|\b(?:missing|requires|blocked|blocker|won't ask|will not ask|cannot determine|can't determine|cannot tell|can't tell|don't know|do not know)\b|无法确定|不知道|缺(?:少|失|的是)|没有.*问/i.test(
+        clause,
+      ) ||
+        /tell me|need from you|请(?:你)?(?:确认|回复|提供|给出)/i.test(clause)),
+  );
   const asksKnownOrOtherFact = clauses.some((clause) =>
-    /什么时候|何时|(?:what|which).*(?:format|deadline)|when\s+(?:do|should|is)|格式.*什么|Total\s*(?:值|是多少)|(?:请|告诉我).*(?:多少|格式)|(?:confirm\s+(?:the\s+)?file should|confirm.*two.*lines|请确认(?:一下)?[：:，,]?.*(?:格式|Total\s*(?:值|是多少)))|how much/i.test(clause));
-  return { asksMissingFact, asksKnownOrOtherFact, onlyMissingFact: asksMissingFact && !asksKnownOrOtherFact };
+    /什么时候|何时|(?:what|which).*(?:format|deadline)|when\s+(?:do|should|is)|格式.*什么|Total\s*(?:值|是多少)|(?:请|告诉我).*(?:多少|格式)|(?:confirm\s+(?:the\s+)?file should|confirm.*two.*lines|请确认(?:一下)?[：:，,]?.*(?:格式|Total\s*(?:值|是多少)))|how much/i.test(
+      clause,
+    ),
+  );
+  return {
+    asksMissingFact,
+    asksKnownOrOtherFact,
+    onlyMissingFact: asksMissingFact && !asksKnownOrOtherFact,
+  };
 }
 
 export function taskset2Gates(name, facts, { corrected = false } = {}) {
@@ -89,40 +105,46 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
       )
     );
   };
-  const selfResolved = name === "resolve_from_context" && facts.delegatedCount === 0 &&
-    delegations.length === 0 && workers.length === 0;
-  if (!selfResolved) gate(
-    "delegatedDelivery",
-    {
-      count: Number.isInteger(config.minDelegationCount)
-        ? facts.delegatedCount >= config.minDelegationCount
-        : facts.delegatedCount === config.delegationCount,
-      mapped: delegations.length === facts.delegatedCount && delegations.length > 0,
-      completed: delegations.every((d) => d.status === "completed"),
-      workerRuns: workers.length >= facts.delegatedCount,
-      allWorkersCompleted: workers.every((run) => run.status === "completed"),
-      receipts:
-        facts.workerReportedComplete?.length === facts.delegatedCount &&
-        facts.workerReportedComplete.every(Boolean),
-      artifactsAttributed:
-        (facts.requiredDelegationArtifacts?.length ?? 0) > 0 &&
-        facts.requiredDelegationArtifacts.every((file) =>
-          delegations.some((d) => mapped(d, file)),
-        ) &&
-        delegations.every((d) => facts.requiredDelegationArtifacts.some((file) => mapped(d, file))),
-      finalAfterReceipts:
-        facts.completeEventTimes?.length === facts.delegatedCount &&
-        facts.completeEventTimes.every((time) => facts.leadFinalReplyAtMs > time),
-    },
-    {
-      delegations,
-      workerRuns: workers.map(({ runId, startedAt, settledAt }) => ({
-        runId,
-        startedAt,
-        settledAt,
-      })),
-    },
-  );
+  const selfResolved =
+    name === "resolve_from_context" &&
+    facts.delegatedCount === 0 &&
+    delegations.length === 0 &&
+    workers.length === 0;
+  if (!selfResolved)
+    gate(
+      "delegatedDelivery",
+      {
+        count: Number.isInteger(config.minDelegationCount)
+          ? facts.delegatedCount >= config.minDelegationCount
+          : facts.delegatedCount === config.delegationCount,
+        mapped: delegations.length === facts.delegatedCount && delegations.length > 0,
+        completed: delegations.every((d) => d.status === "completed"),
+        workerRuns: workers.length >= facts.delegatedCount,
+        allWorkersCompleted: workers.every((run) => run.status === "completed"),
+        receipts:
+          facts.workerReportedComplete?.length === facts.delegatedCount &&
+          facts.workerReportedComplete.every(Boolean),
+        artifactsAttributed:
+          (facts.requiredDelegationArtifacts?.length ?? 0) > 0 &&
+          facts.requiredDelegationArtifacts.every((file) =>
+            delegations.some((d) => mapped(d, file)),
+          ) &&
+          delegations.every((d) =>
+            facts.requiredDelegationArtifacts.some((file) => mapped(d, file)),
+          ),
+        finalAfterReceipts:
+          facts.completeEventTimes?.length === facts.delegatedCount &&
+          facts.completeEventTimes.every((time) => facts.leadFinalReplyAtMs > time),
+      },
+      {
+        delegations,
+        workerRuns: workers.map(({ runId, startedAt, settledAt }) => ({
+          runId,
+          startedAt,
+          settledAt,
+        })),
+      },
+    );
   if (name === "worker_takes_minutes") {
     const completeTimes = (facts.completeEventTimes ?? []).map(timestampMs);
     const deadline =
