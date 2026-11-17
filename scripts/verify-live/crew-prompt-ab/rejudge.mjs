@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, realpathSync, existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { comparisonReasons, finalizeVerdict } from "./core.mjs";
+import { comparisonReasons, finalizeVerdict, toolDeltaReport } from "./core.mjs";
 import { retryCountReported } from "./artifacts.mjs";
 import { fixtureDefinition } from "./fixtures.mjs";
 import { costMetricsFrom } from "./cost-metrics.mjs";
@@ -194,6 +194,7 @@ export function summarizeRejudged(rows) {
     ),
     thinking,
     comparisonReasons: comparisonReasons(rows),
+    toolDeltaReport: toolDeltaReport(rows),
     changed: rows
       .filter((r) => r.verdict.passed !== r.verdictCorrected.passed)
       .map((r) => ({

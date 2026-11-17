@@ -367,7 +367,43 @@ export function planBatch(arms, tasks, repeats) {
   return plan;
 }
 
-export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
+const toolNameSets = (runs) =>
+  [...new Set(runs.map((r) => JSON.stringify([...(r.availableTools ?? [])].sort())))].sort();
+
+export function toolDeltaReport(rows) {
+  const groups = new Map();
+  for (const row of rows) {
+    for (const run of row.runs ?? []) {
+      const key = `${row.task}/${run.role}`;
+      const group = groups.get(key) ?? { A: [], B: [] };
+      if (row.arm === "A" || row.arm === "B") group[row.arm].push(run);
+      groups.set(key, group);
+    }
+  }
+  const lines = ["工具面差异（信息；工具数量及名称按各臂所有运行的并集）"];
+  for (const [key, { A, B }] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
+    const names = (runs) => [...new Set(runs.flatMap((r) => r.availableTools ?? []))].sort();
+    const a = names(A), b = names(B);
+    const onlyA = a.filter((name) => !b.includes(name));
+    const onlyB = b.filter((name) => !a.includes(name));
+    const same = JSON.stringify(toolNameSets(A)) === JSON.stringify(toolNameSets(B));
+    lines.push(`${key}: 基线臂 A=${a.length}; 精简臂 B=${b.length}`);
+    if (!A.length || !B.length) lines.push("  缺少配对快照");
+    else if (same) lines.push("  无差异");
+    else {
+      lines.push(`  只在基线臂: ${onlyA.join(", ") || "无"}`);
+      lines.push(`  只在精简臂: ${onlyB.join(", ") || "无"}`);
+      if (!onlyA.length && !onlyB.length) lines.push("  名称并集相同，但运行快照的工具集合不同");
+    }
+  }
+  if (!groups.size) lines.push("无可用工具快照");
+  return lines.join("\n");
+}
+
+export function comparisonReasons(
+  rows,
+  { batch = true, dry = false, allowToolDelta = process.env.AB_ALLOW_TOOL_DELTA === "1" } = {},
+) {
   if (!batch) return ["single arm; comparison requires two arms"];
   const reasons = [];
   const add = (reason) => {
@@ -435,9 +471,7 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
       JSON.stringify(levels(a)) !== JSON.stringify(levels(b))
     )
       add(`effective thinking levels differ for ${key}`);
-    const tools = (runs) =>
-      [...new Set(runs.map((r) => JSON.stringify([...(r.availableTools ?? [])].sort())))].sort();
-    if (JSON.stringify(tools(a)) !== JSON.stringify(tools(b)))
+    if (!allowToolDelta && JSON.stringify(toolNameSets(a)) !== JSON.stringify(toolNameSets(b)))
       add(`tool name sets differ for ${key}`);
     if (a.some((x) => b.some((y) => x.systemPromptChars === y.systemPromptChars)))
       add(`system prompt character counts overlap for ${key}`);
@@ -510,6 +544,8 @@ export function summarize(rows, options = {}) {
     "Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.",
   );
   console.table(pairedCostRows(rows));
+  const toolReport = toolDeltaReport(rows);
+  console.log(toolReport);
   const promptSizeComparison =
     options.promptInventories?.length === 2
       ? compareInventories(options.promptInventories)
@@ -517,6 +553,7 @@ export function summarize(rows, options = {}) {
   if (promptSizeComparison) console.log(renderComparison(promptSizeComparison));
   return {
     reasons,
+    toolDeltaReport: toolReport,
     successPopulation,
     groups: [...groups.values()],
     ...(promptSizeComparison ? { promptSizeComparison } : {}),

@@ -27,6 +27,7 @@ AB_REF_A=baseline-ref AB_REF_B=prompt-ref AB_REPEAT=3 AB_MODEL=provider/model \
 | `AB_OUT` | Append-only JSONL, default `.verify/crew-prompt-ab.jsonl` |
 | `AB_TASK_TIMEOUT_MS` | Per-task budget including fixture and startup, default `600000` |
 | `AB_DRY` | `1` uses the private local model fixture; still requires explicit `AB_MODEL` |
+| `AB_ALLOW_TOOL_DELTA` | Default off; only `1` allows intentional differences in role tool names. Other comparison gates remain enforced. |
 | `AB_TASK_SOURCE` | Optional path to the original task document |
 | `SPROUT_PI_PROVIDER_ROOT` | Required for this live pilot: `/Users/snake/workspace/pi-extensions/pi-magpie` |
 
@@ -37,6 +38,18 @@ for that commit. `refs.json` and every ledger row record the resolved `head`; `r
 `testedRef` retain the requested ref.
 
 Before preparation, `plan.json` enumerates every arm/task/repeat.
+
+The console report and `summary.json` include `toolDeltaReport` (工具面差异),
+listing each task/role's baseline A and reduced B tool counts and sorted names found
+only in either arm. Counts and name lists use the union across that arm's runs;
+if snapshot sets differ despite identical unions, the report says so. Identical
+sets report 无差异. Missing paired snapshots are labelled and still refuse comparison.
+This information is emitted with the switch both off and on. To rejudge an existing
+ledger with intentional tool removal, set `AB_ALLOW_TOOL_DELTA=1` when running
+`rejudge.mjs`; its JSON report includes the same `toolDeltaReport` field. The switch
+only suppresses `tool name sets differ for <task>/<role>` reasons; prompt-character
+overlap, thinking, host-resource inheritance, SHA and dry prompt-hash gates retain
+their existing behavior.
 
 Prompt size inventory (no model calls):
 
