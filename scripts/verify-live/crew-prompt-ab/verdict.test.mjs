@@ -6,7 +6,7 @@ import { join } from "node:path";
 import * as core from "./core.mjs";
 import { seedFixture } from "./fixtures.mjs";
 import * as fixtures from "./fixtures.mjs";
-import { artifactAssertions } from "./artifacts.mjs";
+import { artifactAssertions, retryCountReported } from "./artifacts.mjs";
 import { factsFrom } from "./evidence.mjs";
 import { rejudgeRow, rejudgeLedger, summarizeRejudged } from "./rejudge.mjs";
 
@@ -36,39 +36,29 @@ const parallelFacts = (extra = []) => {
   });
 };
 
-test("correction 1: real retry replies accept line references; missing or wrong counts fail", () => {
-  const root = mkdtempSync(join(tmpdir(), "ab-retry-"));
-  try {
-    seedFixture("sandbox-parallel", root);
-    writeFileSync(join(root, "README.md"), "# Sandbox\nRequires Node 22.\n");
-    const replies = JSON.parse(readFileSync(new URL("./parallel-replies.json", import.meta.url)));
-    const check = (text, options = { corrected: true }) =>
-      artifactAssertions(
-        { fixture: "sandbox-parallel" },
-        root,
-        { leadFinalReplyText: text },
-        options,
-      )[0].exitCode;
-    for (const sample of replies) {
-      assert.equal(check(sample.leadFinalReplyText, { corrected: false }), 1);
-      assert.equal(check(sample.leadFinalReplyText), 0, `${sample.arm} r${sample.repeat}`);
-    }
-    for (const text of [
-      "src/retry.js:3; config/retry.json:5",
-      "src/retry.js config/retry.json",
-      "src/retry.js:13; config/retry.json:15",
-      "src/retry.js#L13; config/retry.json#L15",
-      "src/retry.js line 13; config/retry.json line 15",
-      "src/retry.js:1 = 5; config/retry.json:1 = 3",
-      "src/retry.js:1 = 30; config/retry.json:1 = 5",
-      "other/src/retry.js:1 = 3; other/config/retry.json:1 = 5",
-    ])
-      assert.equal(check(text), 1, text);
-    for (const suffix of [":19", "#L19", " line 19"])
-      assert.equal(check(`src/retry.js${suffix} = 3; config/retry.json${suffix} = 5`), 0);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
+test("retry report signal accepts line references; missing or wrong counts remain unreported", () => {
+  const replies = JSON.parse(readFileSync(new URL("./parallel-replies.json", import.meta.url)));
+  const check = (text, corrected = true) =>
+    Object.entries(fixtures.fixtureDefinition("sandbox-parallel").expected.retryCounts).every(
+      ([file, value]) => retryCountReported(text, file, value, corrected),
+    );
+  for (const sample of replies) {
+    assert.equal(check(sample.leadFinalReplyText, false), false);
+    assert.equal(check(sample.leadFinalReplyText), true, `${sample.arm} r${sample.repeat}`);
   }
+  for (const text of [
+    "src/retry.js:3; config/retry.json:5",
+    "src/retry.js config/retry.json",
+    "src/retry.js:13; config/retry.json:15",
+    "src/retry.js#L13; config/retry.json#L15",
+    "src/retry.js line 13; config/retry.json line 15",
+    "src/retry.js:1 = 5; config/retry.json:1 = 3",
+    "src/retry.js:1 = 30; config/retry.json:1 = 5",
+    "other/src/retry.js:1 = 3; other/config/retry.json:1 = 5",
+  ])
+    assert.equal(check(text), false, text);
+  for (const suffix of [":19", "#L19", " line 19"])
+    assert.equal(check(`src/retry.js${suffix} = 3; config/retry.json${suffix} = 5`), true);
 });
 
 test("correction 2: mapped work plus probe passes corrected attribution; unrelated work fails", () => {
@@ -205,22 +195,6 @@ test("correction 6: parallel fixture assigns independent machines by worker prof
   assert.equal(fixtures.scopeForWorker(scopes, "one").machineId, "m1");
   assert.equal(fixtures.scopeForWorker(scopes, "two").machineId, "m2");
   assert.throws(() => fixtures.scopeForWorker(scopes, "unknown"));
-  const root = mkdtempSync(join(tmpdir(), "ab-two-clones-"));
-  try {
-    const machines = scopes.map((s, i) => ({ ...s, worktree: join(root, String(i)) }));
-    for (const machine of machines) seedFixture("sandbox-parallel", machine.worktree);
-    writeFileSync(join(machines[1].worktree, "README.md"), "Requires Node 22.\n");
-    assert.equal(
-      fixtures.parallelAssertionRoot(machines, "Requires Node 22."),
-      machines[1].worktree,
-    );
-    assert.match(readFileSync(join(machines[0].worktree, "README.md"), "utf8"), /Node 18/);
-    assert.throws(() =>
-      fixtures.parallelAssertionRoot([machines[0], machines[0]], "Requires Node 22."),
-    );
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
 });
 
 test("rejudge is read-only, excludes anomalies and is repeatable with incomplete trailing bytes", () => {

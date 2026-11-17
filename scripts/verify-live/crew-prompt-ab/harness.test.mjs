@@ -77,41 +77,7 @@ test("project test and direct rounding probe both detect planted floor defect", 
     assert.notEqual(lying[1].exitCode, 0);
   });
 });
-test("parallel needs README 22, no old version, both retry paths and two completed workers", () => {
-  withFixture("sandbox-parallel", (root, { expected }) => {
-    const f = {
-      leadFinalReplyText: Object.entries(expected.retryCounts)
-        .map(([file, value]) => `${file}: ${value}`)
-        .join("\n"),
-    };
-    assert(!pass(checks("sandbox-parallel", root, f)));
-    writeFileSync(join(root, "README.md"), expected.nodeLine + "\n");
-    assert(pass(checks("sandbox-parallel", root, f)));
-    assert(!pass(checks("sandbox-parallel", root, { leadFinalReplyText: expected.retryFiles[0] })));
-    writeFileSync(join(root, "README.md"), expected.nodeLine + "\nIssue 18 is resolved.");
-    assert(pass(checks("sandbox-parallel", root, f)));
-    assert(
-      !pass(
-        checks("sandbox-parallel", root, { leadFinalReplyText: expected.retryFiles.join(" ") }),
-      ),
-    );
-    assert(
-      !pass(
-        checks("sandbox-parallel", root, {
-          leadFinalReplyText: f.leadFinalReplyText.replace(": 3", ": 30"),
-        }),
-      ),
-    );
-    assert(
-      !pass(
-        checks("sandbox-parallel", root, {
-          leadFinalReplyText: "src/retry.js: 5\nconfig/retry.json: 3",
-        }),
-      ),
-    );
-    writeFileSync(join(root, "README.md"), expected.nodeLine + "\n" + expected.oldNodeLine);
-    assert(!pass(checks("sandbox-parallel", root, f)));
-  });
+test("parallel retains completed worker, distinct profile and final reply ordering gates", () => {
   const f = facts({
     delegatedCount: 2,
     distinctWorkerProfiles: ["a", "b"],

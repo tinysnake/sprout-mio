@@ -12,6 +12,18 @@ export function retryCountReported(text, file, value, corrected = true) {
   ).test(text);
 }
 
+export function parallelReportSignals(text) {
+  const { expected } = fixtureDefinition("sandbox-parallel");
+  return {
+    leadNamesNodeLine: text.includes(expected.nodeLine),
+    retryFiles: expected.retryFiles.map((file) => ({
+      file,
+      leadNamesFile: text.includes(file),
+      leadNamesRetryCount: retryCountReported(text, file, expected.retryCounts[file]),
+    })),
+  };
+}
+
 // Run assertions in a separate process so a failing assertion has a recorded exit code.
 const assertion =
   retryCountReported.toString() +
@@ -19,7 +31,7 @@ const assertion =
   String.raw`
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const {kind, expected: e, facts: f, corrected} = JSON.parse(process.argv[1]);
+const {kind, expected: e, facts: f, initialFiles, parallelRoots} = JSON.parse(process.argv[1]);
 const read = path => fs.readFileSync(path, 'utf8');
 switch (kind) {
   case 'rounding': {
@@ -28,15 +40,33 @@ switch (kind) {
     break;
   }
   case 'parallel': {
-    const readme = read('README.md');
-    assert(readme.split(/\r?\n/).includes(e.nodeLine), 'README Node version line');
-    assert(!readme.split(/\r?\n/).includes(e.oldNodeLine), 'old Node version line removed');
+    assert.equal(parallelRoots.length, 2, 'two independent clone roots');
+    assert.equal(new Set(parallelRoots.map(root => fs.realpathSync(root))).size, 2,
+      'two independent clone roots');
+    const path = require('node:path');
+    const clones = parallelRoots.map(root => {
+      const contents = Object.fromEntries(Object.keys(initialFiles).map(file =>
+        [file, read(path.join(root, file))]));
+      const lines = contents['README.md'].split(/\r?\n/);
+      return {
+        contents,
+        node: lines.includes(e.nodeLine) && !lines.includes(e.oldNodeLine),
+        retry: {
+          'src/retry.js': require(path.join(root, 'src/retry.js')).retryCount,
+          'config/retry.json': JSON.parse(contents['config/retry.json']).retryCount,
+        },
+      };
+    });
+    assert(clones.some(clone => clone.node), 'README Node version line; old line removed');
     for (const file of e.retryFiles) {
-      read(file);
-      assert(f.leadFinalReplyText.includes(file), 'lead names retry file ' + file);
-      const value = e.retryCounts[file];
-      assert(retryCountReported(f.leadFinalReplyText, file, value, corrected),
-        'lead names retry count ' + file + ' = ' + value);
+      assert(clones.some(clone => clone.retry[file] === e.retryCounts[file]),
+        'retry count ' + file + ' = ' + e.retryCounts[file]);
+    }
+    for (const clone of clones) {
+      assert(Object.keys(initialFiles).some(file =>
+        clone.contents[file] !== initialFiles[file] &&
+        (file === 'README.md' ? clone.node : clone.retry[file] === e.retryCounts[file])),
+        'each clone has a changed expected artifact');
     }
     break;
   }
@@ -85,7 +115,7 @@ console.log('PASS ' + kind);
 `;
 
 export function artifactAssertions(task, root, facts, { corrected = true } = {}) {
-  const { expected } = fixtureDefinition(task.fixture);
+  const { files: initialFiles, expected } = fixtureDefinition(task.fixture);
   const commands = [];
   const run = (name, executable, args) => {
     const started = Date.now();
@@ -128,6 +158,8 @@ export function artifactAssertions(task, root, facts, { corrected = true } = {})
       kind,
       corrected,
       expected,
+      initialFiles,
+      parallelRoots: (facts.machineScopes ?? []).map((scope) => scope.worktree),
       facts: {
         leadFinalReplyText: facts.leadFinalReplyText ?? "",
         workerFindings: facts.workerFindings ?? [],

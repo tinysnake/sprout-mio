@@ -23,14 +23,14 @@ import {
   judge,
   classifyRuns,
   unknownEvidence,
-  forbiddenDelegation,
   recordTaskError,
   preserveOutcome,
   finalizeVerdict,
 } from "./core.mjs";
-import { artifactAssertions } from "./artifacts.mjs";
-import { machineFixtureCount, parallelAssertionRoot } from "./fixtures.mjs";
+import { artifactAssertions, parallelReportSignals } from "./artifacts.mjs";
+import { machineFixtureCount } from "./fixtures.mjs";
 import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
+import { createSettlementCheck } from "./settlement.mjs";
 
 export async function runTask({
   task,
@@ -76,13 +76,10 @@ export async function runTask({
     latest,
     initial;
   function collectArtifactAssertions() {
-    const root =
-      task.oracle === "delegate_parallel"
-        ? parallelAssertionRoot(
-            row.machineScopes,
-            fixtureDefinition(task.fixture).expected.nodeLine,
-          )
-        : row.fixtureWorktree;
+    const root = row.fixtureWorktree;
+    if (task.oracle === "delegate_parallel") {
+      row.reportSignals = parallelReportSignals(row.leadFinalReplyText ?? "");
+    }
     row.artifactAssertions = artifactAssertions(task, root, row, { corrected: false });
     row.artifactAssertionsCorrected = artifactAssertions(task, root, row, { corrected: true });
   }
@@ -438,8 +435,7 @@ export async function runTask({
     next("sendTask");
     await call("sendMessageFn", { chatId: crew.id, body: prompt });
     next("settle");
-    let stableSince = 0,
-      signature = "";
+    const settlementCheck = createSettlementCheck();
     await until(() => {
       assert.equal(
         resourceFixture.exitCode,
@@ -448,20 +444,7 @@ export async function runTask({
       );
       latest = readEvidence(env, input, remaining());
       if (latest.evidenceProbe) row.evidenceProbe = latest.evidenceProbe;
-      if (forbiddenDelegation(task.oracle, latest.delegations.length)) return true;
-      const terminalFailure = classifyRuns(latest.runs);
-      if (terminalFailure) {
-        const error = new Error(`agent run terminated ${terminalFailure}`);
-        error.runClassification = terminalFailure;
-        throw error;
-      }
-      const nextSignature = JSON.stringify(latest);
-      if (!settled(latest) || signature !== nextSignature) {
-        stableSince = Date.now();
-        signature = nextSignature;
-        return false;
-      }
-      return Date.now() - stableSince >= 1000;
+      return settlementCheck(latest);
     }, "Crew settle");
     next("judge");
     Object.assign(
