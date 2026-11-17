@@ -10,15 +10,26 @@ import { rejudgeRow } from "./rejudge.mjs";
 const iso = (ms) => new Date(Date.UTC(2026, 10, 17) + ms).toISOString();
 function delivery() {
   return {
-    oracle: "worker_takes_minutes", status: "failed",
+    oracle: "worker_takes_minutes",
+    status: "failed",
     oracleConfig: { delegationCount: 1, minWorkerMs: 180000, maxSleepMs: 500, leadBudgetMs: 90000 },
-    delegatedCount: 1, requiredDelegationArtifacts: ["report.json"],
-    delegationEvidence: [{ status: "completed", requestArtifacts: ["report.json"], workerArtifacts: ["report.json"] }],
-    workerReportedComplete: [true], completeEventTimes: [Date.parse(iso(300000))],
-    leadFinalReplyAtMs: Date.parse(iso(350000)), leadFinalReplyText: "Done",
-    artifactAssertions: [{ exitCode: 0 }], sleepMsTotal: 0,
-    runs: [{ role: "lead", status: "completed", startedAt: iso(0), settledAt: iso(349000), tools: [] }],
-    workerRuns: [{ runId: "worker", status: "completed", startedAt: iso(1000), settledAt: iso(235000) }],
+    delegatedCount: 1,
+    requiredDelegationArtifacts: ["report.json"],
+    delegationEvidence: [
+      { status: "completed", requestArtifacts: ["report.json"], workerArtifacts: ["report.json"] },
+    ],
+    workerReportedComplete: [true],
+    completeEventTimes: [Date.parse(iso(300000))],
+    leadFinalReplyAtMs: Date.parse(iso(350000)),
+    leadFinalReplyText: "Done",
+    artifactAssertions: [{ exitCode: 0 }],
+    sleepMsTotal: 0,
+    runs: [
+      { role: "lead", status: "completed", startedAt: iso(0), settledAt: iso(349000), tools: [] },
+    ],
+    workerRuns: [
+      { runId: "worker", status: "completed", startedAt: iso(1000), settledAt: iso(235000) },
+    ],
   };
 }
 function withSnapshot(t) {
@@ -27,9 +38,32 @@ function withSnapshot(t) {
   const file = join(directory, "session.jsonl");
   const entries = [];
   const turn = (id, calls) => {
-    entries.push({ type: "message", message: { role: "user", content: JSON.stringify({ channel: "sprout_turn_context", runId: id }) } });
-    entries.push({ type: "message", timestamp: iso(10000), message: { role: "assistant", usage: { totalTokens: 10 }, content: calls.map((call, index) => ({ type: "toolCall", id: `${id}-${index}`, ...call })) } });
-    calls.forEach((call, index) => entries.push({ type: "message", message: { role: "toolResult", toolCallId: `${id}-${index}`, isError: call.name === "given" } }));
+    entries.push({
+      type: "message",
+      message: {
+        role: "user",
+        content: JSON.stringify({ channel: "sprout_turn_context", runId: id }),
+      },
+    });
+    entries.push({
+      type: "message",
+      timestamp: iso(10000),
+      message: {
+        role: "assistant",
+        usage: { totalTokens: 10 },
+        content: calls.map((call, index) => ({ type: "toolCall", id: `${id}-${index}`, ...call })),
+      },
+    });
+    calls.forEach((call, index) =>
+      entries.push({
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: `${id}-${index}`,
+          isError: call.name === "given",
+        },
+      }),
+    );
   };
   turn("unrelated", [{ name: "sleep", arguments: { ms: 999999 } }]);
   turn("lead-1", [
@@ -40,8 +74,23 @@ function withSnapshot(t) {
   turn("lead-2", [{ name: "read", arguments: { path: "report.json" } }]);
   turn("worker", []);
   writeFileSync(file, entries.map(JSON.stringify).join("\n") + "\n");
-  const run = (id, chatId, start, end) => ({ id, chatId, status: "completed", startedAt: iso(start), settledAt: iso(end), configSnapshot: { sessionFile: file, tools: ["read", "sleep"] } });
-  const evidence = { delegations: [], events: [], runs: [run("lead-1", "chat", 0, 329000), run("lead-2", "chat", 480000, 500000), run("worker", "child", 17000, 280000)] };
+  const run = (id, chatId, start, end) => ({
+    id,
+    chatId,
+    status: "completed",
+    startedAt: iso(start),
+    settledAt: iso(end),
+    configSnapshot: { sessionFile: file, tools: ["read", "sleep"] },
+  });
+  const evidence = {
+    delegations: [],
+    events: [],
+    runs: [
+      run("lead-1", "chat", 0, 329000),
+      run("lead-2", "chat", 480000, 500000),
+      run("worker", "child", 17000, 280000),
+    ],
+  };
   writeFileSync(join(directory, "domain-evidence.json"), JSON.stringify(evidence));
   return { directory, file, evidence };
 }
@@ -122,9 +171,16 @@ test("offline rejudge rebuilds stale metrics from raw shared transcript and audi
   const { directory, file, evidence } = withSnapshot(t);
   const facts = delivery();
   Object.assign(facts, {
-    evidenceDirectory: directory, sleepMsTotal: null, unmappedArtifacts: null,
+    evidenceDirectory: directory,
+    sleepMsTotal: null,
+    unmappedArtifacts: null,
     toolCallsByRole: { lead: null, worker: null },
-    runs: evidence.runs.map((r) => ({ runId: r.id, chatId: r.chatId, role: r.chatId === "chat" ? "lead" : "worker", tools: [] })),
+    runs: evidence.runs.map((r) => ({
+      runId: r.id,
+      chatId: r.chatId,
+      role: r.chatId === "chat" ? "lead" : "worker",
+      tools: [],
+    })),
   });
   const before = structuredClone(facts);
   const result = rejudgeRow(facts);

@@ -7,31 +7,31 @@
 Live 来源：`/tmp/promptprune-arm-D.md` 对 `/tmp/crew-ab-prune1/` 的 10 格统计。`codemode` 与 execution_list 各调用 1 次，其余下表工具均为 0；延迟暴露不删除产品能力，所以这两项也按指定名单延迟。
 字符数由本分支 `scripts/verify-live/crew-prompt-ab/prompt-inventory.mjs` 的真实 SDK 初始活动集测量，工具名清单与注册清单分别报告。每项首轮节省与激活后恢复的说明字符相等；JSON 语法与工具名长度不计入此口径。
 
-| deferred 工具 | 字符 / 首轮省 / 激活恢复 | 10 格调用 | 角色 |
-| --- | ---: | ---: | --- |
-| codemode | 1422 / 1422 / 1422 | 1 | lead + worker |
-| sprout_remote_execution_cancel | 411 / 411 / 411 | 0 | lead + worker |
-| sprout_remote_execution_wait | 351 / 351 / 351 | 0 | lead + worker |
-| sprout_remote_execution_log | 349 / 349 / 349 | 0 | lead + worker |
-| sprout_remote_execution_get | 230 / 230 / 230 | 0 | lead + worker |
-| sprout_remote_execution_list | 259 / 259 / 259 | 1 | lead + worker |
-| sprout_remote_process_list | 317 / 317 / 317 | 0 | lead + worker |
-| sprout_remote_process_signal | 335 / 335 / 335 | 0 | lead + worker |
-| sprout_resource_request | 210 / 210 / 210 | 0 | lead + worker |
-| sprout_resource_approve | 119 / 119 / 119 | 0 | lead |
-| sprout_resource_revoke | 97 / 97 / 97 | 0 | lead |
-| sprout_resource_takeover | 177 / 177 / 177 | 0 | lead |
-| sprout_task_list | 38 / 38 / 38 | 0 | lead |
-| sprout_task_get | 49 / 49 / 49 | 0 | lead |
-| sprout_task_update | 48 / 48 / 48 | 0 | lead |
-| sprout_task_checklist_add | 49 / 49 / 49 | 0 | lead |
-| sprout_task_checklist_update | 52 / 52 / 52 | 0 | lead |
-| sprout_task_checklist_remove | 52 / 52 / 52 | 0 | lead |
-| sprout_task_record_append | 45 / 45 / 45 | 0 | lead |
-| sprout_task_complete | 62 / 62 / 62 | 0 | lead |
-| sprout_task_cancel | 45 / 45 / 45 | 0 | lead |
-| sprout_chat_get | 42 / 42 / 42 | 0 | lead + worker |
-| sprout_chat_continuation_get | 109 / 109 / 109 | 0 | lead + worker |
+| deferred 工具                  | 字符 / 首轮省 / 激活恢复 | 10 格调用 | 角色          |
+| ------------------------------ | -----------------------: | --------: | ------------- |
+| codemode                       |       1422 / 1422 / 1422 |         1 | lead + worker |
+| sprout_remote_execution_cancel |          411 / 411 / 411 |         0 | lead + worker |
+| sprout_remote_execution_wait   |          351 / 351 / 351 |         0 | lead + worker |
+| sprout_remote_execution_log    |          349 / 349 / 349 |         0 | lead + worker |
+| sprout_remote_execution_get    |          230 / 230 / 230 |         0 | lead + worker |
+| sprout_remote_execution_list   |          259 / 259 / 259 |         1 | lead + worker |
+| sprout_remote_process_list     |          317 / 317 / 317 |         0 | lead + worker |
+| sprout_remote_process_signal   |          335 / 335 / 335 |         0 | lead + worker |
+| sprout_resource_request        |          210 / 210 / 210 |         0 | lead + worker |
+| sprout_resource_approve        |          119 / 119 / 119 |         0 | lead          |
+| sprout_resource_revoke         |             97 / 97 / 97 |         0 | lead          |
+| sprout_resource_takeover       |          177 / 177 / 177 |         0 | lead          |
+| sprout_task_list               |             38 / 38 / 38 |         0 | lead          |
+| sprout_task_get                |             49 / 49 / 49 |         0 | lead          |
+| sprout_task_update             |             48 / 48 / 48 |         0 | lead          |
+| sprout_task_checklist_add      |             49 / 49 / 49 |         0 | lead          |
+| sprout_task_checklist_update   |             52 / 52 / 52 |         0 | lead          |
+| sprout_task_checklist_remove   |             52 / 52 / 52 |         0 | lead          |
+| sprout_task_record_append      |             45 / 45 / 45 |         0 | lead          |
+| sprout_task_complete           |             62 / 62 / 62 |         0 | lead          |
+| sprout_task_cancel             |             45 / 45 / 45 |         0 | lead          |
+| sprout_chat_get                |             42 / 42 / 42 |         0 | lead + worker |
+| sprout_chat_continuation_get   |          109 / 109 / 109 |         0 | lead + worker |
 
 文档核对范围：`docs/crew-core.md`、`docs/*-decisions.md`、`docs/feature-map/**` 与 `src/extension/agent-prompt.ts`。`docs/feature-map/remote-execution.md` 承诺取消、查询与日志；`docs/machines-decisions.md` 承诺进程操作；Crew 文档承诺资源审批、Task 归属和编排。因此这些工具保持可发现、可激活。两个 Chat 查询没有工具级 Crew 承诺，仍保留可发现能力。
 
@@ -47,15 +47,16 @@ Live 来源：`/tmp/promptprune-arm-D.md` 对 `/tmp/crew-ab-prune1/` 的 10 格�
 Inventory 保留原 AST/工厂采集，随后使用真实 SDK session 的 `getActiveToolNames()` 与 `getAllTools()` 分别测量初始活动集与注册集，单列 deferred。未发模型请求。
 真实 runner fixture 用模型 HTTP 请求的 tools 数组作 ground truth：首轮与 ready.tools 完全相同，遍历发现 lead 23 项与 worker 11 项，每项都在后续请求出现；DM 全部候选仍直接声明，DM session 恢复成 Crew 后重新按角色延迟。
 A/B harness `scripts/verify-live/crew-prompt-ab/evidence.mjs:187` 读取 `r.configSnapshot?.tools`，其源头是 ready.snapshot.tools 的活动集；registeredTools 是独立字段，因此 availableTools 可反映首轮裁面。
+
 ## 提示词与最终体量
 
 三条原文逐字保留：`按名字与工作描述挑人，勿凭职级或习惯`；`结束这一轮就是等待，sleep 后查或循环调用 sprout_delegation_list 都是错的`；`重试同次派发保持成员与 request 文本不变`。
 发现指引为「更多工具用tool_search找」，已计入体量；保留派发状态、幂等、资源边界、worker 完成/阻塞、artifact 与项目默认要求。七个 sprout 名字分属各角色热工具，真实请求逐一核对。
 
-| 角色 | `9e0405f` system + tools（active） | arm D system + tools（active / registered） | 本轮总节省 |
-| --- | --- | --- | --- |
-| lead | 1271 + 10396（41） | 1147 + 5528（18 / 41） | 4992 / 42.79% |
-| worker | 986 + 8763（27） | 889 + 4728（16 / 27） | 4132 / 42.38% |
+| 角色   | `9e0405f` system + tools（active） | arm D system + tools（active / registered） | 本轮总节省    |
+| ------ | ---------------------------------- | ------------------------------------------- | ------------- |
+| lead   | 1271 + 10396（41）                 | 1147 + 5528（18 / 41）                      | 4992 / 42.79% |
+| worker | 986 + 8763（27）                   | 889 + 4728（16 / 27）                       | 4132 / 42.38% |
 
 同一 inventory facts 下，应用 prompt（含固定 HTML、persona 与工作描述）从 1232/947 降至 1108/850，分别省 124（10.06%）/97（10.24%）。SDK 附加仍为每角色 39 字符。工具说明首轮分别省 4868/4035；全激活后说明体量恢复为基线 10396/8763。
 

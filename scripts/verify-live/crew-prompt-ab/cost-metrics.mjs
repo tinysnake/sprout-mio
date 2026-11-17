@@ -10,13 +10,7 @@ export function costMetricsFrom({ transcript, toolNames, timings, delegations } 
   const callsFor = (role) => {
     const matching = runs?.filter((run) => run.role === role);
     if (!matching?.length) return null;
-    if (
-      matching.some(
-        (run) =>
-          !Array.isArray(run.tools) ||
-          !Array.isArray(toolNames?.[run.runId]),
-      )
-    )
+    if (matching.some((run) => !Array.isArray(run.tools) || !Array.isArray(toolNames?.[run.runId])))
       return null;
     return matching.flatMap((run) => run.tools);
   };
