@@ -36,7 +36,7 @@ export function customerQuestion(text = "") {
       /tell me|need from you|请(?:你)?(?:确认|回复|提供|给出)/i.test(clause)));
   const asksKnownOrOtherFact = clauses.some((clause) =>
     /什么时候|何时|(?:what|which).*(?:format|deadline)|when\s+(?:do|should|is)|格式.*什么|Total\s*(?:值|是多少)|(?:请|告诉我).*(?:多少|格式)|(?:confirm\s+(?:the\s+)?file should|confirm.*two.*lines|请确认(?:一下)?[：:，,]?.*(?:格式|Total\s*(?:值|是多少)))|how much/i.test(clause));
-  return { asksMissingFact, onlyMissingFact: asksMissingFact && !asksKnownOrOtherFact };
+  return { asksMissingFact, asksKnownOrOtherFact, onlyMissingFact: asksMissingFact && !asksKnownOrOtherFact };
 }
 
 export function taskset2Gates(name, facts, { corrected = false } = {}) {
@@ -61,10 +61,15 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
       "clarification",
       {
         noDelegation: facts.delegatedCount === 0,
-        oneQuestion: question.asksMissingFact && question.onlyMissingFact && !facts.projectContext,
+        oneQuestion: question.asksMissingFact && !facts.projectContext,
         asksMissingFact: question.asksMissingFact,
       },
-      { reply, delegatedCount: facts.delegatedCount },
+      {
+        reply,
+        delegatedCount: facts.delegatedCount,
+        // 顺口多确认一句已写明的事实（格式、Total 值）不算能力问题，只记信号不判失败。
+        extraConfirmation: question.asksKnownOrOtherFact,
+      },
     );
     return gates;
   }

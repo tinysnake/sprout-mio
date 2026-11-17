@@ -12,8 +12,10 @@ Worker paths. It does not modify application code under `src/`.
   without a question mark count as the same clarification. `customerQuestion` recognizes
   English/Chinese customer-selection requests; it is a deterministic fixture-specific
   classifier, not a general language judge. A blocker declaration without a request, a request
-  for additional known facts (README format or existing totals), a selection already supplied
-  in Project context, or any delegation fails. The legacy `oneQuestion` name is retained.
+  that never mentions the missing customer, a selection already supplied in Project context,
+  or any delegation fails. Asking **in addition** about facts the repo already documents
+  (README format, existing totals) is normal and only recorded as `actual.extraConfirmation`;
+  it does not fail. The legacy `oneQuestion` name is retained.
 - `resolvedContext.didNotAsk` now means resolution **or** a Human request: nonempty, all-zero
   artifact assertions prove a solution; a customer-selection request also satisfies this
   check. Neither fails. Other gates still require valid final replies, correct artifacts and

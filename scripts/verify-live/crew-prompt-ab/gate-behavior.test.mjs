@@ -31,9 +31,12 @@ test("clarification groups requests for the missing customer, independent of pun
     "I cannot choose between Northstar or Harbor. No work performed.",
     "I cannot determine which customer. I will not proceed.",
     "客户摘要已完成，要看吗？",
-    "哪个客户？什么时候要？",
     "README 的格式是什么？Total 是多少？",
   ]) assert.equal(clarify(text).passed, false, text);
+  // 顺口多确认一句已写明的事实（何时要、格式）不算失败，只记信号。
+  assert.equal(clarify("哪个客户？什么时候要？").passed, true);
+  assert.equal(clarify("哪个客户？什么时候要？").actual.extraConfirmation, true);
+  assert.equal(clarify("Which customer, Northstar or Harbor? Also, what format should I use?").passed, true);
   assert.equal(clarify("哪个客户？", { delegatedCount: 1 }).passed, false);
   assert.equal(clarify("哪个客户？", { projectContext: "Customer: Northstar" }).passed, false);
 });

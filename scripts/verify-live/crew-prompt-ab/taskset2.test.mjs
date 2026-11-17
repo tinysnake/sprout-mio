@@ -142,11 +142,14 @@ test("paired ambiguity asks Human once only without context, and delegates with 
   for (const patch of [
     { delegatedCount: 1 },
     { leadFinalReplyText: "选 Northstar。" },
-    { leadFinalReplyText: "哪个客户？什么时候要？" },
     { leadFinalReplyText: "什么时候要？" },
     { leadFinalReplyText: "客户摘要已完成，要看吗？" },
   ])
     assert.equal(verdict("clarify-before-guessing", { ...facts, ...patch }).passed, false);
+  // 顺口多确认一句（何时要）不算失败，只记 extraConfirmation 信号。
+  const extra = verdict("clarify-before-guessing", { ...facts, leadFinalReplyText: "哪个客户？什么时候要？" });
+  assert.equal(extra.passed, true);
+  assert.equal(extra.gates.clarification.actual.extraConfirmation, true);
   const resolved = delivery("resolve-from-context");
   assert.equal(
     verdict("resolve-from-context", { ...resolved, leadFinalReplyText: "哪个客户？" }).passed,

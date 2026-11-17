@@ -165,3 +165,15 @@ Baseline: `8d46a13`; branch: `t3/crew-ab-gate-fix`. Only harness files changed; 
 | new1 | 1 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
 | new1 | 1 | A | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
 | new1 | 1 | B | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
+
+## 追加：放宽「顺口多确认一句」（211306f 之后）
+
+用户裁定「顺口多确认一句是正常的」。`clarification.oneQuestion` 不再因为**额外提到仓库已写明的事实**
+（README 格式、既有 Total 值、交付时间）而失败，改为把这种情况记进 `actual.extraConfirmation` 作信号。
+仍然失败的情形不变：完全没提缺失客户、纯 blocker、Project context 已有选择、发生委派。
+
+离线重判（五份历史账本，94 格）：**11 failed→passed、0 passed→failed、83 不变**（放宽前是 11/2/81）。
+两格「passed→failed」回到 passed：`bisect2 B clarify rep1`、`new1 B clarify rep1`。
+
+修正后各批：bisect1 A 9/9 B 7/9；bisect2 A 8/9 B 9/9；bisect3 A 9/9 B 9/9；
+stats1b A 15/15 B 13/15；new1 A 3/5 B 5/5。单测 105/105。
