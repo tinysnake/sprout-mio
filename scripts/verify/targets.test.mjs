@@ -66,6 +66,7 @@ await test("every gate and unit file has an explicit target; only split A/B over
     assert(!inventory.local.includes(id));
   }
   assert.deepEqual(validateUnitTargets(root).local, [
+    "tests/agent-prompt-runner.test.ts",
     "tests/memory-runner.test.ts",
     "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
