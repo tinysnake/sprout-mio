@@ -964,14 +964,13 @@ export function sendDelegationInput(
 export function cancelDelegation(
   input: { delegationId: string; reason: string },
   ctx: ProjectContext,
-): { delegationId: string; status: "canceled" } {
-  return sqlite
+): { delegationId: string; status: "canceled" } | undefined {
+  const canceled = sqlite
     .transaction(() => {
       const row = readDelegationRow(input.delegationId);
-      const crewRow = readCrewRow(row.parentCrewChatId);
       assertCrewLeadOrHuman(row.parentCrewChatId, ctx);
       if (row.status === "completed" || row.status === "failed" || row.status === "canceled")
-        return;
+        return false;
       const running = db
         .select({ runId: agentRun.id })
         .from(agentRun)
@@ -987,11 +986,12 @@ export function cancelDelegation(
         if (run) abortAgentRun(run.id, ctx);
       }
       settle(input.delegationId, "canceled", "canceled", input.reason);
-      return { delegationId: input.delegationId, status: "canceled" as const };
-      void crewRow;
+      return true;
     })
     .immediate();
+  if (!canceled) return;
   deliverPendingDelegations();
+  return { delegationId: input.delegationId, status: "canceled" as const };
 }
 
 export function retryDelegation(

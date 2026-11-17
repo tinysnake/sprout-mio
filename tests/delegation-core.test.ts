@@ -232,7 +232,7 @@ describe("Crew delegation", () => {
     expect(prompt?.body).toContain("process_lost");
   });
 
-  it("cancels a running delegation and aborts its worker run", () => {
+  it("cancels a running delegation, aborts its worker run and delivers the canceled event", () => {
     const result = dispatch("client-cancel-1");
     cancelDelegation({ delegationId: result.delegationId, reason: "方向变了" }, human);
     const view = listCrewDelegations(crew.id, human);
@@ -243,6 +243,20 @@ describe("Crew delegation", () => {
       .where(eq(agentRun.chatId, result.childChatId))
       .all();
     expect(childRuns.every((run) => run.status !== "running")).toBe(true);
+    const delivery = db
+      .select()
+      .from(delegationDelivery)
+      .where(eq(delegationDelivery.delegationId, result.delegationId))
+      .get();
+    expect(delivery?.state).toBe("bound");
+    expect(delivery?.runId).toBeTruthy();
+    const prompt = sqlite
+      .prepare(
+        "SELECT body FROM message WHERE delegation_prompt_for_chat_id = ? ORDER BY rowid DESC",
+      )
+      .get(crew.id) as { body: string } | undefined;
+    expect(prompt?.body).toContain("canceled");
+    expect(prompt?.body).toContain("方向变了");
   });
 
   it("holds a delivery for attention when the lead changed before completion", () => {
