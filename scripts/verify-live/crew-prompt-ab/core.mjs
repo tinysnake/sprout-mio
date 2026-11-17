@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { discoveryOracle, discoveryGates } from "./discovery.mjs";
 import { compareInventories, renderComparison } from "./prompt-inventory.mjs";
 import { taskset2Oracles, taskset2Gates, successCohort, successPopulation } from "./taskset2.mjs";
 import { costMetricsFrom, pairedCostRows } from "./cost-metrics.mjs";
@@ -41,6 +42,7 @@ export const unknownEvidence = {
   token: null,
 };
 export const oracleNames = [
+  discoveryOracle,
   ...taskset2Oracles,
   "delegate_confirmed",
   "delegate_parallel",
@@ -90,7 +92,10 @@ export function evaluateOracle(name, f, { corrected = false } = {}) {
       },
       { atMs: f.leadFinalReplyAtMs ?? null, text: f.leadFinalReplyText ?? null },
     );
-  if (taskset2Oracles.includes(name)) {
+  if (name === discoveryOracle) {
+    validFinal();
+    Object.assign(gates, discoveryGates(f));
+  } else if (taskset2Oracles.includes(name)) {
     validFinal();
     Object.assign(gates, taskset2Gates(name, f, { corrected }));
   } else if (["delegate_confirmed", "delegate_parallel", "worker_finishes"].includes(name)) {
@@ -276,7 +281,8 @@ export function finalizeVerdict(row) {
   if (evaluated) {
     for (const verdict of [row.verdict, row.verdictCorrected]) {
       verdict.evaluated = verdict.passed !== null;
-      verdict.outcome = verdict.passed === null ? "unmeasured" : verdict.passed ? "passed" : "failed";
+      verdict.outcome =
+        verdict.passed === null ? "unmeasured" : verdict.passed ? "passed" : "failed";
     }
     if (row.verdict.passed === null) {
       row.status = "unmeasured";
@@ -383,7 +389,8 @@ export function toolDeltaReport(rows) {
   const lines = ["工具面差异（信息；工具数量及名称按各臂所有运行的并集）"];
   for (const [key, { A, B }] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
     const names = (runs) => [...new Set(runs.flatMap((r) => r.availableTools ?? []))].sort();
-    const a = names(A), b = names(B);
+    const a = names(A),
+      b = names(B);
     const onlyA = a.filter((name) => !b.includes(name));
     const onlyB = b.filter((name) => !a.includes(name));
     const same = JSON.stringify(toolNameSets(A)) === JSON.stringify(toolNameSets(B));
@@ -411,7 +418,9 @@ export function comparisonReasons(
   };
   if (rows.some((r) => !["passed", "failed"].includes(r.status)))
     add("incomplete batch: anomalous or not_run items");
-  if (rows.some((row) => [row.verdict, row.verdictCorrected].some((v) => v?.outcome === "unmeasured")))
+  if (
+    rows.some((row) => [row.verdict, row.verdictCorrected].some((v) => v?.outcome === "unmeasured"))
+  )
     add("unmeasured oracle gates");
   const arms = [...new Set(rows.map((r) => r.arm))];
   if (arms.length !== 2) add("comparison requires two arms");

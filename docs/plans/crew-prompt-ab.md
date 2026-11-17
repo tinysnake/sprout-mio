@@ -2,6 +2,12 @@
 
 给 crew lead 与 delegation worker 换上按处境组装的 system prompt 之后，看委派链路的任务成功率有没有变化。
 
+## 延迟工具发现题
+
+`discover-deferred-tool` 是 primary，使用独立 requester 引导语，正文和追加环境信息均不提示工具名、搜索机制或工具暴露策略。Machine 克隆可写，本地副本只读；新题关闭通用资源 coordinator，不预建请求或授权，成员必须申请、负责人必须批准，Machine 写工具由真实 Crew 授权校验保护。
+
+Oracle 要求真实委派、匹配 worker run 与目标目录的持久化资源申请及成功调用、匹配请求 ID 的 lead 批准及数据库批准者、真实 Machine 文件 `channel=stable` 且 `retries=2`、有效最终答复。`tool_search` 必须至少实际调用一次；次数和角色写入 `reportSignals` 与 discovery gate。无搜索、漏申请、空口声称获批、工具调用失败均失败。资源 gate 也识别真实请求的业务故障原因（owner_conflict、directory_changed、membership_changed、machine_offline、drain_unconfirmed）及关联请求 ID/原因的结构化 `resource_unavailable` blocked 回执；找不到工具或普通自然语言放弃不能替代该证据。blocked 不豁免 artifactsPass，未交付产物的格仍判失败。
+
 ## 主张，跑之前写死
 
 在同一套任务、同一个模型、同一台机器上，只把提示词骨架这一段换掉，任务成功率从 X% 变成 Y%。
@@ -154,6 +160,14 @@
       "delegationCount": 1
     },
     "failureMode": "表面缺少客户名，但项目上下文已提供；机械追问会停工，应读取上下文后正确委派。"
+  },
+  {
+    "id": "discover-deferred-tool",
+    "category": "primary",
+    "failureMode": "长尾工具未进入首轮活动集时，成员与负责人仍能发现并完成资源申请及批准，不能因找不到操作而放弃。",
+    "prompt": "请安排一位成员在团队机器的项目目录里，把 config/release.json 的发布通道从 preview 改为 stable，保留 retries 的值。该目录的写入需要你批准授权，目前成员还没有授权。完成后请验收实际文件并汇报。",
+    "fixture": "sandbox-discovery",
+    "oracle": "discover_deferred_tool"
   },
   {
     "id": "budgeted-parallel-delivery",

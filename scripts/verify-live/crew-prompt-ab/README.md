@@ -7,6 +7,24 @@ Worker paths. It does not modify application code under `src/`.
 
 Single arm:
 
+`discover-deferred-tool` is a primary task for deferred resource discovery. Its requester
+prompt contains no tool names or discovery hints. Unlike the other tasks, it disables the
+resource coordinator: only the model's worker request and lead approval can authorize the
+Machine directory. The oracle joins successful transcript calls to persisted request/run,
+delegation, Machine and directory IDs, requires a real `tool_search` call, and checks the
+Machine file changed to `channel=stable` while `retries=2` remains intact. `reportSignals`
+records search count/roles and request/approval call counts. A structured business block needs
+a persisted resource fault and a successful blocked receipt naming that request and reason;
+missing tools are not a business block. Blocking never waives the artifact assertion.
+
+A local transport-only check for this task (expected oracle failure, successful harness exit):
+
+```sh
+AB_DRY=1 AB_REF=a0b3793 AB_TASKS=discover-deferred-tool \
+  AB_MODEL=sprout-verify-local/chat-owner \
+  bash scripts/verify-live/crew-prompt-ab.sh
+```
+
 ```sh
 AB_REF=origin/main AB_ARM=A AB_MODEL=provider/model \
   bash scripts/verify-live/crew-prompt-ab.sh

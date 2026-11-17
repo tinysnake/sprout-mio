@@ -14,7 +14,8 @@ let output;
 try {
  const crew=listCrewDelegations(chatId,ctx);
  const chatIds=[chatId,...crew.delegations.map(d=>d.childChatId)];
- output=JSON.stringify({...crew,runs:chatIds.flatMap(id=>listAgentRuns(id,ctx)),messages:listMessages(chatId,ctx)});
+ const resourceRequests=sqlite.prepare("SELECT id, run_id AS runId, delegation_id AS delegationId, client_request_id AS clientRequestId, machine_id AS machineId, directory_real_path AS directoryRealPath, approval, approved_by_instance_id AS approvedByInstanceId, reason FROM crew_resource_request WHERE crew_chat_id=?").all(chatId);
+ output=JSON.stringify({...crew,resourceRequests,runs:chatIds.flatMap(id=>listAgentRuns(id,ctx)),messages:listMessages(chatId,ctx)});
 } finally {sqlite.close()}
 process.stdout.write(output+'\\n',()=>process.exit(0));
 `;
@@ -291,6 +292,7 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
       timings: observations,
       delegations: e.delegations,
     }),
+    resourceRequests: e.resourceRequests ?? [],
     delegatedCount: e.delegations.length,
     requiredDelegationArtifacts,
     delegationEvidence,

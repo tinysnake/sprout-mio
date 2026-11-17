@@ -47,7 +47,7 @@ const checks = (fixture, root, f = {}) => artifactAssertions({ fixture }, root, 
 const pass = (rows) => rows.every((r) => r.exitCode === 0);
 
 test("task list and oracle names remain in the owning document", () => {
-  assert.equal(tasks.length, 11);
+  assert.equal(tasks.length, 12);
   assert.equal(new Set(tasks.map((t) => t.id)).size, tasks.length);
 });
 test("claims and complete receipts cannot substitute for artifact commands", () => {

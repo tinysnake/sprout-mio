@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { discoveryOracle, discoveryPrompt, discoverySignals } from "./discovery.mjs";
 import { spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { networkInterfaces } from "node:os";
@@ -84,6 +85,7 @@ export async function runTask({
     if (task.oracle === "delegate_parallel") {
       row.reportSignals = parallelReportSignals(row.leadFinalReplyText ?? "");
     }
+    if (task.oracle === discoveryOracle) row.reportSignals = discoverySignals(row);
     row.artifactAssertions = artifactAssertions(task, root, row, { corrected: false });
     row.artifactAssertionsCorrected = artifactAssertions(task, root, row, { corrected: true });
   }
@@ -419,36 +421,44 @@ export async function runTask({
     row.machineScope = scope;
     env.AB_RESOURCE_FIXTURE = join(directory, "resource-fixture.json");
     writeFileSync(env.AB_RESOURCE_FIXTURE, JSON.stringify({ ...input, scopes: row.machineScopes }));
-    const resourceFixture = launch(
-      ["--import", "tsx", fileURLToPath(new URL("./resource-fixture.mjs", import.meta.url))],
-      "resource-fixture.log",
-    );
-    await until(
-      () => {
-        assert(
-          resourceFixture.exitCode === null,
-          "resource fixture exited; see resource-fixture.log",
-        );
-        return readFileSync(join(directory, "resource-fixture.log"), "utf8").includes(
-          "AB_RESOURCE_FIXTURE_READY",
-        );
-      },
-      "resource fixture ready",
-      30000,
-    );
+    const resourceFixture =
+      task.oracle === discoveryOracle
+        ? null
+        : launch(
+            ["--import", "tsx", fileURLToPath(new URL("./resource-fixture.mjs", import.meta.url))],
+            "resource-fixture.log",
+          );
+    if (resourceFixture)
+      await until(
+        () => {
+          assert(
+            resourceFixture.exitCode === null,
+            "resource fixture exited; see resource-fixture.log",
+          );
+          return readFileSync(join(directory, "resource-fixture.log"), "utf8").includes(
+            "AB_RESOURCE_FIXTURE_READY",
+          );
+        },
+        "resource fixture ready",
+        30000,
+      );
     row.resourceFixturePolicy =
-      "approve and allocate delegated Machine scopes atomically through frozen domain APIs as the current lead; service retains reconciliation and drain";
+      task.oracle === discoveryOracle
+        ? "no fixture requests or approvals; model must obtain Crew write authorization"
+        : "approve and allocate delegated Machine scopes atomically through frozen domain APIs as the current lead; service retains reconciliation and drain";
     const prompt =
-      task.prompt +
-      "\n\nFixture execution environment (identical in both arms):\n" +
-      (task.projectContext ? `Project context: ${task.projectContext}\n` : "") +
-      (task.members
-        ? `Team responsibilities: ${JSON.stringify(members.map((member, index) => ({ ...member, profileId: agents[index + 1].id })))}\n`
-        : "") +
-      `The writable repositories are on the Crew Machines. Local host tools are read-only. ` +
-      `The fixture coordinator registers and approves the assigned Machine scope for each worker profile: ${JSON.stringify(row.machineScopes)}. Use the scope assigned to that workerProfileId (a null profile permits any worker), include its directoryRealPath and resource scope in the worker request. Each machine has an independent clone of the same fixture. ` +
-      "The worker must use the approved Crew resource authorization from info_hub to run remote file/shell tools; never use sprout_lease_acquire, handoff or grant. If authorization is not active yet, inspect resource status before running. Use relative file paths within the approved directory. " +
-      "For work kept by the lead, request and approve a lead_run resource through sprout_resource_request and sprout_resource_approve.";
+      task.oracle === discoveryOracle
+        ? discoveryPrompt(task, row.machineScopes)
+        : task.prompt +
+          "\n\nFixture execution environment (identical in both arms):\n" +
+          (task.projectContext ? `Project context: ${task.projectContext}\n` : "") +
+          (task.members
+            ? `Team responsibilities: ${JSON.stringify(members.map((member, index) => ({ ...member, profileId: agents[index + 1].id })))}\n`
+            : "") +
+          `The writable repositories are on the Crew Machines. Local host tools are read-only. ` +
+          `The fixture coordinator registers and approves the assigned Machine scope for each worker profile: ${JSON.stringify(row.machineScopes)}. Use the scope assigned to that workerProfileId (a null profile permits any worker), include its directoryRealPath and resource scope in the worker request. Each machine has an independent clone of the same fixture. ` +
+          "The worker must use the approved Crew resource authorization from info_hub to run remote file/shell tools; never use sprout_lease_acquire, handoff or grant. If authorization is not active yet, inspect resource status before running. Use relative file paths within the approved directory. " +
+          "For work kept by the lead, request and approve a lead_run resource through sprout_resource_request and sprout_resource_approve.";
     writeFileSync(join(directory, "task-prompt.txt"), prompt);
     if (fixture)
       fixture.arm("chatOwner", {
@@ -465,7 +475,7 @@ export async function runTask({
     const settlementCheck = createSettlementCheck();
     await until(() => {
       assert.equal(
-        resourceFixture.exitCode,
+        resourceFixture?.exitCode ?? null,
         null,
         "resource fixture exited; see resource-fixture.log",
       );

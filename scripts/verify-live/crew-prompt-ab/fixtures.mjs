@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { discoveryFixture } from "./discovery.mjs";
 import { taskset2Fixtures } from "./taskset2-fixtures.mjs";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -15,6 +16,7 @@ export function fixtureDefinition(name) {
   const queue =
     "const queue = [];\nexports.enqueue = item => queue.push(item);\nexports.drain = handler => {\n  while (queue.length) {\n    handler(queue[0]);\n  }\n};\n";
   const definitions = {
+    "sandbox-discovery": discoveryFixture,
     ...taskset2Fixtures(),
     "sandbox-fix": {
       files: {

@@ -13,7 +13,7 @@ import {
   scopeForWorker,
 } from "./fixtures.mjs";
 import { artifactAssertions } from "./artifacts.mjs";
-import { maxActiveWorkers, successPopulation } from "./taskset2.mjs";
+import { maxActiveWorkers, successPopulation, taskset2Oracles } from "./taskset2.mjs";
 import { summarizeRejudged } from "./rejudge.mjs";
 
 const tasks = taskSet(
@@ -218,7 +218,7 @@ test("matrix attribution accepts successful assigned build commands, not lead-on
 test("planner and all new repositories are usable; artifacts reject missing or fabricated outcomes", (t) => {
   const root = mkdtempSync(join(tmpdir(), "ab-taskset2-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const added = tasks.filter((task) => task.failureMode);
+  const added = tasks.filter((task) => taskset2Oracles.includes(task.oracle));
   assert.equal(added.length, 5);
   assert.equal(planBatch([{ arm: "A" }, { arm: "B" }], added, 1).length, 10);
   for (const task of added) {

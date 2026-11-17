@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { discoveryOracle, discoveryArtifacts } from "./discovery.mjs";
 import { fixtureDefinition } from "./fixtures.mjs";
 import { inspectTaskset2Artifacts } from "./taskset2-fixtures.mjs";
 
@@ -116,6 +117,7 @@ console.log('PASS ' + kind);
 `;
 
 export function artifactAssertions(task, root, facts, { corrected = true } = {}) {
+  if (task.oracle === discoveryOracle) return discoveryArtifacts(facts.machineScopes ?? []);
   const taskset2 = inspectTaskset2Artifacts(
     task,
     facts.machineScopes?.length ? facts.machineScopes : [{ worktree: root }],
