@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, realpathSync, existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { comparisonReasons, finalizeVerdict, toolDeltaReport } from "./core.mjs";
+import { comparisonReasons, finalizeVerdict, toolDeltaReport, serviceFailureFor } from "./core.mjs";
 import { retryCountReported } from "./artifacts.mjs";
 import { fixtureDefinition } from "./fixtures.mjs";
 import { costMetricsFrom } from "./cost-metrics.mjs";
@@ -15,8 +15,18 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const uniform = (values) =>
   values.length && values.every((v) => v != null && v === values[0]) ? values[0] : null;
 
+export function backfillFailureDetail(row) {
+  if (row.status === "passed" || row.errorCode != null) return row;
+  const failure = serviceFailureFor(row.evidenceDirectory);
+  if (!failure) return row;
+  row.errorName ??= failure.errorName;
+  row.errorCode ??= failure.errorCode;
+  row.serviceFailure ??= failure;
+  return row;
+}
+
 export function rejudgeRow(input) {
-  const row = structuredClone(input);
+  const row = backfillFailureDetail(structuredClone(input));
   const audit = {
     version: 2,
     evidence: [],
