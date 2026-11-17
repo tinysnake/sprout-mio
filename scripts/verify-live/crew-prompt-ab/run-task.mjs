@@ -481,10 +481,15 @@ export async function runTask({
       );
       latest = readEvidence(env, input, remaining());
       if (latest.evidenceProbe) row.evidenceProbe = latest.evidenceProbe;
-      return settlementCheck(latest, artifactSnapshot(
-        row.machineScopes,
-        [...new Set([...Object.keys(initial), ...(fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [])])],
-      ));
+      return settlementCheck(
+        latest,
+        artifactSnapshot(row.machineScopes, [
+          ...new Set([
+            ...Object.keys(initial),
+            ...(fixtureDefinition(task.fixture).expected.delegationArtifacts ?? []),
+          ]),
+        ]),
+      );
     }, "Crew settle");
     next("judge");
     Object.assign(

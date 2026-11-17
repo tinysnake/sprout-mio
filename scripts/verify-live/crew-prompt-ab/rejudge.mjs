@@ -17,11 +17,17 @@ const uniform = (values) =>
 
 export function rejudgeRow(input) {
   const row = structuredClone(input);
-  const audit = { version: 2, evidence: [], warnings: [],
-    originalOutcome: ["passed", "failed"].includes(input.status) ? {
-      status: input.status, passed: input.passed ?? null,
-      failedGates: input.verdict?.failedGates ?? [],
-    } : null,
+  const audit = {
+    version: 2,
+    evidence: [],
+    warnings: [],
+    originalOutcome: ["passed", "failed"].includes(input.status)
+      ? {
+          status: input.status,
+          passed: input.passed ?? null,
+          failedGates: input.verdict?.failedGates ?? [],
+        }
+      : null,
   };
   let evidence;
   if (row.evidenceDirectory) {
@@ -110,10 +116,14 @@ export function rejudgeRow(input) {
   });
   if (row.oracle === discoveryOracle && !discoveryWriteAuthorization(row)) {
     for (const key of ["artifactAssertions", "artifactAssertionsCorrected"]) {
-      row[key] = (row[key] ?? []).map((entry) => ({ ...entry, exitCode: 1,
-        rejudged: { originalExitCode: entry.exitCode,
+      row[key] = (row[key] ?? []).map((entry) => ({
+        ...entry,
+        exitCode: 1,
+        rejudged: {
+          originalExitCode: entry.exitCode,
           source: "persisted worker request, lead approval and operation order",
-          error: "missing or unapproved Machine write provenance" },
+          error: "missing or unapproved Machine write provenance",
+        },
       }));
     }
   }

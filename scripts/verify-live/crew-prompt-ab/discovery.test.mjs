@@ -148,7 +148,8 @@ test("discovery: missing delegation and unchanged Machine file fail", () => {
     artifactFacts.runs[1].tools[1].atMs = 1;
     artifactFacts.runs[0].tools[1].atMs = 2;
     artifactFacts.runs[1].tools.push({
-      ...call("sprout_remote_file_write", { machineId: "machine" }), atMs: 3,
+      ...call("sprout_remote_file_write", { machineId: "machine" }),
+      atMs: 3,
     });
     assert.equal(artifactAssertions(task, root, artifactFacts)[0].exitCode, 1);
     writeFileSync(join(root, "config/release.json"), '{"channel":"stable","retries":2}\n');

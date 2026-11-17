@@ -14,42 +14,42 @@ Baseline: `8d46a13`; branch: `t3/crew-ab-gate-fix`. Only harness files changed; 
 
 ## Historical ledger provenance
 
-| batch | rows | source SHA-256 |
-| --- | ---: | --- |
-| bisect1 | 18 | `50914f9d576d523463a8e3ee5a0255031142efd4add7b6980224e200b2286afd` |
-| bisect2 | 18 | `8cba1fd3b51888f52c4ac3a8d0d7888edddb279dea349bde9a519ffcf9a96548` |
-| bisect3 | 18 | `7b334fb25ecbe2ef73ef7810fa63a93ea9f23b9e192a4c528f4c05de2c8517bd` |
-| stats1b | 30 | `24ea0d3746f6a60ddee248d035c0335459ed26fc90362f47697f75a04a83a1da` |
-| new1 | 10 | `80efbc1bc0f83198ea09046204b7475c38572a276777c64dc2a650c24e877395` |
-| disc1 | 2 | `63c964ca326428a659706780b276ab390f12ec4b96494e910d9deda425868ee0` |
+| batch   | rows | source SHA-256                                                     |
+| ------- | ---: | ------------------------------------------------------------------ |
+| bisect1 |   18 | `50914f9d576d523463a8e3ee5a0255031142efd4add7b6980224e200b2286afd` |
+| bisect2 |   18 | `8cba1fd3b51888f52c4ac3a8d0d7888edddb279dea349bde9a519ffcf9a96548` |
+| bisect3 |   18 | `7b334fb25ecbe2ef73ef7810fa63a93ea9f23b9e192a4c528f4c05de2c8517bd` |
+| stats1b |   30 | `24ea0d3746f6a60ddee248d035c0335459ed26fc90362f47697f75a04a83a1da` |
+| new1    |   10 | `80efbc1bc0f83198ea09046204b7475c38572a276777c64dc2a650c24e877395` |
+| disc1   |    2 | `63c964ca326428a659706780b276ab390f12ec4b96494e910d9deda425868ee0` |
 
 ## Outcome summary
 
-| batch | cells | failed → passed | passed → failed | unchanged |
-| --- | ---: | ---: | ---: | ---: |
-| bisect1 | 18 | 2 | 0 | 16 |
-| bisect2 | 18 | 2 | 1 | 15 |
-| bisect3 | 18 | 1 | 0 | 17 |
-| stats1b | 30 | 5 | 0 | 25 |
-| new1 | 10 | 1 | 1 | 8 |
+| batch   | cells | failed → passed | passed → failed | unchanged |
+| ------- | ----: | --------------: | --------------: | --------: |
+| bisect1 |    18 |               2 |               0 |        16 |
+| bisect2 |    18 |               2 |               1 |        15 |
+| bisect3 |    18 |               1 |               0 |        17 |
+| stats1b |    30 |               5 |               0 |        25 |
+| new1    |    10 |               1 |               1 |         8 |
 
 ## Every changed cell
 
-| batch | rep | arm | task | before | after | reason |
-| --- | ---: | --- | --- | --- | --- | --- |
-| bisect1 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect1 | 3 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect2 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect2 | 1 | B | clarify-before-guessing | passed | failed | 除客户选择外额外索取 Total 值，不满足只询问缺失事实。 |
-| bisect2 | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect3 | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 1 | B | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 1 | B | resolve-from-context | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。 |
-| stats1b | 2 | B | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 2 | B | resolve-from-context | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。 |
-| new1 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| new1 | 1 | B | clarify-before-guessing | passed | failed | 同时要求确认 README 已给出的两行格式，超出了缺失的客户选择。 |
+| batch   | rep | arm | task                    | before | after  | reason                                                           |
+| ------- | --: | --- | ----------------------- | ------ | ------ | ---------------------------------------------------------------- |
+| bisect1 |   1 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect1 |   3 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect2 |   1 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect2 |   1 | B   | clarify-before-guessing | passed | failed | 除客户选择外额外索取 Total 值，不满足只询问缺失事实。            |
+| bisect2 |   2 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect3 |   2 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   1 | B   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   1 | B   | resolve-from-context    | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。           |
+| stats1b |   2 | B   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   2 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   2 | B   | resolve-from-context    | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。           |
+| new1    |   1 | A   | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| new1    |   1 | B   | clarify-before-guessing | passed | failed | 同时要求确认 README 已给出的两行格式，超出了缺失的客户选择。     |
 
 ## Brief discrepancies and limits
 
@@ -63,108 +63,108 @@ Baseline: `8d46a13`; branch: `t3/crew-ab-gate-fix`. Only harness files changed; 
 ## Discovery historical negative control
 
 | arm | original artifact exit | revised artifact exit | outcome |
-| --- | ---: | ---: | --- |
-| A | 0 | 1 | failed |
-| B | 0 | 1 | failed |
+| --- | ---------------------: | --------------------: | ------- |
+| A   |                      0 |                     1 | failed  |
+| B   |                      0 |                     1 | failed  |
 
 ## Every historical cell
 
-| batch | rep | arm | task | before | after | reason |
-| --- | ---: | --- | --- | --- | --- | --- |
-| bisect1 | 1 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 1 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect1 | 1 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 1 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 1 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | A | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 2 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 3 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 3 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 3 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect1 | 3 | B | clarify-before-guessing | failed | failed | 不变；失败门仍为 clarification。 |
-| bisect1 | 3 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect1 | 3 | B | resolve-from-context | failed | failed | 不变；失败门仍为 artifactsPass,resolvedContext。 |
-| bisect2 | 1 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 1 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect2 | 1 | B | clarify-before-guessing | passed | failed | 除客户选择外额外索取 Total 值，不满足只询问缺失事实。 |
-| bisect2 | 1 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 1 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 2 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 2 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 2 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect2 | 2 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 2 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 3 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 3 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 3 | A | clarify-before-guessing | failed | failed | 不变；失败门仍为 clarification。 |
-| bisect2 | 3 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 3 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect2 | 3 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | A | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 1 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 2 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 2 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 2 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| bisect3 | 2 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 2 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | A | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| bisect3 | 3 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | A | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | B | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | A | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | B | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 1 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | B | resolve-from-context | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。 |
-| stats1b | 1 | A | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 1 | B | budgeted-parallel-delivery | failed | failed | 不变；失败门仍为 parallelBudget。 |
-| stats1b | 2 | B | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 2 | A | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 2 | B | route-by-description | failed | failed | 不变；失败门仍为 delegatedDelivery,routing。 |
-| stats1b | 2 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 2 | B | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 2 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| stats1b | 2 | B | resolve-from-context | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。 |
-| stats1b | 2 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 2 | B | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 2 | A | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | A | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | B | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | A | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | A | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | B | clarify-before-guessing | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | A | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| stats1b | 3 | B | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | A | worker-takes-minutes | failed | failed | 不变；失败门仍为 eventDrivenWait。 |
-| new1 | 1 | B | worker-takes-minutes | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | A | route-by-description | failed | failed | 不变；失败门仍为 delegatedDelivery,routing。 |
-| new1 | 1 | B | route-by-description | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | A | clarify-before-guessing | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
-| new1 | 1 | B | clarify-before-guessing | passed | failed | 同时要求确认 README 已给出的两行格式，超出了缺失的客户选择。 |
-| new1 | 1 | A | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | B | resolve-from-context | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | A | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
-| new1 | 1 | B | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。 |
+| batch   | rep | arm | task                       | before | after  | reason                                                           |
+| ------- | --: | --- | -------------------------- | ------ | ------ | ---------------------------------------------------------------- |
+| bisect1 |   1 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   1 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   1 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect1 |   1 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   1 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   1 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | A   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   2 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   3 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   3 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   3 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect1 |   3 | B   | clarify-before-guessing    | failed | failed | 不变；失败门仍为 clarification。                                 |
+| bisect1 |   3 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect1 |   3 | B   | resolve-from-context       | failed | failed | 不变；失败门仍为 artifactsPass,resolvedContext。                 |
+| bisect2 |   1 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   1 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   1 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect2 |   1 | B   | clarify-before-guessing    | passed | failed | 除客户选择外额外索取 Total 值，不满足只询问缺失事实。            |
+| bisect2 |   1 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   1 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   2 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   2 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   2 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   2 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect2 |   2 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   2 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   3 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   3 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   3 | A   | clarify-before-guessing    | failed | failed | 不变；失败门仍为 clarification。                                 |
+| bisect2 |   3 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   3 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect2 |   3 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | A   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   1 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   2 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   2 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   2 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   2 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| bisect3 |   2 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   2 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | A   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| bisect3 |   3 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | A   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | B   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | A   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | B   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   1 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | B   | resolve-from-context       | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。           |
+| stats1b |   1 | A   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   1 | B   | budgeted-parallel-delivery | failed | failed | 不变；失败门仍为 parallelBudget。                                |
+| stats1b |   2 | B   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   2 | A   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   2 | B   | route-by-description       | failed | failed | 不变；失败门仍为 delegatedDelivery,routing。                     |
+| stats1b |   2 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   2 | B   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   2 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| stats1b |   2 | B   | resolve-from-context       | failed | passed | 产物断言全为零；交付报告中的问号不再否定已完成的自解。           |
+| stats1b |   2 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   2 | B   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   2 | A   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | A   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | B   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | A   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | A   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | B   | clarify-before-guessing    | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | A   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| stats1b |   3 | B   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | A   | worker-takes-minutes       | failed | failed | 不变；失败门仍为 eventDrivenWait。                               |
+| new1    |   1 | B   | worker-takes-minutes       | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | A   | route-by-description       | failed | failed | 不变；失败门仍为 delegatedDelivery,routing。                     |
+| new1    |   1 | B   | route-by-description       | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | A   | clarify-before-guessing    | failed | passed | 未委派，明确请求选定客户；候选问句或无问号请求属于同一缺失事实。 |
+| new1    |   1 | B   | clarify-before-guessing    | passed | failed | 同时要求确认 README 已给出的两行格式，超出了缺失的客户选择。     |
+| new1    |   1 | A   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | B   | resolve-from-context       | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | A   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
+| new1    |   1 | B   | budgeted-parallel-delivery | passed | passed | 不变；通过全部原判据。                                           |
 
 ## 追加：放宽「顺口多确认一句」（211306f 之后）
 
