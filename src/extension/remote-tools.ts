@@ -28,7 +28,7 @@ import { objectToolParameters } from "./tool-parameters";
 import type { SproutExtensionAPI, SproutToolResult } from "./types";
 
 export const INFO_HUB_TOOL_DESCRIPTION =
-  "Read bounded Project, Chat, Agent, or Machine basic facts in this run’s Project. Use sections and nextCursor to page; refresh from page one on info_hub_cursor_stale. Status and held leases are facts, never execution grants. Chat/Task bodies, turn-context capture, and hint delivery are unavailable through this tool. Execution identity comes only from the live process grant.";
+  "Read bounded Project/Chat/Agent/Machine facts in this run’s Project. Page with sections and nextCursor; on info_hub_cursor_stale refresh from page one. Status and held leases are facts, never execution grants. This tool can’t read Chat/Task bodies, capture turn context, or deliver hints. Execution identity comes only from the live process grant.";
 
 /** 取消工具只暴露意图与当前代次：Project 由宿主注入，身份不可由参数冒充。 */
 const cancelToolInputSchema = remoteToolInputSchemas.sprout_remote_execution_cancel;
@@ -38,54 +38,53 @@ type ToolName = keyof typeof remoteToolInputSchemas;
 
 const descriptions: Record<ToolName, string> = {
   sprout_resource_request:
-    "提交绑定原 run 的 Crew Machine 资源需求，等待 lead 批准；目录范围校验不提供文件系统沙箱。先用 sprout_info_hub 读取当前 Crew 上下文；crewChatId 是所属 Crew 对话 ID，不能填写委派子对话 ID，crewEpoch 使用当前 Crew 的 epoch。",
-  sprout_resource_approve:
-    "当前 Crew lead 按 epoch/revision 批准资源请求中明确的 Machine、目录及操作范围。",
-  sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；runtime 等待远端排空后归还。",
-  sprout_resource_release: "原 worker/lead run 提交资源归还意图，排空完成前保持占槽。",
+    "提交绑定原 run 的 Crew Machine 资源需求，等 lead 批准；目录范围校验≠文件系统沙箱。先读 sprout_info_hub 当前 Crew 上下文；crewChatId=所属 Crew 对话 ID，非委派子对话 ID；crewEpoch=当前 Crew epoch。",
+  sprout_resource_approve: "当前 Crew lead 按 epoch/revision 批准请求内的 Machine、目录与操作范围。",
+  sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；远端排空后归还。",
+  sprout_resource_release: "原 worker/lead run 提交资源归还意图；排空前保持占槽。",
   sprout_resource_takeover:
-    "当前 Crew lead 在不经原 worker 同意的情况下把 Machine 资源改派给自己或另一名同 Crew 运行中的 worker。旧授权先冻结，待远端执行排空后新目标才获得授权；重复调用按 clientRequestId 去重。",
+    "当前 Crew lead 可不经原 worker 同意，把 Machine 资源改派给自己或同 Crew 另一运行中 worker。旧授权先冻结，远端排空后新目标才获授权；重复调用按 clientRequestId 去重。",
   sprout_chat_continuation_get:
-    "读取当前 Chat 的对话接续模式、周期检查、提醒和投递状态；不能暂停、停止、恢复或重发。",
+    "读取当前 Chat 的接续模式、周期检查、提醒与投递状态；不能暂停/停止/恢复/重发。",
   sprout_lease_acquire:
-    "申请当前 Project 中显式指定的远端 Machine 租约。machineId 必填，expectedGeneration 来自 lease_get；requestId 标识同一次请求。空闲分身也可持有租约。",
+    "申请当前 Project 内显式指定的远端 Machine 租约。machineId 必填；expectedGeneration 来自 lease_get。空闲分身也可持有。",
   sprout_lease_release:
-    "释放显式指定的远端 Machine 租约。必须提供 machineId 与当前 expectedGeneration；pending 表示旧操作尚在排空。释放不会终止进程或删除文件。",
+    "释放显式指定的远端 Machine 租约。必给 machineId 与当前 expectedGeneration；pending=旧操作仍在排空。不终止进程/不删文件。",
   sprout_lease_handoff:
-    "将显式指定的远端 Machine 租约交接给同 Project/Chat 的 targetInstanceId。必须提供 machineId 与 expectedGeneration；pending 尚未完成。不会终止进程或删除文件。",
+    "把显式指定的远端 Machine 租约交接给同 Project/Chat 的 targetInstanceId。必给 machineId 与当前 expectedGeneration；pending=未完成。不终止进程/不删文件。",
   sprout_lease_grant:
-    "把当前 Crew 持有的显式 Machine 租约授予同 Crew 内正在运行的 targetInstanceId。lead 必须是当前持有者；授予同样会 fencing，待旧执行排空后才生效，成功后 worker 成为新代次持有者，租约仍记为 Crew 的授予。不会终止进程或删除文件。",
+    "把当前 Crew 持有的显式 Machine 租约授予同 Crew 内运行中的 targetInstanceId。lead 必须是当前持有者；授予同样 fencing，旧执行排空后生效，worker 成为新代次持有者。不终止进程/不删文件。",
   sprout_lease_revoke_grant:
-    "撤销本 Crew 授予出去的显式 Machine 租约，收回给 lead。原授予者或当前 Crew lead 能撤销；同样需要 machineId 与当前 expectedGeneration，并等待旧执行排空。worker 离线时保持 fencing，需 Human 在租约页强制收回，绝不假装已排空。",
+    "撤销本 Crew 授出的显式 Machine 租约，收回给 lead。原授予者或当前 Crew lead 可撤销；须 machineId+当前 expectedGeneration，并等旧执行排空。worker 离线保持 fencing，需 Human 强制收回，绝不假装已排空。",
   sprout_lease_escrow:
-    "把自己持有的显式 Machine 租约挂靠到当前 Project 的一个 Crew（chatId），可加 targetAgentProfileId 限定该 Crew 内的某个 Agent。必须提供 machineId 与当前 expectedGeneration。挂靠后 Machine 仍被占用、持有者仍是自己，但自己随即失去操作权：挂靠会把代次 +1，沿用旧代次的远端操作会得到 lease_stale_generation，用 lease_get 刷新后仍会被拒 lease_not_holder。只有目标 Crew 内的分身领取才改变持有者。不能挂靠到 DM。不会终止进程或删除文件。",
+    "把自持的显式 Machine 租约挂靠到当前 Project 的 Crew（chatId），可加 targetAgentProfileId 限定内的 Agent；须 machineId+当前 expectedGeneration。挂靠后自己立即失去操作权、代次+1（旧代次操作被拒 lease_stale_generation，刷新仍 lease_not_holder），仅目标 Crew 内分身领取才改变持有者。不能挂靠到 DM。不终止进程/不删文件。",
   sprout_lease_claim:
-    "以本分身身份领取一条处于挂靠中的显式 Machine 租约，需要 machineId、当前 expectedGeneration 与挂靠行 escrowId。只对挂靠目标 Crew 内的分身有效（限定 Agent 时必须就是它），先到先得。成功后本分身成为新持有者、代次 +1；不能领取已领取或已撤销的挂靠。",
+    "领取一条挂靠中的显式 Machine 租约，须 machineId、当前 expectedGeneration、escrowId。仅对挂靠目标 Crew 内分身有效（限定 Agent 时必须就是它），先到先得。成功后成为新持有者、代次+1；不能领取已领取/已撤销的挂靠。",
   sprout_lease_escrow_cancel:
-    "撤销自己发起、尚未被领取的挂靠，需要 machineId、当前 expectedGeneration 与 escrowId。操作权回到发起者，代次 +1；已被领取或已被收回的挂靠不能再撤销。对已被自己撤销的同一条挂靠再次撤销，会原样返回原收据、不推进代次，便于响应丢失后重试。不会终止进程或删除文件。",
+    "撤销自己发起、尚未被领取的挂靠，须 machineId、当前 expectedGeneration、escrowId。操作权回到发起者、代次+1；已领取/已收回的挂靠不能再撤销。重复撤销同一条返回原收据、不推进代次，便于响应丢失后重试。不终止进程/不删文件。",
   sprout_lease_get:
-    "查询当前 Project 中显式指定的远端 Machine 租约及可选 mutationId 的交接/释放进度。machineId 必填。此工具不选择默认 Machine。",
+    "查询当前 Project 内显式指定的远端 Machine 租约及可选 mutationId 的交接/释放进度。machineId 必填。不选择默认 Machine。",
   sprout_lease_wait:
-    "阻塞等待显式指定的远端 Machine 租约变得可用：machineId 必填，waitMs 是自己愿意忍多久（建议 300000，超过 3600000 一律钳到 3600000）。等待只反复读租约：不抢占、不释放、不向持有者发送任何请求，对持有者完全不可见。ok 表示已经可以继续（拿到、空闲或本来就在自己手里）；到点返回 failed + reason=timed_out，同一身份再次并发等待返回 reason=identity_busy。是否结束当前 run 由自己决定。",
+    "阻塞等待显式指定的远端 Machine 租约变可用：machineId 必填；waitMs=愿意等多久（建议 300000，上限 3600000）。等待只反复读租约：不抢占/不释放/不通知持有者，对其完全不可见。ok=已可继续；到点返回 failed+reason=timed_out；同一身份并发等待返回 reason=identity_busy。",
   sprout_remote_shell:
-    "在显式指定的远端 Machine 执行 shell，绝非宿主 shell。machineId 与当前租约 authorizationGeneration 必填。以 Worker 用户权限执行，cwd 不是安全边界；省略 cwd 使用该 Machine 已确认的项目目录。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回。预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令。要继续等就调用 sprout_remote_execution_wait。",
+    "在显式指定的远端 Machine 执行 shell，绝非宿主 shell。machineId+当前租约 authorizationGeneration 必填；以 Worker 用户权限执行，cwd 不是安全边界；省略 cwd 用已确认的项目目录。默认阻塞 30 秒等终态，blockMs≤900000，0=立即返回；预算用完返回 outcome=pending+executionId，命令未被取消，绝不重跑，继续等用 sprout_remote_execution_wait。",
   sprout_remote_file_read:
-    "读取显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；maxBytes 限制返回大小。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
+    "读取显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId+当前租约 authorizationGeneration+maxBytes 必填。默认阻塞 30 秒等终态，blockMs≤900000，0=立即返回；预算用完返回 outcome=pending+executionId，读取未被取消，绝不重跑，继续等用 sprout_remote_execution_wait。",
   sprout_remote_file_write:
-    "写入显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId 与当前租约 authorizationGeneration 必填；mode 为 overwrite 或 append，requestId 相同只表示同一次请求。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，写入没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
+    "写入显式指定的远端 Machine 上的绝对路径文件，绝非宿主文件。machineId+当前租约 authorizationGeneration 必填；mode=overwrite/append；requestId 相同=同一次请求。默认阻塞 30 秒等终态，blockMs≤900000，0=立即返回；预算用完返回 outcome=pending+executionId，写入未被取消，绝不重跑，继续等用 sprout_remote_execution_wait。",
   sprout_remote_process_list:
-    "列出显式指定的远端 Machine 上的进程，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；limit 限制返回条数。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，命令没有被取消，绝不要重跑同一条命令，继续等用 sprout_remote_execution_wait。",
+    "列出显式指定的远端 Machine 上的进程，绝非宿主进程。machineId+当前租约 authorizationGeneration 必填；limit 限制返回条数。默认阻塞 30 秒等终态，blockMs≤900000，0=立即返回；预算用完返回 outcome=pending+executionId，命令未被取消，绝不重跑，继续等用 sprout_remote_execution_wait。",
   sprout_remote_process_signal:
-    "向显式指定的远端 Machine 上的 pid 发送 TERM/INT/KILL，绝非宿主进程。machineId 与当前租约 authorizationGeneration 必填；租约释放/交接不会自动调用此操作。默认提交后阻塞 30 秒等终态，blockMs 最多 900000，blockMs 为 0 表示提交后立即返回；预算用完返回 outcome=pending 与 executionId，信号没有被撤销，绝不要重发同一个信号，继续等用 sprout_remote_execution_wait。",
-  sprout_remote_execution_wait: `对已存在的执行续等：machineId 与 executionId 必填。默认续等 ${EXECUTION_WAIT_DEFAULT_MS / 60_000} 分钟，最多 ${EXECUTION_WAIT_MAX_MS / 60_000} 分钟，blockMs 是自己愿意等多久，不足 1 秒按 1 秒算；返回的 data 是最后一次读到的 ExecutionView。outcome 为 timed_out 时要按字段分开看：带 requestedMs 与 waitedMs 的，是自己的等待预算到点、执行可能仍在跑，命令没有被取消，不要据此重试有副作用的操作；只带 requestId 的，是 execution 自身以 timed_out 终态结束，那是真超时。等待期间可用取消中断。`,
+    "向显式指定的远端 Machine 上的 pid 发 TERM/INT/KILL，绝非宿主进程。machineId+当前租约 authorizationGeneration 必填；租约释放/交接不会自动调用。默认阻塞 30 秒等终态，blockMs≤900000，0=立即返回；预算用完返回 outcome=pending+executionId，信号未被撤销，绝不重发，继续等用 sprout_remote_execution_wait。",
+  sprout_remote_execution_wait: `对已存在的执行续等：machineId+executionId 必填。默认续等 ${EXECUTION_WAIT_DEFAULT_MS / 60_000} 分钟，最多 ${EXECUTION_WAIT_MAX_MS / 60_000} 分钟，blockMs=愿意等多久，不足 1 秒按 1 秒算；data=最后一次读到的 ExecutionView。timed_out 分两种：带 requestedMs+waitedMs 的是自己等待预算到点、执行可能仍在跑、未被取消，不要据此重试有副作用的操作；只带 requestId 的是 execution 自身以 timed_out 终态结束。等待期间可用取消中断。`,
   sprout_remote_execution_get:
-    "查询显式指定的远端 Machine 上一次 executionId 的当前快照，立刻读一次，不等待。machineId 必填。queued/dispatched/running/draining 不是执行成功；unknown 不表示没有执行，勿自动重试有副作用的操作。要继续等已存在的 execution，用 sprout_remote_execution_wait。",
+    "查询显式指定的远端 Machine 上一次 executionId 的当前快照，立刻读一次，不等待。machineId 必填。queued/dispatched/running/draining≠执行成功；unknown≠没有执行，勿自动重试有副作用的操作。要继续等用 sprout_remote_execution_wait。",
   sprout_remote_execution_list:
-    "列出当前 holder 可接续读取的远端执行，按 createdAt/id 倒序分页；machineId 必填，limit 默认 20、最多 100，before 使用原样 nextCursor。authority=holder 表示本分身在当前代次发起；inherited 是继承的历史执行，不能声称是自己刚执行的。原 authorizationGeneration 是发起代次，取消必须使用 currentAuthorizationGeneration。",
+    "列出当前 holder 可接续读取的远端执行，按 createdAt/id 倒序分页；machineId 必填，limit 默认 20/最多 100，before 用原样 nextCursor。authority=holder 是本分身在当前代次发起；inherited 是继承历史执行，不能声称是自己刚执行的。取消必须用 currentAuthorizationGeneration。",
   sprout_remote_execution_cancel:
-    "显式取消显式指定的远端 Machine 上一次执行，绝非宿主进程。machineId、executionId 与当前租约 authorizationGeneration 必填；authorizationGeneration 必须取 execution_get/list 的 currentAuthorizationGeneration，不得取原始 authorizationGeneration。requestId 标识同一次取消请求，重试请沿用同一个。policy 为 term_then_kill 或 kill，termWaitMs 最多 10000。取消是显式动作：送达（delivered）只说明 Worker 收到意图，不表示进程已停；取消不成功（failed / unknown / 停在 requested）不得当作已停止，仍需 execution_get 确认退出。取消不会释放租约、不会删除文件。",
+    "显式取消显式指定的远端 Machine 上一次执行，绝非宿主进程。machineId、executionId、当前租约 authorizationGeneration 必填；authorizationGeneration 必须取 execution_get/list 的 currentAuthorizationGeneration，不得取原始值。requestId=同一次取消请求，重试沿用。policy=term_then_kill/kill，termWaitMs≤10000。delivered 只说明 Worker 收到意图，不表示进程已停；failed/unknown/停在 requested 都不得当作已停止，仍需 execution_get 确认。取消不释放租约/不删文件。",
   sprout_remote_execution_log:
-    "按游标增量读取显式指定的远端 Machine 上一次执行的日志，绝非宿主文件。machineId 必填，cursor 为 {executionId,nextSequence} 或 null 从起点读；用别的执行的游标会被 execution_log_cursor_stale 拒绝，limitBytes 最多 65536。frames 为空只表示该范围无帧，不等于没有输出。gapRanges 非空或 logState 为 gap / truncated 表示日志不完整，必须当作不完整展示；logState 为 none 才是确知无输出；workerOnline 为 false 时未收到的部分仍是 unknown。",
+    "按游标增量读取显式指定的远端 Machine 上一次执行的日志，绝非宿主文件。machineId 必填；cursor={executionId,nextSequence} 或 null 从起点读；别的执行的游标会被 execution_log_cursor_stale 拒绝；limitBytes≤65536。frames 空=该范围无帧。gapRanges 非空或 logState=gap/truncated 表示日志不完整，必须当作不完整展示；logState=none 才是确知无输出；workerOnline=false 时未收到部分仍是 unknown。",
 };
 
 /** 五个「创建 execution」的工具：提交成功后默认阻塞等终态。 */
@@ -692,7 +691,7 @@ export function registerRemoteTools(
       label: name,
       description:
         descriptions[name] +
-        " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
+        " rejected=服务端明确拒绝，读 status/error.code/error.message 后先解决原因，不要盲目重试。",
       parameters: objectToolParameters(remoteToolInputSchemas[name], {
         unrepresentable: "any",
       }),
@@ -731,7 +730,7 @@ export function registerRemoteTools(
     label: "sprout_lease_wait",
     description:
       descriptions.sprout_lease_wait +
-      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
+      " rejected=服务端明确拒绝，读 status/error.code/error.message 后先解决原因，不要盲目重试。",
     parameters: objectToolParameters(leaseWaitToolInputSchema, { unrepresentable: "any" }),
     async execute(_toolCallId, parameters, signal) {
       let input: z.infer<typeof leaseWaitToolInputSchema>;
@@ -750,7 +749,7 @@ export function registerRemoteTools(
     label: "sprout_remote_execution_wait",
     description:
       descriptions.sprout_remote_execution_wait +
-      " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试。",
+      " rejected=服务端明确拒绝，读 status/error.code/error.message 后先解决原因，不要盲目重试。",
     parameters: objectToolParameters(remoteToolInputSchemas.sprout_remote_execution_wait, {
       unrepresentable: "any",
     }),

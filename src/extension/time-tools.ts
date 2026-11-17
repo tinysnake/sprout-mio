@@ -31,7 +31,7 @@ export function registerSleepTool(pi: Pick<SproutExtensionAPI, "registerTool">):
   pi.registerTool({
     name: "sleep",
     label: "Sleep",
-    description: `在宿主本地等待 ms 毫秒（必填且至少 ${SLEEP_MIN_MS} 毫秒），最多等待 ${SLEEP_MAX_MS / 60_000} 分钟；超出上限会钳断并回报 requestedMs 与 sleptMs。成功返回当前 ISO 时间 now，等待期间可取消。`,
+    description: `在宿主本地等待 ms 毫秒（必填，至少 ${SLEEP_MIN_MS}），最多 ${SLEEP_MAX_MS / 60_000} 分钟；超出会钳断并回报 requestedMs 与 sleptMs。成功返回当前 ISO 时间 now；等待期间可取消。`,
     parameters: objectToolParameters(sleepInputSchema),
     async execute(_toolCallId, parameters, signal) {
       const parsed = sleepInputSchema.safeParse(parameters);
@@ -137,13 +137,13 @@ export function registerCurrentTimeTool(pi: SproutExtensionAPI): void {
     name: "current_time",
     label: "Current Time",
     description:
-      "返回宿主机器当前时间、IANA 时区、UTC、epoch 毫秒和星期。需要判断今天日期、时区或事件先后时调用；默认使用宿主时区，可传 timezone 指定 IANA 名称。",
+      "返回宿主当前时间、IANA 时区、UTC、epoch 毫秒和星期；判断日期、时区或事件先后时调用。默认使用宿主时区，可传 timezone 指定 IANA 名称。",
     parameters: {
       type: "object",
       properties: {
         timezone: {
           type: "string",
-          description: "IANA 时区名，例如 Asia/Shanghai；省略时使用宿主时区。",
+          description: "IANA 时区名，例如 Asia/Shanghai；省略用宿主时区。",
         },
       },
       additionalProperties: false,

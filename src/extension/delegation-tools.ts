@@ -12,9 +12,9 @@ const actions = {
 
 const descriptions: Record<DelegationToolName, string> = {
   sprout_delegation_complete:
-    "Report this delegation finished. The result goes to the Crew lead as a durable event; it never posts into the Crew timeline. Provide a short summary and, for reports longer than 200 characters, an HTML artifact.",
+    "Report this delegation finished. The result reaches the Crew lead as a durable event; it never posts into the Crew timeline. Give a short summary and, for reports longer than 200 characters, an HTML artifact.",
   sprout_delegation_block:
-    "Report this delegation blocked. Use needs_input for a decision requiring Human 或 Crew lead, resource_unavailable when the required machine or workspace is missing, out_of_scope when the request cannot be done as stated, failed when the attempt did not succeed. The lead is resumed with this event.",
+    "Report this delegation blocked. Use needs_input for a decision needing Human 或 Crew lead, resource_unavailable when the Machine or workspace is missing, out_of_scope when the request cannot be done as stated, failed when the attempt did not succeed. The lead resumes with this event.",
 };
 
 function buildRequest(
@@ -48,7 +48,7 @@ export function registerDelegationTools(
       label: name,
       description:
         descriptions[name] +
-        " rejected 表示服务端明确拒绝：读取 status、error.code 和 error.message，先解决原因，不要盲目重试；worker 无法继续时用 sprout_delegation_block 报告原因。",
+        " rejected=服务端明确拒绝，读 status/error.code/error.message 后先解决原因，不要盲目重试；无法继续时用 sprout_delegation_block 报告原因。",
       parameters: objectToolParameters(delegationToolInputSchemas[name]),
       async execute(_toolCallId, parameters, signal) {
         let request: RemoteAgentRequest;

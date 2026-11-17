@@ -27,7 +27,7 @@ function describe(registration: McpRegistration, tool: McpTool): string {
   const base =
     tool.description?.trim() ||
     `调用显式登记的 MCP server「${registration.name}」提供的 ${tool.name}`;
-  return `${base}（来自 Project 内显式登记的远端 MCP server「${registration.name}」，经 Sprout 受认证 Worker 通道到达 Machine，绝非宿主本地工具；${registration.transport === "stdio" ? "stdio" : "streamableHttp"} 进程在 Machine 上运行）`;
+  return `${base}（来自 Project 内显式登记的远端 MCP server「${registration.name}」，经 Sprout 受认证 Worker 通道到达 Machine，绝非宿主本地工具；${registration.transport === "stdio" ? "stdio" : "streamableHttp"} 进程在 Machine 上）`;
 }
 
 /**
