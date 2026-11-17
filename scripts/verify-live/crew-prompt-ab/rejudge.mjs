@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { comparisonReasons, finalizeVerdict } from "./core.mjs";
 import { retryCountReported } from "./artifacts.mjs";
 import { fixtureDefinition } from "./fixtures.mjs";
+import { successCohort, successPopulation } from "./taskset2.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const uniform = (values) =>
@@ -95,7 +96,21 @@ export function summarizeRejudged(rows) {
         arms.map((arm) => [
           arm,
           summarize(
-            rows.filter((r) => r.arm === arm),
+            rows.filter((r) => r.arm === arm && successCohort(r) === "ALL"),
+            field,
+          ),
+        ]),
+      ),
+    ]),
+  );
+  const sanityReadings = Object.fromEntries(
+    ["verdict", "verdictCorrected"].map((field) => [
+      field,
+      Object.fromEntries(
+        arms.map((arm) => [
+          arm,
+          summarize(
+            rows.filter((row) => row.arm === arm && successCohort(row) === "SANITY"),
             field,
           ),
         ]),
@@ -133,7 +148,7 @@ export function summarizeRejudged(rows) {
         eligiblePairs: pairs.filter((p) => p.eligible).length,
       };
     }
-    return { task, ...paired };
+    return { task, category: items[0].category ?? "primary", ...paired };
   });
   const thinking = {};
   for (const row of rows)
@@ -144,6 +159,8 @@ export function summarizeRejudged(rows) {
   return {
     rows: rows.length,
     readings,
+    sanityReadings,
+    successPopulation,
     tasks,
     probeDelegations: rows.flatMap((r) =>
       r.probeDelegationEvidence.map((d) => ({ arm: r.arm, task: r.task, repeat: r.repeat, ...d })),

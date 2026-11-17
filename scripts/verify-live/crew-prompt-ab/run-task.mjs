@@ -53,6 +53,10 @@ export async function runTask({
     childProcesses: [],
     arm,
     task: task.id,
+    category: task.category ?? "primary",
+    oracleConfig: task.oracleConfig ?? {},
+    artifactCommands: fixtureDefinition(task.fixture).expected.artifactCommands ?? {},
+    projectContext: task.projectContext ?? null,
     repeat,
     ref,
     head,
@@ -283,23 +287,41 @@ export async function runTask({
       assert(result.ok, `${name}: ${JSON.stringify(result)}`);
       return result.data;
     }
-    const project = await call("createProjectFn", { name: `AB ${task.id} ${repeat}` });
+    const project = await call("createProjectFn", {
+      name: `AB ${task.id} ${repeat}`,
+      ...(task.projectContext ? { description: task.projectContext } : {}),
+    });
     await call("updateProjectProfileFn", {
       projectId: project.id,
       gitRemote: "file://" + remote,
       defaultBranch: "main",
     });
     const agents = [];
-    for (const [index, name] of ["ABLead", "ABWorkerOne", "ABWorkerTwo"].entries()) {
+    const members =
+      task.members ??
+      Array.from({ length: Math.max(2, machineFixtureCount(task.oracle)) }, (_, index) => ({
+        name: ["ABWorkerOne", "ABWorkerTwo", "ABWorkerThree"][index],
+        description: "Follow the human task and report concrete results concisely.",
+      }));
+    for (const [index, member] of [
+      {
+        name: "ABLead",
+        description: "Follow the human task and report concrete results concisely.",
+      },
+      ...members,
+    ].entries()) {
+      const { name, description } = member;
       const agent = await call("createAgentProfileFn", {
         name,
         model: fixture ? fixture.model(index === 0 ? "chatOwner" : "chatMentioned") : model,
         effort: process.env.AB_THINKING ?? "low",
-        persona: "Follow the human task and report concrete results concisely.",
+        persona: description,
       });
       await call("addProjectMemberFn", { projectId: project.id, agentProfileId: agent.id });
       agents.push(agent);
     }
+    row.expectedWorkerProfileId =
+      task.expectedWorkerIndex == null ? null : agents[task.expectedWorkerIndex + 1].id;
     const crew = await createCrewFixture(call, env.DATABASE_URL, {
       projectId: project.id,
       title: "Crew prompt AB",
@@ -389,7 +411,7 @@ export async function runTask({
       };
       row.machineScopes.push({
         ...scope,
-        workerProfileId: machineFixtureCount(task.oracle) === 2 ? agents[index + 1].id : null,
+        workerProfileId: machineFixtureCount(task.oracle) > 1 ? agents[index + 1].id : null,
         worktree,
       });
     }
@@ -419,6 +441,10 @@ export async function runTask({
     const prompt =
       task.prompt +
       "\n\nFixture execution environment (identical in both arms):\n" +
+      (task.projectContext ? `Project context: ${task.projectContext}\n` : "") +
+      (task.members
+        ? `Team responsibilities: ${JSON.stringify(members.map((member, index) => ({ ...member, profileId: agents[index + 1].id })))}\n`
+        : "") +
       `The writable repositories are on the Crew Machines. Local host tools are read-only. ` +
       `The fixture coordinator registers and approves the assigned Machine scope for each worker profile: ${JSON.stringify(row.machineScopes)}. Use the scope assigned to that workerProfileId (a null profile permits any worker), include its directoryRealPath and resource scope in the worker request. Each machine has an independent clone of the same fixture. ` +
       "The worker must use the approved Crew resource authorization from info_hub to run remote file/shell tools; never use sprout_lease_acquire, handoff or grant. If authorization is not active yet, inspect resource status before running. Use relative file paths within the approved directory. " +
@@ -433,6 +459,7 @@ export async function runTask({
           "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
       });
     next("sendTask");
+    row.taskSentAtMs = Date.now();
     await call("sendMessageFn", { chatId: crew.id, body: prompt });
     next("settle");
     const settlementCheck = createSettlementCheck();
@@ -452,7 +479,12 @@ export async function runTask({
       factsFrom(
         latest,
         crew.id,
-        Object.keys(initial),
+        [
+          ...new Set([
+            ...Object.keys(initial),
+            ...(fixtureDefinition(task.fixture).expected.delegationArtifacts ?? []),
+          ]),
+        ],
         fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [],
       ),
     );
@@ -484,7 +516,12 @@ export async function runTask({
             factsFrom(
               latest,
               input.chatId,
-              Object.keys(initial ?? {}),
+              [
+                ...new Set([
+                  ...Object.keys(initial ?? {}),
+                  ...(fixtureDefinition(task.fixture).expected.delegationArtifacts ?? []),
+                ]),
+              ],
               fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [],
             ),
           );

@@ -47,8 +47,8 @@ const checks = (fixture, root, f = {}) => artifactAssertions({ fixture }, root, 
 const pass = (rows) => rows.every((r) => r.exitCode === 0);
 
 test("task list and oracle names remain in the owning document", () => {
-  assert.equal(tasks.length, 6);
-  assert.equal(new Set(tasks.map((t) => t.id)).size, 6);
+  assert.equal(tasks.length, 11);
+  assert.equal(new Set(tasks.map((t) => t.id)).size, tasks.length);
 });
 test("claims and complete receipts cannot substitute for artifact commands", () => {
   for (const task of tasks)
@@ -336,13 +336,13 @@ test("batch plan alternates arms and all anomalies stay outside denominator", ()
     tasks,
     2,
   );
-  assert.equal(plan.length, 24);
+  assert.equal(plan.length, tasks.length * 4);
   assert.deepEqual(
     plan.slice(0, 4).map((x) => x.arm),
     ["A", "B", "A", "B"],
   );
   assert.deepEqual(
-    plan.slice(12, 16).map((x) => x.arm),
+    plan.slice(tasks.length * 2, tasks.length * 2 + 4).map((x) => x.arm),
     ["B", "A", "B", "A"],
   );
   const rows = pair();

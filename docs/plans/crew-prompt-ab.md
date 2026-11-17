@@ -31,7 +31,7 @@
 
 ## 任务集
 
-下面这个 fenced JSON 块是任务集的唯一来源，harness 直接解析它，不要另抄一份。fixture 是 harness 要为该任务准备的沙箱项目，oracle 是 harness 要实现的判定器名字。
+下面这个 fenced JSON 块是任务集的唯一来源，harness 直接解析它，不要另抄一份。fixture 是 harness 要为该任务准备的沙箱项目，oracle 是 harness 要实现的判定器名字。未标 category 的旧题按 primary 处理；sanity 仍可运行且单列汇总，不进主通过率分母。不完整的 sanity 仍会阻止批次比较。下面新增四组场景，其中澄清正反题分别计题，共五个新 id；failureMode 说明待 live 验证的旧行为差异假设。构建夹具真实持续执行哈希构建矩阵，不用 sleep 模拟成员耗时。
 
 ```json
 [
@@ -64,6 +64,7 @@
   },
   {
     "id": "donot-delegate-question",
+    "category": "sanity",
     "shape": "反例，纯提问不该动手",
     "prompt": "我只是问一下，自动接续和小脑接续在项目的英文数据里分别是什么词？",
     "fixture": "sandbox-question",
@@ -73,6 +74,7 @@
   },
   {
     "id": "donot-delegate-small-edit",
+    "category": "sanity",
     "shape": "反例，lead 自己能做的小事不该派出去",
     "prompt": "把 config/app.json 里的 timeout 从 3000 改成 5000。",
     "fixture": "sandbox-small-edit",
@@ -82,15 +84,95 @@
   },
   {
     "id": "no-duplicate-delegation",
+    "category": "sanity",
     "shape": "同一件事不该派第二遍",
     "prompt": "上次已经让成员改过 docs/usage.md 的安装步骤了，你确认一下现在还有没有遗漏的地方，有就补上，不要重复做已经做过的事。",
     "fixture": "sandbox-duplicate",
     "oracle": "no_duplicate",
     "evidence": "pi:01a19bc9-9d22-7194-bf14-45a2a00b26a2 entry:001615",
     "mined": "重复派活浪费并发槽位，是当年第二类高频失败"
+  },
+  {
+    "id": "worker-takes-minutes",
+    "category": "primary",
+    "prompt": "让一个成员把 scripts/build.cjs 的 node22、node24、production 三个构建都跑完，产物放在 reports/ 下，最后给我结果。每项会持续运算约一分钟，请保留完整构建。协调这件事你自己的处理时间最多 90 秒，成员的构建时间另算。",
+    "fixture": "sandbox-minutes",
+    "oracle": "worker_takes_minutes",
+    "oracleConfig": {
+      "delegationCount": 1,
+      "minWorkerMs": 180000,
+      "maxSleepMs": 500,
+      "leadBudgetMs": 90000
+    },
+    "failureMode": "旧行为会阻塞等待或反复查委派列表，耗尽 lead 的处理预算；应结束回合等待成员完成事件。"
+  },
+  {
+    "id": "route-by-description",
+    "category": "primary",
+    "prompt": "客户发票金额小了十倍。请找团队里负责这块业务的成员修好 src/totals.js，并跑项目自带的校验命令后把结果给我。",
+    "fixture": "sandbox-routing",
+    "oracle": "route_by_description",
+    "members": [
+      {
+        "name": "Delivery Engineer",
+        "description": "Maintain customer onboarding prose and installation documentation; do not own invoice arithmetic."
+      },
+      {
+        "name": "Delivery Specialist",
+        "description": "Own invoice totals, money units and JavaScript billing arithmetic; repair cents conversion and verify numeric results."
+      },
+      {
+        "name": "Delivery Analyst",
+        "description": "Own build packaging and release matrices; do not own billing arithmetic."
+      }
+    ],
+    "expectedWorkerIndex": 1,
+    "oracleConfig": {
+      "delegationCount": 1
+    },
+    "failureMode": "职位名相近时按名字猜或群发会选错人；必须从成员工作描述找到负责金额单位的成员。"
+  },
+  {
+    "id": "clarify-before-guessing",
+    "category": "primary",
+    "prompt": "请安排一个成员准备这次交付的客户摘要，按仓库 README 的格式放到 reports/customer.md，完成后告诉我。",
+    "fixture": "sandbox-clarify",
+    "oracle": "clarify_before_guessing",
+    "oracleConfig": {
+      "questionPattern": "哪(?:个|位|家).*客户|客户.*(?:哪|谁|选|确定|指定)|(?:which|what).*customer|Northstar.*(?:还是|or).*Harbor|Harbor.*(?:还是|or).*Northstar"
+    },
+    "failureMode": "两个客户都有效，但项目没有选择本次客户；直接猜测并委派会交付错误对象，应先问 Human 一个问题。"
+  },
+  {
+    "id": "resolve-from-context",
+    "category": "primary",
+    "prompt": "请安排一个成员准备这次交付的客户摘要，按仓库 README 的格式放到 reports/customer.md，完成后告诉我。",
+    "fixture": "sandbox-context",
+    "oracle": "resolve_from_context",
+    "projectContext": "本次交付的客户是 Northstar，客户数据在 data/customers.json；摘要遵循 README。",
+    "oracleConfig": {
+      "delegationCount": 1
+    },
+    "failureMode": "表面缺少客户名，但项目上下文已提供；机械追问会停工，应读取上下文后正确委派。"
+  },
+  {
+    "id": "budgeted-parallel-delivery",
+    "category": "primary",
+    "prompt": "把 web、worker、docs 三项发布构建都安排好，分别运行 node scripts/build.cjs web、node scripts/build.cjs worker、node scripts/build.cjs docs，完整保留 reports/ 里的产物。三项互不依赖，每项需要持续运算约 75 秒。从我发这条消息起 190 秒内，三项结果都要交齐并告诉我。",
+    "fixture": "sandbox-budgeted",
+    "oracle": "budgeted_parallel_delivery",
+    "oracleConfig": {
+      "minDelegationCount": 2,
+      "deliveryBudgetMs": 190000
+    },
+    "failureMode": "每项至少 75 秒，串行三项至少 225 秒会超预算；必须用至少两个同时活跃的成员完成三份产物。"
   }
 ]
 ```
+
+新题判定口径：`worker_takes_minutes` 要求单次委派、三份构建产物、成员执行至少 180000ms、lead 所有回合合计不超过 90000ms、`sleepMsTotal <= 500`、首个完成 receipt 前列表查询最多一次。`route_by_description` 要求唯一委派及实际执行 profile 都是工作描述匹配的成员。`clarify_before_guessing` 要求零委派、恰好一个询问客户的问题且输入未改、未交付；`resolve_from_context` 要求已提供项目上下文、单次委派、选中 Northstar 的正确产物且不再问客户。`budgeted_parallel_delivery` 要求至少两个委派（允许一个成员顺序承接其中两项）、至少两个不同 profile 的 worker 执行区间真正重叠、三份构建产物、有效完成 receipt，并在消息发送起 190000ms 内最终交付；每项构建本身至少 75000ms，串行至少 225000ms。产物必须对应成功的委派 worker 操作，不能用 lead 自己生成替代。
+
+所有新 oracle 都是纯函数，可用离线事实运行。dry 不调用真实模型，预设答复缺少委派与构建产物，因此新题通常为 failed；这证明计划、建仓、采集和判定链路能跑通，不证明任务能区分旧行为。
 
 ## 判定器：DB、transcript 与 fixture artifacts
 

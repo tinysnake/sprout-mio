@@ -146,7 +146,9 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
   const observations = e.runs.map((r) => {
     const messages = sessions.get(r.configSnapshot?.sessionFile)?.get(r.id) ?? [];
     const tools = messages
-      .flatMap((x) => x.message.content ?? [])
+      .flatMap((x) =>
+        (x.message.content ?? []).map((content) => ({ ...content, atMs: Date.parse(x.timestamp) })),
+      )
       .filter((x) => x.type === "toolCall");
     const usage = messages.map((x) => x.message.usage).filter(Boolean);
     const tokens = usage.length
@@ -192,6 +194,7 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
         .join("\n"),
       tools: tools.map((t) => ({
         id: t.id,
+        atMs: t.atMs,
         name: t.name,
         arguments: t.arguments,
         isError: toolResults.get(r.configSnapshot?.sessionFile)?.get(t.id) ?? null,

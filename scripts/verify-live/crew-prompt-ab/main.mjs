@@ -277,6 +277,8 @@ try {
       model,
       dry,
       oracle: selected.find((task) => task.id === item.task).oracle,
+      category: selected.find((task) => task.id === item.task).category ?? "primary",
+      oracleConfig: selected.find((task) => task.id === item.task).oracleConfig ?? {},
       status: "not_run",
       passed: null,
       reason:

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { taskset2Oracles, taskset2Gates, successCohort, successPopulation } from "./taskset2.mjs";
 import { costMetricsFrom, pairedCostRows } from "./cost-metrics.mjs";
 import { readFileSync } from "node:fs";
 export { seedFixture, fixtureDefinition } from "./fixtures.mjs";
@@ -14,6 +15,11 @@ export function taskSet(path) {
       assert.equal(typeof task[key], "string", key);
     assert(!ids.has(task.id), `duplicate task ${task.id}`);
     assert(oracleNames.includes(task.oracle), `unknown oracle ${task.oracle}`);
+    assert([undefined, "primary", "sanity"].includes(task.category), "task category");
+    if (taskset2Oracles.includes(task.oracle)) {
+      assert.equal(typeof task.failureMode, "string", "failureMode");
+      assert(task.oracleConfig && typeof task.oracleConfig === "object", "oracleConfig");
+    }
     ids.add(task.id);
   }
   return tasks;
@@ -34,6 +40,7 @@ export const unknownEvidence = {
   token: null,
 };
 export const oracleNames = [
+  ...taskset2Oracles,
   "delegate_confirmed",
   "delegate_parallel",
   "worker_finishes",
@@ -82,7 +89,10 @@ export function evaluateOracle(name, f, { corrected = false } = {}) {
       },
       { atMs: f.leadFinalReplyAtMs ?? null, text: f.leadFinalReplyText ?? null },
     );
-  if (["delegate_confirmed", "delegate_parallel", "worker_finishes"].includes(name)) {
+  if (taskset2Oracles.includes(name)) {
+    validFinal();
+    Object.assign(gates, taskset2Gates(name, f));
+  } else if (["delegate_confirmed", "delegate_parallel", "worker_finishes"].includes(name)) {
     gate(
       "workersDone",
       {
@@ -359,6 +369,13 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
     add("missing or unstable resolved commit SHA");
   if (heads.length === 2 && [...heads[0]].some((sha) => heads[1].has(sha)))
     add("arms resolve to the same commit SHA");
+  const cohorts = new Map();
+  for (const row of rows) {
+    const seen = cohorts.get(row.task);
+    const cohort = successCohort(row);
+    if (seen && seen !== cohort) add(`task category differs across rows for ${row.task}`);
+    cohorts.set(row.task, cohort);
+  }
   const groups = new Map();
   for (const row of rows) {
     if (["passed", "failed"].includes(row.status) && !row.runs?.length)
@@ -417,11 +434,14 @@ export function comparisonReasons(rows, { batch = true, dry = false } = {}) {
     )
       add(`observed system prompt hashes match for ${key}`);
   }
+  if (rows.length > 0 && rows.every((row) => row.category === "sanity"))
+    add("sanity-only batch: no primary items in main success denominator");
   return reasons;
 }
 
 export function summarize(rows, options = {}) {
   const reasons = comparisonReasons(rows, options);
+  console.log(successPopulation);
   console.log(
     reasons.length
       ? `Comparison refused: ${reasons.join("; ")}`
@@ -429,7 +449,7 @@ export function summarize(rows, options = {}) {
   );
   const groups = new Map();
   for (const row of rows) {
-    for (const key of [`${row.arm} / ${row.task}`, `${row.arm} / ALL`]) {
+    for (const key of [`${row.arm} / ${row.task}`, `${row.arm} / ${successCohort(row)}`]) {
       const g = groups.get(key) ?? {
         group: key,
         planned: 0,
@@ -474,5 +494,5 @@ export function summarize(rows, options = {}) {
     "Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.",
   );
   console.table(pairedCostRows(rows));
-  return { reasons, groups: [...groups.values()] };
+  return { reasons, successPopulation, groups: [...groups.values()] };
 }

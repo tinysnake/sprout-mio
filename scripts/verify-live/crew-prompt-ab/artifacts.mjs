@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fixtureDefinition } from "./fixtures.mjs";
+import { inspectTaskset2Artifacts } from "./taskset2-fixtures.mjs";
 
 export function retryCountReported(text, file, value, corrected = true) {
   const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -115,6 +116,11 @@ console.log('PASS ' + kind);
 `;
 
 export function artifactAssertions(task, root, facts, { corrected = true } = {}) {
+  const taskset2 = inspectTaskset2Artifacts(
+    task,
+    facts.machineScopes?.length ? facts.machineScopes : [{ worktree: root }],
+  );
+  if (taskset2) return taskset2;
   const { files: initialFiles, expected } = fixtureDefinition(task.fixture);
   const commands = [];
   const run = (name, executable, args) => {
@@ -151,6 +157,7 @@ export function artifactAssertions(task, root, facts, { corrected = true } = {})
     const [executable, ...args] = expected.testCommand;
     run("project-test", executable, args);
   }
+  if (task.fixture === "sandbox-routing") return commands;
   run(kind, process.execPath, [
     "-e",
     assertion,
