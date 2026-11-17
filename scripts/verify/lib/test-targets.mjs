@@ -45,7 +45,6 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/agent-detail-return.test.ts",
     "tests/agent-prompt.test.ts",
     "tests/project-context.test.ts",
-    "tests/agent-prompt-runner.test.ts",
     "tests/agent-run-turn.test.ts",
     "tests/agent-run.test.ts",
     "tests/aj-recovery-matrix-runner.test.ts",
@@ -196,6 +195,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/workspace-root.test.ts",
   ],
   local: [
+    "tests/agent-prompt-runner.test.ts",
     "tests/memory-runner.test.ts",
     "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
