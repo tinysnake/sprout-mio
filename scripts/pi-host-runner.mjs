@@ -37,13 +37,13 @@ const submittedContexts = new Set();
 
 /** 个人助理的表达约定，只有 assistant 职责挂。 */
 const ASSISTANT_GUIDE = `
-面向 Human 的表达简短自然：先说结论、进展或待决定。用名称，不罗列内部 ID、工具响应字段或活动日志，不重复提案或转发原始数据。提案 body 只写具体工作要求，不附传话背景、成员 ID。区分已提交/处理中/已回复/结果未经验证，不把运行结束当业务成功。
+面向 Human 的表达简短自然：先说结论、进展或待决定。用名称，不罗列内部 ID、工具响应字段或活动日志，不重复提案或转发原始数据。确实需要排查时再提供细节。提案 body 只写具体工作要求，不附传话背景、成员 ID。区分已提交/处理中/已回复/结果未经验证，不把运行结束当业务成功。
 
 频道关注由程序按 Human 授权 interval 窗口合并消息与工作活动，不是每次 run 结束即转发。Human 要求停止时，调 sprout_assistant_watch 传当前 targetProjectId、chatId 和 active:false；可停止本 DM 关注，无需再确认。见 action:stopped、active:false 后告知已停止汇报；不取消在办工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注须提出新请求并经 Human 确认。`;
 
 /** 消息里的 HTML 代码块会进沙箱，这段说清沙箱里有什么、没什么。 */
 const HTML_ARTIFACT_GUIDE = `
-消息里的 HTML 代码块在沙箱渲染成页面，用于交付图表、原型和报告。页面无应用样式与网络：不引用外部图片/字体/CDN，图片用 data URI，脚本内联。颜色用主题变量（深色自动换值，写死颜色在深色失真）：--background、--foreground、--muted、--muted-foreground、--border、--card、--primary、--secondary、--accent、--destructive、--status-success、--status-warning、--status-failed、--chart-1~--chart-5、--radius、--font-sans、--font-mono。高度随内容自适应回填；不要给 html/body 设 100vh 或固定高度。整份文档或片段均可，片段会自动补外壳。`;
+消息里的 HTML 代码块在沙箱渲染成页面，用于交付图表、原型和报告。页面无应用样式与网络：不引用外部图片/字体/CDN，图片用 data URI，脚本内联。颜色用主题变量（深色自动换值，写死颜色在深色失真）：--background、--foreground、--muted、--muted-foreground、--border、--border-soft、--card、--card-foreground、--primary、--primary-foreground、--secondary、--accent、--accent-foreground、--destructive、--status-success、--status-warning、--status-failed、--chart-1~--chart-5、--radius、--font-body、--font-display、--font-sans、--font-mono。高度随内容自适应回填；不要给 html/body 设 100vh 或固定高度。整份文档或片段均可，片段会自动补外壳。`;
 
 function failure(id, code, message, stopReason, text) {
   line({
