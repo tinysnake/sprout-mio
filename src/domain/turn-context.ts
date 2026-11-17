@@ -333,7 +333,7 @@ export function captureTurnContext(
       })
       .run();
     return parsed;
-  });
+  }, { behavior: "immediate" });
 }
 export function prepareTurnContext(
   raw: TurnContextReadInput,
@@ -387,5 +387,5 @@ export function confirmTurnContext(
       .where(eq(turnContext.runId, receipt.runId))
       .run();
     return submitted.data.record;
-  });
+  }, { behavior: "immediate" });
 }
