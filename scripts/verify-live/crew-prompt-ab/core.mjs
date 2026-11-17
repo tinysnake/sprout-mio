@@ -4,6 +4,7 @@ import { compareInventories, renderComparison } from "./prompt-inventory.mjs";
 import { taskset2Oracles, taskset2Gates, successCohort, successPopulation } from "./taskset2.mjs";
 import { costMetricsFrom, pairedCostRows } from "./cost-metrics.mjs";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 export { seedFixture, fixtureDefinition } from "./fixtures.mjs";
 
 export function taskSet(path) {
@@ -309,13 +310,56 @@ export function preserveOutcome(row, oracle, delegatedCount, cleanupError) {
   if (cleanupError) row.cleanupError = cleanupError.message;
 }
 
-export function recordTaskError(row, error, interrupted = false) {
+/**
+ * Pulls the host failure out of a cell's service log. The service prints the failing run as a
+ * pretty-printed object (`event: 'pi_host.run_failed'` … `errorCode: 'model_error'`) or as one JSON
+ * line, so the reader accepts both shapes and reports the most recent failure.
+ */
+export function serviceFailureOf(text) {
+  const raw = String(text ?? "");
+  const at = raw.lastIndexOf("pi_host.run_failed");
+  if (at < 0) return null;
+  const window = raw.slice(at, at + 2000);
+  const pick = (key) => {
+    const match = window.match(
+      new RegExp(`["']?\\b${key}["']?\\s*:\\s*(?:"([^"]*)"|'([^']*)')`, "m"),
+    );
+    return match ? (match[1] ?? match[2] ?? null) : null;
+  };
+  const failure = {
+    event: "pi_host.run_failed",
+    errorName: pick("errorName"),
+    errorCode: pick("errorCode"),
+    message: pick("message"),
+  };
+  return failure.errorName || failure.errorCode || failure.message ? failure : null;
+}
+
+export function serviceFailureFor(directory) {
+  if (!directory) return null;
+  try {
+    return serviceFailureOf(readFileSync(join(directory, "service.log"), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+export function recordTaskError(row, error, interrupted = false, serviceFailure = null) {
   const measured = ["passed", "failed"].includes(row.status) && typeof row.passed === "boolean";
   if (!measured) {
     row.status = errorStatus(error, interrupted);
     row.passed = null;
   }
-  row.error = { message: error.message, stack: error.stack, code: error.code ?? null };
+  const named = error?.name && error.name !== "Error" ? error.name : null;
+  row.errorName = named ?? serviceFailure?.errorName ?? error?.name ?? null;
+  row.errorCode = error?.code ?? serviceFailure?.errorCode ?? null;
+  row.error = {
+    message: error.message,
+    stack: error.stack,
+    name: row.errorName,
+    code: row.errorCode,
+  };
+  if (serviceFailure) row.serviceFailure = serviceFailure;
   if (error.code?.startsWith("AB_EVIDENCE_PROBE_")) {
     row.evidenceProbe = {
       status: error.code === "AB_EVIDENCE_PROBE_TIMEOUT" ? "timeout" : "error",

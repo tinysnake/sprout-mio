@@ -25,6 +25,7 @@ import {
   classifyRuns,
   unknownEvidence,
   recordTaskError,
+  serviceFailureFor,
   preserveOutcome,
   finalizeVerdict,
 } from "./core.mjs";
@@ -515,7 +516,7 @@ export async function runTask({
     row.passed = judge(task.oracle, row);
     row.status = row.passed ? "passed" : "failed";
   } catch (error) {
-    recordTaskError(row, error, signal?.aborted);
+    recordTaskError(row, error, signal?.aborted, serviceFailureFor(directory));
     if (env && input) {
       try {
         latest = readEvidence(env, input, 5000);
