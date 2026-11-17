@@ -37,30 +37,6 @@ const runState: any = ok({
   inputs: [],
 });
 const info: any = ok({ members: [], runs: { active: [], recent: [] } });
-// p7 只验证客户端动作与表单状态；对话接续给一份已关闭的完整视图，不影响本夹具的断言。
-const continuation: any = ok({
-  view: {
-    projectId,
-    chatId,
-    mode: "off",
-    epoch: 1,
-    revision: 1,
-    owner: { kind: "human", id: "human" },
-    changedBy: null,
-    changedAt: null,
-    reason: null,
-    assignedTaskIds: [],
-    nextDueAt: null,
-    activeRunIds: [],
-    remindedHuman: false,
-    latestEvaluation: null,
-    recentRounds: [],
-    deliveries: [],
-    attention: null,
-  },
-  allowedActions: [],
-  denials: {},
-});
 function Scene() {
   return (
     <div className="flex h-dvh flex-col">
@@ -83,7 +59,6 @@ function Scene() {
           info={info}
           runState={runState}
           runActivities={ok([])}
-          continuation={continuation}
           inspectorOpen={false}
           onToggleInspector={() => {}}
           onChanged={() => {}}

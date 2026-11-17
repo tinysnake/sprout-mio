@@ -49,12 +49,11 @@
 - 这提供申请与人类批准的路径，不授予 Agent 自行执行这些变更的权限。
 - 申请呈现、有效期及状态变化时的校验细节留待后续设计。
 
-### 对话接续与人类控制
+### Crew 路由与人类控制
 
-- Human 与 lead 的连续对话接续不设固定轮数上限；Agent 之间不按成员关系级联唤醒。
-- Crew 只启动 lead 的 run：Human 消息、任务启动与自动化都路由给 lead。worker 不进入 Crew 主对话的唤醒候选，其输入来自 lead 的显式委派（CR2）。DM 保持给唯一 Agent 分身。
-- 存在 assigned Task 不改变路由，也不启动周期 LLM 判定：Crew 仍交给 lead，DM 交给唯一分身。需要接续时由当前责任人在对话中继续；Human 暂停和停止控制仍然有效。
-- 人类可以随时暂停自动唤醒或停止分身运行；对话接续不得立即抵消人类的停止操作。
+- Crew 只启动 lead 的 run：Human 消息、任务启动与自动化都路由给 lead。worker 不进入 Crew 主对话的候选，其输入来自 lead 的显式委派（CR2）。DM 保持给唯一 Agent 分身。
+- 存在 assigned Task 不改变路由：Crew 仍交给 lead，DM 交给唯一分身。需要继续时由当前责任人在对话中继续。
+- 人类可以随时停止分身运行；停止操作不会被任何自动机制抵消。
 
 ### 忙碌分身与新消息
 
@@ -82,7 +81,7 @@
 
 系统主动提醒包括挂靠超时与 Agent run 注意力阶梯，均写入发生地 Chat。挂靠首次提醒在 Agent lead 分支直接投递 lead input，Human 只收 Chat 消息；后续升级规则见 [Machines 决策](machines-decisions.md)。
 
-Run 从 `startedAt` 起默认 30 分钟写注意力事实：Crew 的 lead 不是本 run 执行者时写系统消息并直接投递 lead input；lead 自己执行与 DM 只写事实，不提前发消息。第 60 分钟统一写一条人类提醒并暂停该 run 的 lead 自动重试；晚扫仍按理论 deadline 加 escalation 计算。系统来源固定为 `sprout.run-attention`，消息不走普通唤醒判定或自动续接。人类收件人从首条 human 输入发送者、执行 Profile 创建者及 Project 创建者收集，再按当前 Chat 成员及项目访问权过滤；仅在当前 Chat 提醒，无独立通知通道。Run 注意力不受 `SPROUT_CONTINUATION_ENABLED` 限制。
+Run 从 `startedAt` 起默认 30 分钟写注意力事实：Crew 的 lead 不是本 run 执行者时写系统消息并直接投递 lead input；lead 自己执行与 DM 只写事实，不提前发消息。第 60 分钟统一写一条人类提醒并暂停该 run 的 lead 自动重试；晚扫仍按理论 deadline 加 escalation 计算。系统来源固定为 `sprout.run-attention`。人类收件人从首条 human 输入发送者、执行 Profile 创建者及 Project 创建者收集，再按当前 Chat 成员及项目访问权过滤；仅在当前 Chat 提醒，无独立通知通道。
 
 ### Crew 与 DM 的路由
 

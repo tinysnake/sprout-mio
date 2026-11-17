@@ -174,7 +174,6 @@ try {
   const group = await createCrewFixture(call, database, {
     projectId: project.id,
     title: "Webhook group",
-    wakePolicy: "mention_only",
     initialOwner: { kind: "agent", id: alpha.id },
     members: [
       { kind: "human", id: humanId },
@@ -403,7 +402,7 @@ try {
       name: "Group explicit",
       instruction: "Group event",
       enabled: true,
-      action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+      action: { kind: "crew", chatId: group.id },
     });
     fixture.arm("chatOwner", {
       isolated: true,
@@ -437,7 +436,7 @@ try {
       name: "Owner",
       instruction: "Owner event",
       enabled: true,
-      action: { kind: "group_owner", chatId: group.id },
+      action: { kind: "crew", chatId: group.id },
     });
     const stopped = await call("setCrewModeFn", {
       chatId: group.id,
@@ -478,7 +477,7 @@ try {
       name: "Race B",
       instruction: "B instruction",
       enabled: false,
-      action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+      action: { kind: "crew", chatId: group.id },
     });
     await page.goto(`${base}/projects/${project.id}/settings?tab=webhooks`, {
       waitUntil: "networkidle",

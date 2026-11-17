@@ -5,7 +5,6 @@ import {
   fieldErrorsFrom,
   projectIdInput,
   updateProjectInput,
-  updateProjectWakePolicyInputSchema,
 } from "../../contracts/project";
 import type { Project, ProjectResult } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
@@ -13,7 +12,6 @@ import type { ProjectContext } from "../../domain/project";
 import type { DiagnosticInput } from "../diagnostics";
 import { getRequestContext } from "../request-context";
 import { toDomainAppError } from "./domain-errors";
-import { wakeProviderAvailabilityFromEnv } from "../wake-config";
 
 /** 认证与数据库只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
@@ -102,13 +100,7 @@ export async function getProjectBoundary(
         fieldErrors: fieldErrorsFrom(parsed.error),
       };
     }
-    return ok(
-      {
-        ...deps.getProject(parsed.data.projectId, context),
-        wakeProviderAvailability: wakeProviderAvailabilityFromEnv(),
-      },
-      requestId,
-    );
+    return ok(deps.getProject(parsed.data.projectId, context), requestId);
   });
 }
 
@@ -136,52 +128,6 @@ export async function updateProjectBoundary(
     return ok(deps.updateProject(id.data.projectId, parsed.data, context), requestId);
   });
 }
-
-export async function updateProjectWakePolicyBoundary(
-  raw: unknown,
-  headers: Headers,
-  requestId: string,
-): Promise<ProjectResult<Project>> {
-  return projectBoundary<Project>(headers, requestId, (deps, context) => {
-    const parsed = updateProjectWakePolicyInputSchema.safeParse(raw);
-    if (!parsed.success) return fail(toAppError(parsed.error, requestId));
-    const availability = wakeProviderAvailabilityFromEnv().find(
-      (item) => item.provider === parsed.data.provider,
-    );
-    const model =
-      parsed.data.provider === "jev"
-        ? process.env.SPROUT_WAKE_JEV_MODEL
-        : process.env.SPROUT_WAKE_LLM_MODEL;
-    const thresholdVersion = process.env.SPROUT_WAKE_THRESHOLD_VERSION;
-    if (!model || !thresholdVersion || !availability?.available)
-      return fail({
-        code: "wake_provider_unavailable",
-        message:
-          availability?.unavailableReason === "missing_credentials"
-            ? "这台部署没有 JEV 凭据，判定器未启用。"
-            : "这台部署没有配置判定模型与阈值版本，判定器未启用。",
-        requestId,
-      });
-    return ok(
-      {
-        ...deps.updateProjectWakePolicy(
-          parsed.data,
-          context,
-          { model, thresholdVersion },
-          new Date(),
-        ),
-        wakeProviderAvailability: wakeProviderAvailabilityFromEnv(),
-      },
-      requestId,
-    );
-  });
-}
-
-export const updateProjectWakePolicyFn = createServerFn({ method: "POST" })
-  .validator((raw: unknown) => raw)
-  .handler(async ({ data }) =>
-    updateProjectWakePolicyBoundary(data, getRequestHeaders(), getRequestContext().requestId),
-  );
 
 export const createProjectFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)

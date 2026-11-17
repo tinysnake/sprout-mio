@@ -206,8 +206,8 @@ export const leaseReadInputSchema = leaseKeySchema.extend({
   mutationId: mutationIdSchema.optional(),
 });
 /**
- * 挂靠请求：把租约挂到本 Project 的某个 Group（`targetAgentProfileId` 为空）
- * 或该 Group 内的某个 Agent profile。`chatId` 是 Public Channel 时同样成立；DM 不被支持。
+ * 挂靠请求：把租约挂到本 Project 的 Crew（`targetAgentProfileId` 为空）
+ * 或该 Crew 内的某个 Agent profile；DM 不被支持。
  */
 export const leaseEscrowInputSchema = z.strictObject({
   ...leaseKeySchema.shape,

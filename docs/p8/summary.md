@@ -14,7 +14,7 @@ P8 交付二期的四块能力：租约挂靠与领取、挂靠超时提醒与�
 ## 交付了什么
 
 1. **挂靠与领取。** 持有者把自己的租约挂靠到本 Project 的 Group / Public Channel（可指定 Group 内的 Agent）；挂靠期间 `machine_lease` 仍 `held`、持有者字段不变、原持有者的授权转 `escrowed` 并失去操作权；Group 内的分身凭自己的身份领取后 `generation + 1` 成为新持有者；发起挂靠的分身可撤销收回。**这三条命令没有人类入口**：人类只有只读事实与强制收回，界面不提供表单、按钮，也不用「发指令消息」替分身代劳。
-2. **挂靠超时提醒与升级。** 超时从挂靠被接受时刻起算，默认 30 分钟，可按 Project 覆盖；只加只读标记与一条提醒消息，绝不释放租约。Group owner 是 Agent 时直接唤醒并说明要处理什么，owner 是人类时在该 Group 的 chat 里留一条消息（不触发唤醒、不自动接续）；只提醒一次；owner 为 Agent 且超时后再 2 小时仍未处理时升级给人类，并暂停该 owner 的自动尝试。超时与升级**不受「人类暂停自动唤醒」影响**，是那条规则的明确例外。
+2. **挂靠超时提醒与升级。** 超时从挂靠被接受时刻起算，默认 30 分钟，可按 Project 覆盖；只加只读标记与一条提醒消息，绝不释放租约。Crew lead 是 Agent 时直接唤醒并说明要处理什么，lead 是人类时在该 Crew 的 chat 里留一条消息；只提醒一次；owner 为 Agent 且超时后再 2 小时仍未处理时升级给人类，并暂停该 owner 的自动尝试。超时与升级**不受「人类暂停自动唤醒」影响**，是那条规则的明确例外。
 3. **申请遇阻只等待。** 没有「自动协调」这回事：不发请求、不合并、不重查、不广播。申请方 Agent 一次阻塞式等待（自己指定时长，建议 5 分钟、上限钳到 1 小时，不提供 Project 级配置），到点同步拿到失败与原因，由它自己决定是否提前中止当前 run 并汇报。等待期间该身份不接其他工作；等待永不释放租约。
 4. **强制移除与自动善后。** 人类确认后中止本项目全部活动 runs、剥夺参与与操作权，不要求先逐项清理；Group/Public Channel owner 默认转给 Project 创建者，Tasks 留原对话，DM 未完成且仍分配给该 DM 的 Tasks 退回 `proposed` 并清空分配；确认撤权后自动释放租约，**无法确认时保留待处理占用（`fencing` + `pending`），绝不显示空闲**；文件与进程不自动清理，其他 Projects 不受影响。交接确认门会重查目标：租约不会被落到已移除的实例名下。
 5. **Windows Worker。** 分别探测 PowerShell 7、Windows PowerShell 5.1、cmd 的路径/版本/自检并如实上报，按 kind 分派调用；文件操作走跨平台 API；进程取消用 `taskkill /T /F` 并只报「已投递」；区分用户登录 session；长命令在 Windows 上杀 runner 即随控制台结束，不伪造结果、不重跑；重连同序号请求幂等。
@@ -33,7 +33,7 @@ P8 交付二期的四块能力：租约挂靠与领取、挂靠超时提醒与�
 ## 功能线证据
 
 - **挂靠与领取**（`f9caed5`）：`escrowLease` / `claimLease` / `cancelLeaseEscrow` 三个域函数、`lease_escrow` 表与三条挂靠工具、领取后 `generation + 1` 换持有者、原持有者授权转 `escrowed` 后写入被拒。重跑 `bash scripts/verify/p8a-lease-escrow.sh`。
-- **挂靠超时提醒与遇阻等待**（`f9caed5`）：`src/domain/lease-timeout.ts` 的超时与升级判定、`src/domain/lease-wait.ts` 的阻塞式等待、`project.wake_policy.leaseTimeouts` 覆盖值；超时只加标记与一条消息，永不释放租约。重跑 `bash scripts/verify/p8b-timeout.sh`。
+- **挂靠超时提醒与遇阻等待**（`f9caed5`）：`src/domain/lease-timeout.ts` 的超时与升级判定、`src/domain/lease-wait.ts` 的阻塞式等待、`project.runtime_policy.leaseTimeouts` 覆盖值；超时只加标记与一条消息，永不释放租约。重跑 `bash scripts/verify/p8b-timeout.sh`。
 - **强制移除与自动善后**（`f9caed5`）：`forceRemoveProjectMember` 的「中止 runs、转接责任、退回 DM Task、释放租约」顺序，无法确认撤权时保留 `fencing` + `pending`。重跑 `bash scripts/verify/p8c-removal.sh`。
 - **Windows Worker**（`e4fc55f`）：`src/worker/platform.ts`、`src/worker/probes.ts` 的三条 shell 探测与按 kind 分派、`taskkill /T /F` 取消、session 映射。重跑 `bash scripts/verify/p8d-windows-worker.sh`（MANUAL，缺真实 Windows 会明示失败）。
 

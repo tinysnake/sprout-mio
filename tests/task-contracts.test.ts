@@ -427,7 +427,6 @@ it("validates remote list and Chat outputs against their response schemas", () =
       crewEpoch: 0,
       control: "active",
       owner: { kind: "human", id: "user" },
-      wakePolicy: "owner_led",
       governanceRevision: 0,
       createdBy: "user",
       createdAt: now,

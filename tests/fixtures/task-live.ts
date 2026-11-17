@@ -594,7 +594,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
         { kind: "agent", id: agent.id },
       ],
       initialOwner: { kind: "agent", id: agent.id },
-      wakePolicy: "owner_led",
     });
     const foreignDetail = await call("createTaskFn", {
       projectId: project.id,

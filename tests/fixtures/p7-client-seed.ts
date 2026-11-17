@@ -26,7 +26,6 @@ const group = createCrewChat(
       { kind: "agent", id: agent.id },
     ],
     initialOwner: { kind: "human", id: human.id },
-    wakePolicy: "owner_led",
   },
   { kind: "human", userId: human.id, ctx },
 );

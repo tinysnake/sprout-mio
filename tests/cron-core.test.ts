@@ -37,7 +37,6 @@ function rule(expression = "* * * * *") {
     {
       projectId: project.id,
       title: "Cron",
-      wakePolicy: "mention_only",
       initialOwner: { kind: "agent", id: agent.id },
       members: [
         { kind: "human", id: ctx.userId },
@@ -52,7 +51,7 @@ function rule(expression = "* * * * *") {
       name: "Clock",
       enabled: true,
       instruction: "Check @Agent /skill:danger",
-      action: { kind: "group_agent", chatId: chat.id, agentProfileId: agent.id },
+      action: { kind: "crew", chatId: chat.id },
       expression,
       timezone: "UTC",
     },
@@ -407,7 +406,7 @@ it("gates cron initial prompt and cross-rule active steer at the real transport 
           ...data,
           ruleId: id,
           expectedRevision: revision,
-          action: { kind: "group_owner", chatId: seed.action.chatId! },
+          action: { kind: "crew", chatId: seed.action.chatId! },
         },
         ctx,
       );

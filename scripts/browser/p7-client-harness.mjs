@@ -105,7 +105,6 @@ export async function runProduction(check) {
     assert.equal(summary.migration.hash, seeded.migration.hash);
     assert.equal(summary.migration.id, seeded.migration.id);
     assert.equal(summary.pendingResourceNotices, 0);
-    assert.equal(summary.pendingContinuations, 0);
     assert.deepEqual(summary.mcpFrames, []);
     assert.equal((await context.request.get(base + "/api/diagnostics")).status(), 400);
     const events = await context.request.get(

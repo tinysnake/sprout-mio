@@ -4,7 +4,6 @@ import { db } from "../db";
 import { agentProfile, chatEffectiveMember, projectMember } from "../db/schema";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, createDirectChat, readCrewLeadId, ChatError } from "./chat";
-import { controlFor } from "./chat-schedule";
 
 export function validateAutomationDmAgent(
   projectId: string,
@@ -39,17 +38,15 @@ export function resolveAutomationTarget(
       const reason = validateAutomationDmAgent(projectId, action.agentProfileId, ctx);
       if (reason) return { reason };
     }
-    const targetChatId =
+    const current =
       action.kind === "dm_agent" && !action.chatId
-        ? createDirectChat(projectId, action.agentProfileId, ctx).chat.id
-        : action.chatId!;
-    const current = getChat(targetChatId, ctx);
+        ? getChat(createDirectChat(projectId, action.agentProfileId, ctx).chat.id, ctx)
+        : getChat(action.chatId!, ctx);
     if (current.projectId !== projectId) return { reason: "target_project_mismatch" };
     if (current.archivedAt) return { reason: "chat_archived" };
     if ((action.kind === "dm_agent") !== (current.kind === "dm"))
       return { reason: "target_kind_mismatch" };
-    if (current.control === "stopped" || controlFor(current.id).mode !== "enabled")
-      return { reason: "chat_stopped" };
+    if (current.control === "stopped") return { reason: "chat_stopped" };
     const crewLeadId = current.kind === "crew" ? readCrewLeadId(current.id) : undefined;
     if (current.kind === "crew" && !crewLeadId) return { reason: "crew_lead_missing" };
     const agentProfileId = action.kind === "dm_agent" ? action.agentProfileId : crewLeadId!;

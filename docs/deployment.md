@@ -18,7 +18,6 @@
 | 数据库 | `$SPROUT_RUNTIME_ROOT/prod/data/sprout.sqlite` | `drill/data/sprout.sqlite`（每次从 prod 备份刷新） | `dev/data/sprout.sqlite`（按需刷新） |
 | Pi 目录 | `.../prod/pi` | `.../drill/pi` | `.../dev/pi` |
 | 仓库目录 | `.../prod/repos` | `.../drill/repos` | `.../dev/repos` |
-| 对话接续 | 开 | 开（`drill/env` 设 `true`） | 关 |
 | 端口 | 3220 | 3221 起 | 3000 |
 
 运行根目录可以在任意位置，默认 `~/sprout-runtime`。脚本按这个顺序解析：
@@ -35,25 +34,6 @@ bash scripts/deploy/init-instance.sh prod
 ```
 
 prod 的代码 checkout（`$SPROUT_RUNTIME_ROOT/prod/app`）从远端 clone，默认取开发 checkout 的 `origin`，可用 `SPROUT_DEPLOY_REMOTE` 指定。部署脚本不使用开发 checkout 的路径，所以 prod 可以整体搬走，只要重跑一次 `init-instance.sh` 与 `promote.sh`。
-
-`SPROUT_CONTINUATION_ENABLED` 是实例级开关，默认 `true`，只接受 `true` 或 `false`。关掉后运行时不装判定器、不启动调度器、判定边界直接拒绝，`/api/health` 的 `continuationEnabled` 报告实际取值。`init-instance.sh` 建实例时写入 prod `true`、drill 与 dev `false`；`verify.sh` 按该实例 env 里声明的值校验 `/api/health` 是否一致，改这一项要重启实例才生效（旧名 `SPROUT_AUTOMATION_ENABLED` 会被忽略，等于没设）。`deploy-continuation-off` 门禁在两种取值下各跑一遍并比对证据：关闭时到期排期不被认领、不产生判定与投递、两个模型边界调用数为 0；打开时同一轮判定与投递各发生一次，付费模型调用数为 0。
-
-`SPROUT_WAKE_THRESHOLD_VERSION`、`SPROUT_WAKE_LLM_MODEL`、`SPROUT_WAKE_JEV_MODEL` 与 `JEV_API_KEY` 是唤醒判定的部署配置，都是可选项：不配时实例照常运行，只是 Project 设置页里的判定器选项按可用性置灰，保存配置会返回 `wake_provider_unavailable`。
-
-| 变量 | 作用 | 缺失时 |
-| --- | --- | --- |
-| `SPROUT_WAKE_THRESHOLD_VERSION` | 判定口径版本，两个 provider 共用 | 两个判定器都不可选 |
-| `SPROUT_WAKE_LLM_MODEL` | LLM 判定器的模型，写作 `provider/model` | LLM 判定器不可选 |
-| `SPROUT_WAKE_JEV_MODEL` | JEV 判定服务的模型 | JEV 判定器不可选 |
-| `JEV_API_KEY` | JEV 判定服务的凭据 | JEV 判定器不可选（`missing_credentials`） |
-
-浏览器只选 provider：模型与阈值版本由服务端在保存时从 env 取，写进 Project 的 `wake_policy`（`configRevision` 每次递增，写入经审计路径 `project_wake_policy_command`）。由此带来三条口径：
-
-- 判定记录上的 `version` 就是保存时的 `SPROUT_WAKE_THRESHOLD_VERSION`；改这个值等于换口径，历史记录保留旧版本。
-- JEV 服务返回的阈值版本与 policy 不一致时按失效处理（`src/domain/wake-providers/jev.ts:47`）。
-- policy 省略 `model` 时运行时用宿主 pi 的默认模型补齐（读 `PI_CODING_AGENT_DIR`，默认 `~/.pi/agent` 的 `settings.json`）；实例自己的 `SPROUT_PI_DATA_DIR` 与判定器模型无关。
-
-prod 当前取值（2026-11-04，`prod/env`）：`SPROUT_WAKE_THRESHOLD_VERSION=p6a-design-default-v1`、`SPROUT_WAKE_LLM_MODEL=magpie/auto/deepseek-v4.1-flash`，未配 JEV。`init-instance.sh` 不写这些变量——判定器是可选的实例能力，需要哪个就手工加进 `$SPROUT_RUNTIME_ROOT/<实例>/env`，再用 `launchd.sh` 重启。样例见仓库根目录的 `.env.example`。
 
 ```text
 ~/sprout-runtime/
@@ -149,7 +129,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/drill.sh <sha>` | 在演练实例上部署某个提交并做健康检查 |
 | `scripts/deploy/promote.sh <tag>` | 把某个 tag 部署到 prod，失败自动回滚 |
 | `scripts/deploy/rollback.sh [备份文件]` | 恢复最近一次（或指定）备份并切回上一个 tag |
-| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态，含 `/api/health` 里的 `continuationEnabled` |
+| `scripts/deploy/verify.sh <instance>` | 校验实例后置状态 |
 | `scripts/deploy/selftest.sh` | 在临时运行根目录里把上面整条链路跑一遍 |
 | `scripts/deploy/rehearse.sh` | 用本地裸远端演练首次部署、升级、回滚三条路径 |
 | `scripts/deploy/reset-password.sh <实例> <邮箱>` | 直接改某个账号的密码，不依赖发信服务 |
@@ -286,12 +266,10 @@ PWA 需要安全上下文，所以 prod 前面要有 HTTPS。用 Caddy 或 `tail
 ## 未确认项
 
 - 远端 Worker 的凭据存储形态，见上文。
-- `SPROUT_CONTINUATION_ENABLED=false` 时是否还有未覆盖的对话接续入口。`deploy-continuation-off` 门禁覆盖运行时接线、调度器、投递路径与两个判定器边界。
 
 ## 验证
 
 ```bash
-bash scripts/verify/deploy-continuation-off.sh  # 实例开关的关闭与打开对照
 bash scripts/verify/deploy-leaks.sh     # 隐私数据不进仓库
 bash scripts/verify/worker-artifact.sh  # 源码安装构建后运行期只要 node
 bash scripts/deploy/selftest.sh         # 脚本链路自检

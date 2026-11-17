@@ -56,8 +56,6 @@ import { Route as AuthedProjectsProjectIdSettingsCronRuleIdRouteImport } from '.
 import { Route as AuthedProjectsProjectIdSettingsCronNewRouteImport } from './routes/_authed/projects.$projectId.settings.cron.new'
 import { Route as AuthedProjectsProjectIdSettingsWebhooksRuleIdRouteImport } from './routes/_authed/projects.$projectId.settings.webhooks.$ruleId'
 import { Route as AuthedProjectsProjectIdSettingsWebhooksNewRouteImport } from './routes/_authed/projects.$projectId.settings.webhooks.new'
-import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.continuation'
-import { Route as AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport } from './routes/_authed/projects.$projectId.chats.$chatId.checks.$evaluationId.wake'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -313,20 +311,6 @@ const AuthedProjectsProjectIdSettingsWebhooksNewRoute =
     path: '/webhooks/new',
     getParentRoute: () => AuthedProjectsProjectIdSettingsRoute,
   } as any)
-const AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute =
-  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport.update(
-    {
-      id: '/checks/$evaluationId/continuation',
-      path: '/checks/$evaluationId/continuation',
-      getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
-    } as any,
-  )
-const AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute =
-  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport.update({
-    id: '/checks/$evaluationId/wake',
-    path: '/checks/$evaluationId/wake',
-    getParentRoute: () => AuthedProjectsProjectIdChatsChatIdRoute,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -375,8 +359,6 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
   '/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
-  '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
-  '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -418,8 +400,6 @@ export interface FileRoutesByTo {
   '/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
   '/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/projects/$projectId/chats/$chatId': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
-  '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
-  '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -470,8 +450,6 @@ export interface FileRoutesById {
   '/_authed/projects/$projectId/settings/webhooks/$ruleId': typeof AuthedProjectsProjectIdSettingsWebhooksRuleIdRoute
   '/_authed/projects/$projectId/settings/webhooks/new': typeof AuthedProjectsProjectIdSettingsWebhooksNewRoute
   '/_authed/projects/$projectId/chats/$chatId/': typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
-  '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
-  '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -522,8 +500,6 @@ export interface FileRouteTypes {
     | '/projects/$projectId/settings/webhooks/$ruleId'
     | '/projects/$projectId/settings/webhooks/new'
     | '/projects/$projectId/chats/$chatId/'
-    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
-    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -565,8 +541,6 @@ export interface FileRouteTypes {
     | '/projects/$projectId/settings/webhooks/$ruleId'
     | '/projects/$projectId/settings/webhooks/new'
     | '/projects/$projectId/chats/$chatId'
-    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
-    | '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   id:
     | '__root__'
     | '/'
@@ -616,8 +590,6 @@ export interface FileRouteTypes {
     | '/_authed/projects/$projectId/settings/webhooks/$ruleId'
     | '/_authed/projects/$projectId/settings/webhooks/new'
     | '/_authed/projects/$projectId/chats/$chatId/'
-    | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
-    | '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -973,20 +945,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthedProjectsProjectIdSettingsWebhooksNewRouteImport
       parentRoute: typeof AuthedProjectsProjectIdSettingsRoute
     }
-    '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation': {
-      id: '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
-      path: '/checks/$evaluationId/continuation'
-      fullPath: '/projects/$projectId/chats/$chatId/checks/$evaluationId/continuation'
-      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRouteImport
-      parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
-    }
-    '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake': {
-      id: '/_authed/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
-      path: '/checks/$evaluationId/wake'
-      fullPath: '/projects/$projectId/chats/$chatId/checks/$evaluationId/wake'
-      preLoaderRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRouteImport
-      parentRoute: typeof AuthedProjectsProjectIdChatsChatIdRoute
-    }
   }
 }
 
@@ -1022,18 +980,12 @@ const AuthedMachinesRouteWithChildren = AuthedMachinesRoute._addFileChildren(
 
 interface AuthedProjectsProjectIdChatsChatIdRouteChildren {
   AuthedProjectsProjectIdChatsChatIdIndexRoute: typeof AuthedProjectsProjectIdChatsChatIdIndexRoute
-  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute
-  AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute: typeof AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute
 }
 
 const AuthedProjectsProjectIdChatsChatIdRouteChildren: AuthedProjectsProjectIdChatsChatIdRouteChildren =
   {
     AuthedProjectsProjectIdChatsChatIdIndexRoute:
       AuthedProjectsProjectIdChatsChatIdIndexRoute,
-    AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute:
-      AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdContinuationRoute,
-    AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute:
-      AuthedProjectsProjectIdChatsChatIdChecksEvaluationIdWakeRoute,
   }
 
 const AuthedProjectsProjectIdChatsChatIdRouteWithChildren =
@@ -1200,13 +1152,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.tsx'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}

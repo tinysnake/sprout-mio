@@ -16,7 +16,6 @@ import {
   listChatSkillsFn,
 } from "../../server/functions/chat";
 import { listCrewDelegationsFn } from "../../server/functions/delegation";
-import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 
 /** Project 上下文从 URL 推导：chat 不属于 URL 中的 projectId 时按 not_found 呈现。 */
 export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId")({
@@ -36,14 +35,13 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
             data: { projectId: params.projectId, crewChatId: params.chatId },
           })
         : undefined;
-    const [members, messages, info, runState, runActivities, continuation, skills, selectedRun] =
+    const [members, messages, info, runState, runActivities, skills, selectedRun] =
       await Promise.all([
         listChatMembersFn({ data: { chatId: params.chatId } }),
         listMessagesFn({ data: { chatId: params.chatId } }),
         getChatInfoFn({ data: { chatId: params.chatId } }),
         getChatRunStateFn({ data: { chatId: params.chatId } }),
         listChatRunActivitiesFn({ data: { chatId: params.chatId } }),
-        getChatContinuationFn({ data: { projectId: params.projectId, chatId: params.chatId } }),
         listChatSkillsFn({ data: { chatId: params.chatId } }),
         deps.run ? getChatRunFn({ data: { chatId: params.chatId, runId: deps.run } }) : null,
       ]);
@@ -73,7 +71,6 @@ export const Route = createFileRoute("/_authed/projects/$projectId/chats/$chatId
       runActivities,
       crewDelegations,
       skills,
-      continuation,
     };
   },
   pendingComponent: ChatDetailPending,

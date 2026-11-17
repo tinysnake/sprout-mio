@@ -42,16 +42,12 @@ const alpha = createAgentProfile({ name: "Alpha", persona: "", harness: "pi" }, 
 const beta = createAgentProfile({ name: "Beta", persona: "", harness: "pi" }, ctx);
 for (const profile of [alpha, beta]) addProjectMember(project.id, profile.id, ctx);
 const human = { kind: "human" as const, userId: ctx.userId, ctx };
-function group(
-  owner: "agent" | "human" = "agent",
-  wakePolicy: "owner_led" | "mention_only" = "owner_led",
-) {
+function group(owner: "agent" | "human" = "agent") {
   return createCrewChat(
     project.id,
     {
       projectId: project.id,
       title: "@Beta group",
-      wakePolicy,
       initialOwner: { kind: owner, id: owner === "agent" ? alpha.id : ctx.userId },
       members: [
         { kind: "human", id: ctx.userId },
@@ -156,7 +152,7 @@ describe("explicit Task start and collaboration", () => {
         const targetId =
           shape === "dm"
             ? chats.createDirectChat(project.id, alpha.id, ctx).chat.id
-            : group("agent", "mention_only").id;
+            : group("agent").id;
         // A previous DM test may leave an active run; exercise both new and reused runs explicitly below.
         const previousActive = runs
           .listAgentRuns(targetId, ctx)
@@ -197,8 +193,8 @@ describe("explicit Task start and collaboration", () => {
         }
       });
   }
-  it("appends repeated explicit starts to the active owner run even under mention_only", () => {
-    const s = start(group("agent", "mention_only").id);
+  it("appends repeated explicit starts to the active owner run", () => {
+    const s = start(group("agent").id);
     const before = counts();
     const again = tasks.startTask(command(s.detail), ctx);
     expect(again.startDelivery?.runId).toBe(s.runId);

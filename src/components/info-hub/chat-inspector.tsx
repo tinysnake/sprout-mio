@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
-import { ContinuationPanel } from "../continuation/continuation-panel";
-import type { ContinuationPageData } from "../continuation/continuation-page-data";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
 import { agentDetailFromChat } from "../agent/agent-detail-search";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
@@ -37,7 +35,6 @@ export function ChatInspector({
   turnContext,
   machineFacts = null,
   machineFactsError,
-  continuation,
   tabs,
   onClose,
 }: {
@@ -52,7 +49,6 @@ export function ChatInspector({
   /** 为 null 时按未接入呈现；不伪造空租约或空执行列表。 */
   machineFacts?: ChatMachineFacts | null;
   machineFactsError?: AppError;
-  continuation?: ContinuationPageData;
   /** 真应用里由路由给出「信息 | 文件」页签；独立场景没有路由，退回原样标题。 */
   tabs?: ReactNode;
   onClose: () => void;
@@ -89,9 +85,6 @@ export function ChatInspector({
         </Button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-6">
-        <div className="py-5">
-          <ContinuationPanel data={continuation} chatKind={chat.kind} />
-        </div>
         <section className="border-b border-border py-5" data-testid="inspector-tasks">
           <h3 className="mb-3.75 text-[10px] font-medium text-muted-foreground">Task 摘要</h3>
           {info.ok ? (

@@ -56,7 +56,7 @@
 
 浏览器步骤见 [i-chat-flow.mjs](../../scripts/browser/i-chat-flow.mjs)，标题路径见 [p4b-chat-title-flow.mjs](../../scripts/browser/p4b-chat-title-flow.mjs)。I 脚本默认证据在 `.verify/i-chat/evidence.json`、同目录日志与 `evidence/p2-i-*.png`；标题截图默认在 `.verify/i-chat-title/evidence/`。保留重启前后的消息、标识与状态变化证据。
 
-Run 注意力验收入口：`bash scripts/verify/run-attention.sh`。SQLite 集成用 `createContinuationScheduler().advance()` 推进统一 clock，证明 Crew lead 不是本 run 执行者时 30 分钟获得唯一 input、lead 自己执行与 DM 30 分钟无消息且 60 分钟仅一条，以及全局 continuation 关闭仍计时；协议桩跨旧 600000ms 与 1800000ms，保留初始化协议超时，覆盖初始化取消、自然退出与迟到 settled，并测真实取消耗时及同 instance 下一轮启动。UI SSR 覆盖 DM、Crew、选中 run、终态历史和保留 sender，不能替代 Human 页面体验。页面定位为 `agent-run-row` 内的 `run-attention`、`agent-run-stop`，DM 在运行状态区查看关注事实并使用输入区既有停止入口。
+Run 注意力验收入口：`bash scripts/verify/run-attention.sh`。SQLite 集成用 `createScheduler().advance()` 推进统一 clock，证明 Crew lead 不是本 run 执行者时 30 分钟获得唯一 input、lead 自己执行与 DM 30 分钟无消息且 60 分钟仅一条，；协议桩跨旧 600000ms 与 1800000ms，保留初始化协议超时，覆盖初始化取消、自然退出与迟到 settled，并测真实取消耗时及同 instance 下一轮启动。UI SSR 覆盖 DM、Crew、选中 run、终态历史和保留 sender，不能替代 Human 页面体验。页面定位为 `agent-run-row` 内的 `run-attention`、`agent-run-stop`，DM 在运行状态区查看关注事实并使用输入区既有停止入口。
 
 ## Gotchas
 

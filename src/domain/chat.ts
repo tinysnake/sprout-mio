@@ -2,8 +2,6 @@ import { freezeCrewResources, hasCrewResourceResponsibilities } from "./crew-res
 import { captureFeishuMessage } from "./feishu-delivery";
 import { automationSourceFor } from "./automation-source";
 import { assistantEventSummary } from "./assistant-display";
-import { signalScheduleChange } from "./chat-schedule";
-import { enqueueMessageWake } from "./message-wake";
 import { and, asc, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import {
   CHAT_MESSAGE_PAGE_LIMIT_MAX,
@@ -104,7 +102,6 @@ function toChat(row: typeof chat.$inferSelect): Chat {
     ...(control === undefined ? {} : { control }),
     ...(row.archivedAt === null ? {} : { archivedAt: row.archivedAt.toISOString() }),
     owner: { kind: row.ownerKind, id: row.ownerId },
-    wakePolicy: row.wakePolicy,
     governanceRevision: row.governanceRevision,
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
@@ -392,7 +389,6 @@ function applyGovernance(
     .returning()
     .get();
   if (!updated) throw new ChatError("conflict", "群组已被并发修改，请刷新后重试");
-  signalScheduleChange(row.id);
   return toChat(updated);
 }
 
@@ -964,9 +960,6 @@ export function sendMessage(
         });
         writtenFiles.push(...writeAttachmentBytes({ list: newAttachments, idByLocalId }));
         writeMessageAttachments(chatId, row.id, rewritten.spans);
-        // Crew 不用判定式唤醒：人类消息直接交给 lead，Agent 消息不级联。
-        if (current.kind !== "crew")
-          enqueueMessageWake({ id: row.id, chatId, senderKind: input.senderKind });
         // 会话的「最后消息时间」必须就是这条消息的时间：再读一次时钟会跨秒，
         // 列表显示的时间就会和消息本身差一秒（k-acceptance 会判不一致）。
         db.update(chat)
@@ -989,8 +982,6 @@ export function sendMessage(
     discardAttachmentFiles(writtenFiles);
     throw error;
   }
-  // 通知必须在事务提交之后发出；放在 writeIdentity 回调里时，监听者可能读到未提交的 wake 行。
-  signalScheduleChange(saved.chatId);
   return saved;
 }
 
@@ -1070,7 +1061,6 @@ export function ensureProjectCrew(projectId: string): string {
       title: parent.name,
       ownerKind: "human",
       ownerId: parent.createdBy,
-      wakePolicy: "owner_led",
       governanceRevision: 0,
       createdBy: parent.createdBy,
       createdAt: now,
@@ -1381,7 +1371,6 @@ export function setCrewMode(
               set: { mode, updatedAt: new Date() },
             })
             .run();
-          signalScheduleChange(chatId);
           if (mode === "stopped") freezeCrewResources({ crewChatId: chatId }, "crew_stopped");
           return { ...updated, control: mode };
         },
@@ -1449,7 +1438,6 @@ export function setCrewLead(
             .returning()
             .get();
           if (!updated) throw new ChatError("conflict", "Crew 已被并发修改，请刷新后重试");
-          signalScheduleChange(chatId);
           return toChat(updated);
         },
         hooks,

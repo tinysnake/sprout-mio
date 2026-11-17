@@ -68,7 +68,7 @@ describe("P2 身份、Project 授权与持久对话", () => {
         agent_profile: ['id','name','purpose','job_title','description','persona','harness','model','effort','created_by','created_at','updated_at'],
         project_profile: ['project_id','git_remote','default_branch','work_directory','updated_at'],
         project_member: ['project_id','agent_profile_id','added_by','added_at'],
-        chat: ['id','project_id','kind','title','parent_crew_chat_id','lead_profile_id','crew_epoch','archived_at','owner_kind','owner_id','wake_policy','governance_revision','created_by','created_at','updated_at'],
+        chat: ['id','project_id','kind','title','parent_crew_chat_id','lead_profile_id','crew_epoch','archived_at','owner_kind','owner_id','governance_revision','created_by','created_at','updated_at'],
         chat_member: ['chat_id','member_kind','member_id','added_at'],
         agent_instance: ['id','agent_profile_id','chat_id','project_id','created_at','updated_at'],
         // I-P5b 在 body 之后追加 9 个可空的 Task 归属列；其余列序与 P2 一致。

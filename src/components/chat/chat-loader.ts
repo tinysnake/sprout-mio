@@ -16,7 +16,6 @@ import type {
 import type { ChatInfoView, InfoHubResult, ProjectInfoHub } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
 import type { AppError, AppResult } from "../../contracts/result";
-import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { ExecutionView } from "../../contracts/remote";
 import type { MachineDetail } from "../../contracts/machine";
 import type { LeaseView } from "../../contracts/lease";
@@ -66,8 +65,6 @@ export type ChatDetailLoaderData =
       /** 已结束 run 的工作记录，按 assistantMessageId 归属到消息底部。 */
       runActivities: AgentRunResult<ChatRunActivity[]>;
       skills: ChatResult<import("../../contracts/skill").ChatSkillChoices>;
-      /** 对话接续的读模型与可用动作：页面按结果原样呈现，失败时不伪造状态。 */
-      continuation: AppResult<ChatContinuationData>;
       crewDelegations?: AppResult<import("../../contracts/delegation").CrewDelegationRail>;
     };
 

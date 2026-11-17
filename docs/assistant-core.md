@@ -12,7 +12,7 @@ Gateway grant 冻结 purpose。身份只能沿 grant → running run → instanc
 
 ## 提案与确认
 
-提案目标为 `dm_agent`、`group_agent`（Crew 指定 Agent）、`group_owner`（Crew lead）；契约动作名暂沿用旧标识，产品语义为 DM 与 Crew。DM 提案允许只给 Project 与 Agent，由入口解析或创建规范 DM；观察结果提供名称和标识供模型选择，不要求 Human 手工填写 Chat ID。提案时解析并固定目标 Project、Chat、profile、instance、body、version 与 operation hash。提案有效期 24 小时；仅 Human 可确认。确认事务重新检查来源 DM、目标可见性、成员、purpose 和精确目标。Crew lead 变化要求重新提案；Crew 可以指定某个工作 Agent。
+提案目标为 `dm_agent` 与 `crew`；Crew 目标固定交给当前 lead。DM 提案允许只给 Project 与 Agent，由入口解析或创建规范 DM；观察结果提供名称和标识供模型选择，不要求 Human 手工填写 Chat ID。提案时解析并固定目标 Project、Chat、profile、instance、body、version 与 operation hash。提案有效期 24 小时；仅 Human 可确认。确认事务重新检查来源 DM、目标可见性、成员、purpose 和精确目标。Crew lead 变化要求重新提案。
 
 确认在 IMMEDIATE 事务内创建一个原生 `assistant_work` message，直接给所选 instance 分配 input，不经过 Human 消息 fanout。重复确认先校验当前权限与目标，再返回同一 message receipt。消息来源明确是 Human 已确认的程序提案，不伪装为 Human 或工作 Agent 发言。
 

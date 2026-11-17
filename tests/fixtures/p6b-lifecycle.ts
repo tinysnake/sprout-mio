@@ -1,7 +1,7 @@
 // Production HTTP + private SQLite + the installed Pi SDK/runner + a real Worker.
 // The only stand-in is the model endpoint: a loopback fixture that answers the armed
 // tool steps. Everything else is the production path — the built server (server
-// functions over HTTP, the Pi host, the continuation scheduler), the real runner child,
+// functions over HTTP, the Pi host), the real runner child,
 // the real Worker child, and one private SQLite file. The observer wrapper only records
 // and (for one request) delays original bytes; it never synthesizes runner events,
 // domain results or tool payloads.
@@ -350,7 +350,6 @@ if (process.argv[2] === "--service") {
       machine_lease: rowMap("machine_lease", "rowid"),
       chat: rowMap("chat"),
       chat_member: rowMap("chat_member", "rowid"),
-      chat_schedule: rowMap("chat_schedule", "chat_id"),
       task: rowMap("task"),
     };
   }
@@ -661,7 +660,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
         { kind: "agent", id: beta.id },
       ],
       initialOwner: { kind: "agent", id: beta.id },
-      wakePolicy: "owner_led",
     });
     const dm = await call("createDirectChatFn", { projectId, agentProfileId: alpha.id });
     const idleDm = await call("createDirectChatFn", { projectId, agentProfileId: gamma.id });
@@ -673,7 +671,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
         { kind: "agent", id: beta.id },
       ],
       initialOwner: { kind: "agent", id: beta.id },
-      wakePolicy: "owner_led",
     });
     const sideDm = await call("createDirectChatFn", {
       projectId: sideProjectId,
@@ -1196,21 +1193,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
         { added: [], removed: [], changed: [] },
         `hint delivery must not write ${table}`,
       );
-    // chat_schedule 是派发缓存，不是 hint 的副作用：本轮故意改标题后，调度器按 fingerprint
-    // 重建了该 Chat 的缓存。只允许这一个被故意改动的 Chat，并要求重建早于 hint 到达。
-    A.deepEqual(
-      firstHintDiff.chat_schedule,
-      { added: [], removed: [], changed: [crossChat.id] },
-      "only the deliberately retitled Chat's schedule reconciles",
-    );
-    const reconciledSchedule = rows(
-      "SELECT updated_at FROM chat_schedule WHERE chat_id=?",
-      crossChat.id,
-    )[0];
-    A(
-      reconciledSchedule && reconciledSchedule.updated_at < firstHint.at,
-      "schedule reconciliation happened before hint delivery, not because of it",
-    );
     A.deepEqual(
       [...firstHintDiff.task.added].sort(byText),
       [...created].sort(byText),
@@ -1456,11 +1438,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     const idleBefore = sideEffectDump();
     const idleRunsBefore = await runCountFor(idleDm.chat.id);
     A.equal(idleRunsBefore, 0, "the idle Chat starts with no run");
-    A.equal(
-      rows("SELECT count(*) AS n FROM chat_schedule")[0].n > 0,
-      true,
-      "an assigned Task elsewhere keeps the continuation scheduler armed",
-    );
     const revisionBefore = (
       await call("getInfoHubFn", { projectId, view: "project", section: "tasks" })
     ).revision;
@@ -1525,7 +1502,6 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
       inputsAdded: idleDiff.agent_run_input.added.length,
       sessionsAdded: idleDiff.agent_instance.added.length,
       polledChanges,
-      schedulesArmed: rows("SELECT count(*) AS n FROM chat_schedule")[0].n,
     };
     pass("invariant 3: ordinary visible change never wakes an idle instance", facts.invariant3);
 

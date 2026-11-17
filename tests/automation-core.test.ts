@@ -44,7 +44,6 @@ function group(owner: "human" | "agent" = "agent") {
     {
       projectId: project.id,
       title: "Webhook",
-      wakePolicy: "mention_only",
       initialOwner: { kind: owner, id: owner === "human" ? ctx.userId : alpha.id },
       members: [
         { kind: "human", id: ctx.userId },
@@ -148,12 +147,9 @@ describe("Project webhook admission and single Chat input path", () => {
       channel.governanceRevision,
       human,
     );
-    expect(
-      deliver(
-        rule({ kind: "group_agent", chatId: channel.id, agentProfileId: fresh.id }),
-        "public-event",
-      ).run.chatId,
-    ).toBe(channel.id);
+    expect(deliver(rule({ kind: "crew", chatId: channel.id }), "public-event").run.chatId).toBe(
+      channel.id,
+    );
     const outsider = createAgentProfile({ name: "Outside", persona: "", harness: "pi" }, ctx);
     expect(() => rule({ kind: "dm_agent", agentProfileId: outsider.id })).toThrow(
       /agent_not_participating/,
@@ -162,7 +158,7 @@ describe("Project webhook admission and single Chat input path", () => {
   });
 
   it("reloads and revision-rotates Human-managed secrets while rejecting old values and Agent/foreign reads", () => {
-    const configured = rule({ kind: "group_agent", chatId: group().id, agentProfileId: alpha.id });
+    const configured = rule({ kind: "crew", chatId: group().id });
     expect(automation.webhookSecret(configured.rule.id, ctx)).toEqual({
       secret: configured.secret,
     });
@@ -228,13 +224,13 @@ describe("Project webhook admission and single Chat input path", () => {
           name: "bad",
           instruction: "bad",
           enabled: true,
-          action: { kind: "group_agent", chatId: current.id, agentProfileId: alpha.id },
+          action: { kind: "crew", chatId: current.id },
         },
         ctx,
         baseUrl,
       ),
     ).toThrow(/target_project_mismatch/);
-    const configured = rule({ kind: "group_agent", chatId: current.id, agentProfileId: alpha.id });
+    const configured = rule({ kind: "crew", chatId: current.id });
     const stored = db
       .select()
       .from(schema.webhookRule)
@@ -288,7 +284,7 @@ describe("Project webhook admission and single Chat input path", () => {
 
   it("authenticates before dedupe, canonicalizes JSON, scopes trial, and retains immutable accepted snapshot after disable", () => {
     const current = group();
-    const configured = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
+    const configured = rule({ kind: "crew", chatId: current.id });
     expect(() => automation.receiveWebhook(configured.rule.id, "bad", "same", {})).toThrow(
       /credentials/,
     );
@@ -359,21 +355,21 @@ describe("Project webhook admission and single Chat input path", () => {
     ).toThrow(/immutable/);
   });
 
-  it.each(["dm_agent", "group_agent", "group_owner"] as const)(
+  it.each(["dm_agent", "crew"] as const)(
     "pins exactly one recipient for %s without parsing event mentions or skills",
     (kind) => {
       const current =
         kind === "dm_agent" ? chats.createDirectChat(project.id, beta.id, ctx).chat : group();
       const action: AutomationAction =
-        kind === "group_owner"
-          ? { kind, chatId: current.id }
-          : { kind, chatId: current.id, agentProfileId: beta.id };
+        kind === "dm_agent"
+          ? { kind, chatId: current.id, agentProfileId: beta.id }
+          : { kind, chatId: current.id };
       const configured = rule(action);
       const admitted = deliver(configured, kind, {
         target: alpha.id,
         senderKind: "human",
         text: "@Alpha /skill:danger",
-        action: { kind: "group_owner" },
+        action: { kind: "crew" },
       });
       const instance = db
         .select()
@@ -401,18 +397,14 @@ describe("Project webhook admission and single Chat input path", () => {
     },
   );
 
-  it("rejects every Crew action without a lead and follows the lead after configured worker removal", () => {
+  it("rejects a Crew action without a lead and follows the lead after configured worker removal", () => {
     const current = group();
-    const ownerRule = rule({ kind: "group_owner", chatId: current.id });
-    const explicit = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
+    const configured = rule({ kind: "crew", chatId: current.id });
     sqlite.prepare("UPDATE chat SET lead_profile_id=NULL WHERE id=?").run(current.id);
-    for (const configured of [ownerRule, explicit])
-      expect(
-        automation.receiveWebhook(configured.rule.id, configured.secret, "leadless", {}),
-      ).toMatchObject({ decision: "skipped", reason: "crew_lead_missing" });
-    expect(() =>
-      rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id }),
-    ).toThrow(/crew_lead_missing/);
+    expect(
+      automation.receiveWebhook(configured.rule.id, configured.secret, "leadless", {}),
+    ).toMatchObject({ decision: "skipped", reason: "crew_lead_missing" });
+    expect(() => rule({ kind: "crew", chatId: current.id })).toThrow(/crew_lead_missing/);
     const restored = chats.setCrewLead(
       current.id,
       alpha.id,
@@ -425,7 +417,7 @@ describe("Project webhook admission and single Chat input path", () => {
       restored.governanceRevision,
       human,
     );
-    const admitted = deliver(explicit, "worker-left");
+    const admitted = deliver(configured, "worker-left");
     expect(
       db
         .select()
@@ -437,7 +429,7 @@ describe("Project webhook admission and single Chat input path", () => {
 
   it("rolls back the receipt and source on failed ordinary run admission", () => {
     const current = group();
-    const configured = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
+    const configured = rule({ kind: "crew", chatId: current.id });
     const before = sqlite.prepare("SELECT count(*) AS n FROM message").get();
     sqlite.exec(
       "CREATE TRIGGER webhook_test_fail BEFORE INSERT ON agent_run BEGIN SELECT RAISE(ABORT,'fixture_admission_failure'); END",
@@ -456,7 +448,7 @@ describe("Project webhook admission and single Chat input path", () => {
 
   it("honors Crew stop and rechecks the current lead even when preparation raced an external authority change", () => {
     const current = group();
-    const configured = rule({ kind: "group_agent", chatId: current.id, agentProfileId: beta.id });
+    const configured = rule({ kind: "crew", chatId: current.id });
     const admitted = deliver(configured);
     expect(() =>
       chats.removeCrewMember(
@@ -477,11 +469,7 @@ describe("Project webhook admission and single Chat input path", () => {
       }),
     ]);
     const stoppedChat = group();
-    const stoppedRule = rule({
-      kind: "group_agent",
-      chatId: stoppedChat.id,
-      agentProfileId: beta.id,
-    });
+    const stoppedRule = rule({ kind: "crew", chatId: stoppedChat.id });
     const currentView = chats.getChat(stoppedChat.id, ctx);
     chats.setCrewMode(stoppedChat.id, "stopped", currentView.governanceRevision, human);
     expect(
@@ -490,9 +478,7 @@ describe("Project webhook admission and single Chat input path", () => {
   });
 
   it("persists an uncertain send attempt and will not automatically retry it", () => {
-    const admitted = deliver(
-      rule({ kind: "group_agent", chatId: group().id, agentProfileId: beta.id }),
-    );
+    const admitted = deliver(rule({ kind: "crew", chatId: group().id }));
     let attempts = 0;
     expect(() =>
       admitAutomationInput(admitted.run.id, admitted.saved.id, () => {
@@ -518,7 +504,7 @@ it("uses actual Pi prompt and active steer with provenance, no paid model, and l
   try {
     for (const mode of ["initial_and_active", "owner_after_open", "revoke_before_steer"] as const) {
       const current = group();
-      const configured = rule({ kind: "group_owner", chatId: current.id });
+      const configured = rule({ kind: "crew", chatId: current.id });
       const initial = deliver(configured, "initial", {
         awaitSteer: true,
         text: "@Beta /skill:danger",

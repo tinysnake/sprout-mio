@@ -17,7 +17,7 @@ import {
   project,
 } from "../db/schema";
 import { appendEscrowTimeoutOwnerRunInput } from "./agent-run";
-import { retryDelay } from "./chat-schedule";
+import { retryDelay } from "./retry";
 import type { ProjectContext } from "./project";
 
 type LeaseEscrowRow = typeof leaseEscrow.$inferSelect;
@@ -49,11 +49,11 @@ export function leaseTimeoutOwner(row: {
 /** 读默认值：项目行没配过（或写坏了）就用 `DEFAULT_LEASE_TIMEOUTS`。 */
 export function projectLeaseTimeouts(projectId: string): LeaseTimeouts {
   const row = db
-    .select({ wakePolicy: project.wakePolicy })
+    .select({ runtimePolicy: project.runtimePolicy })
     .from(project)
     .where(eq(project.id, projectId))
     .get();
-  return resolveLeaseTimeouts(row?.wakePolicy?.leaseTimeouts);
+  return resolveLeaseTimeouts(row?.runtimePolicy?.leaseTimeouts);
 }
 
 export function projectOwnerUserId(projectId: string): string | undefined {
@@ -135,8 +135,7 @@ export function leaseTimeoutStep(input: {
 }
 
 /**
- * T8：唤醒失败按 `src/domain/agent-run.ts` 既有的重试规则重试——这里只把
- * `chat-continuation` 的既有间隔表读出来算下一次时刻，不新造退避、次数或间隔参数。
+ * T8：投递失败按 `src/domain/retry.ts` 的既有间隔表重试，不新造退避、次数或间隔参数。
  * 既有间隔表用尽（返回 null）就停止重试；「超时待处理」状态仍然常驻。
  */
 export function leaseTimeoutRetryAt(attempt: number, now: Date): Date | null {
@@ -250,8 +249,7 @@ export type LeaseTimeoutSweepResult = {
 /**
  * 推进所有活跃挂靠的超时提醒与升级（T1–T10）。
  *
- * **T10 是明确例外**：这里刻意**不读** `chat_continuation_control`（「人类暂停自动唤醒」）。
- * 超时提醒与升级不受它影响，照发——不要把它当 bug 修掉。
+ * T10：超时提醒与升级不受任何自动续行开关影响，照发。
  *
  * T6：整个函数只写 message 与 lease_escrow 的四个超时列，绝不释放租约、绝不动
  * machine_lease / lease_authorization。超时不是「自动收回」。

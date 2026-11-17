@@ -167,11 +167,11 @@ process.exit(result.status ?? 1);
   it("requires an explicit selection before a manual live gate can run", () => {
     const fixture = makeFixture();
     fixture.writeScript("e-project", "echo fixture >> marker.log\n");
-    fixture.writeScript("p6a-live-routing", "echo paid-live >> marker.log\n");
+    fixture.writeScript("p8d-windows-worker", "echo paid-live >> marker.log\n");
     const routine = fixture.run([]);
     expect(routine.status, routine.stderr).toBe(0);
     expect(markerLines(fixture.root)).toEqual(["fixture"]);
-    const explicit = fixture.run(["--only", "p6a-live-routing"]);
+    const explicit = fixture.run(["--only", "p8d-windows-worker"]);
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(markerLines(fixture.root)).toEqual(["fixture", "paid-live"]);
   });

@@ -16,13 +16,7 @@ export const assistantTargetSchema = z.discriminatedUnion("kind", [
     chatId: z.string().optional(),
     agentProfileId: z.string(),
   }),
-  z.strictObject({
-    kind: z.literal("group_agent"),
-    projectId: z.string(),
-    chatId: z.string(),
-    agentProfileId: z.string(),
-  }),
-  z.strictObject({ kind: z.literal("group_owner"), projectId: z.string(), chatId: z.string() }),
+  z.strictObject({ kind: z.literal("crew"), projectId: z.string(), chatId: z.string() }),
 ]);
 export type AssistantTarget = z.infer<typeof assistantTargetSchema>;
 const observe = z.strictObject({

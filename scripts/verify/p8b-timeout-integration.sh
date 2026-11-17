@@ -4,9 +4,9 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # I-P8b 集成线验收：①「阻塞式申请遇阻等待」真的接到 Agent 工具链（extension 侧 lease_get 循环，
 # 不新造 remote call type）；②超时提醒 / 2 小时升级 / 到点自决走真实链路——真 SQLite、真 runtime、
 # 真 process-scoped grant、真 HTTP 网关（remoteAgentResponse）、真 PiSessionProcess、真
-# registerRemoteTools + createRemoteClient，并由生产驱动路径 createContinuationScheduler.advance()
+# registerRemoteTools + createRemoteClient，并由生产驱动路径 createScheduler.advance()
 # 触发 sweep，而不是直接调 sweepLeaseEscrowTimeouts。
-# 时限压缩：Project 级 wake_policy.leaseTimeouts 把默认 30 分钟 / 2 小时压到 4 秒 / 60 秒——
+# 时限压缩：Project 级 runtime_policy.leaseTimeouts 把默认 30 分钟 / 2 小时压到 4 秒 / 60 秒——
 # 改的是产品本来就支持的同一个配置、产品代码读的是同一常量（LEASE_TIMEOUT_DEFAULT_MS /
 # LEASE_ESCALATION_DEFAULT_MS 只在 Project 未覆盖时生效），不是测试替身。
 verification_dir="$(mktemp -d "${TMPDIR:-/tmp}/sprout-p8b-timeout-int.XXXXXX")"
@@ -31,5 +31,5 @@ DATABASE_URL="$verification_dir/integration.sqlite" \
 printf 'PASS P8b tool wiring + real-chain timeout acceptance: sprout_lease_wait over the existing\n'
 printf '     lease_get channel (failure with reason at deadline, never pending-as-failure), holder\n'
 printf '     invisible and lease untouched while waiting, agent-owner wake run vs human-owner\n'
-printf '     chat-only reminder, remind-once, T10 reminder/escalation with continuation off, 2h\n'
+printf '     chat-only reminder, remind-once, reminder/escalation, 2h\n'
 printf '     escalation with paused owner attempts, and lease never released by timeout\n'

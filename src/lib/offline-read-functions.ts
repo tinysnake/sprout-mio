@@ -13,7 +13,6 @@ export const OFFLINE_READ_FUNCTIONS = [
   "listMessagesFn",
   "getChatRunStateFn",
   "listChatRunActivitiesFn",
-  "getChatContinuationFn",
   "getProjectInfoHubFn",
   "getChatInfoFn",
   "getInfoHubFn",

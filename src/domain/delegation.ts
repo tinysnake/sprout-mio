@@ -251,7 +251,6 @@ export function dispatchDelegation(
           title: `委派给 ${worker.name}`,
           ownerKind: "human",
           ownerId: crewRow.createdBy,
-          wakePolicy: "owner_led",
           createdBy: crewRow.createdBy,
         })
         .run();
@@ -507,7 +506,6 @@ function delegationInboxChat(crewRow: typeof chat.$inferSelect): typeof chat.$in
       ownerKind: "human",
       ownerId: crewRow.createdBy,
       createdBy: crewRow.createdBy,
-      wakePolicy: "owner_led",
       parentCrewChatId: crewRow.id,
     })
     .run();

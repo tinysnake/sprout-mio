@@ -19,7 +19,6 @@ const { sqlite } = await import("../src/db");
 const { createProject } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
 const chats = await import("../src/domain/chat");
-const { ensureAgentInstance } = await import("../src/domain/chat-schedule");
 const { listWorkspaceTree, resolveWorkspaceRoot } = await import("../src/domain/workspace");
 
 const owner = { userId: "workspace-owner", requestId: "req_workspace" };
@@ -33,7 +32,9 @@ const profile = createAgentProfile({ name: "Alpha", persona: "", harness: "pi" }
 addProjectMember(project.id, profile.id, owner);
 const chat = chats.createDirectChat(project.id, profile.id, owner).chat;
 // 实例由建 DM 时一起创建；这里再取一次 id，验证「同一对话的工作区是稳定的」。
-const instanceId = ensureAgentInstance(chat.id, project.id, profile.id, new Date());
+const instanceId = (
+  sqlite.prepare("SELECT id FROM agent_instance WHERE chat_id=?").get(chat.id) as { id: string }
+).id;
 
 afterAll(async () => {
   await shutdownRuntime("workspace-root-test");

@@ -9,28 +9,22 @@ import type { ChatDetailLoaderData } from "./chat-loader";
 import { listCrewDelegationsFn } from "../../server/functions/delegation";
 import type { CrewDelegationRail } from "../../contracts/delegation";
 import { getChatRunStateFn } from "../../server/functions/agent-run";
-import { getChatContinuationFn } from "../../server/functions/chat-continuation";
 import { listMessagesFn } from "../../server/functions/chat";
 import type { AppResult } from "../../contracts/result";
-import type { ChatContinuationData } from "../../domain/chat-continuation";
 
 /** 活跃 run 的定点刷新节奏：沿用旧全树 invalidate 的 1.2s，不额外加快。 */
 export const CHAT_LIVE_INTERVAL_MS = 1_200;
 
 /**
- * 空闲时也要轮询：判定器可能在页面没有任何活动 run 时启动新 run，
+ * 空闲时也要轮询：后台写入可能在页面没有任何活动 run 时启动新 run，
  * 只靠活跃 run 门禁会让 Agent 回帖一直停在旧消息里。放慢到 5 秒，仍随页面隐藏暂停。
  */
 export const CHAT_IDLE_INTERVAL_MS = 5_000;
 
-/**
- * 一个 tick 读回的活动事实：会随判定与 run 变化的那几块，其余事实继续来自 loader。
- * 对话接续的判定不改消息也不改 run，只靠 run 指纹重读会让「正在检查」永远显示不出来。
- */
+/** 一个 tick 读回的活动事实：会随 run 与 Crew 变化的那几块，其余事实继续来自 loader。 */
 export type ChatLiveFacts = {
   messages: ChatResult<Message[]>;
   runState: AgentRunResult<ChatRunState>;
-  continuation: AppResult<ChatContinuationData>;
   crewDelegations?: AppResult<CrewDelegationRail>;
 };
 
@@ -53,7 +47,7 @@ export function isActiveRunState(runState: AgentRunResult<ChatRunState>): boolea
 
 /**
  * run 集合与状态的指纹：只要它变了，就有一次值得整树重读的转移
- * （新 run 出现、状态推进、本轮结束）。停止或起跑都要重读会话、对话接续、
+ * （新 run 出现、状态推进、本轮结束）。停止或起跑都要重读会话、
  * 关联 Task 与 inspector 的轮初快照，而这些东西不在 tick 的读取范围内。
  */
 function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
@@ -67,11 +61,7 @@ function runSignature(runState: AgentRunResult<ChatRunState>): string | null {
   return observed.join(",");
 }
 
-/**
- * 一次判定的读视图指纹：状态、轮次、结论、投递与提醒。判定既不写消息也不改 run，
- * 只要它变了，只由 loader 读来的那份对话接续（Info Hub 用的就是它）就已经过时，
- * 值得整树重读一次——否则判定在中栏失败之后，Info Hub 还会停在旧的「正在检查」。
- */
+/** Crew 委派卡的指纹：忽略每秒都在变的 elapsedMs，只在卡片事实变化时重读整树。 */
 function delegationSignature(result: AppResult<CrewDelegationRail> | undefined): string | null {
   if (!result?.ok) return null;
   return JSON.stringify({
@@ -81,33 +71,8 @@ function delegationSignature(result: AppResult<CrewDelegationRail> | undefined):
   });
 }
 
-function continuationSignature(continuation: AppResult<ChatContinuationData>): string {
-  if (!continuation.ok) return `unavailable:${continuation.error.code}`;
-  const view = continuation.data.view;
-  const evaluation = view.latestEvaluation;
-  const attention = view.attention;
-  return [
-    view.mode,
-    view.epoch,
-    view.nextDueAt ?? "",
-    view.remindedHuman ? "reminded" : "",
-    evaluation?.evaluationId ?? "",
-    evaluation?.state ?? "",
-    evaluation?.attempt ?? 0,
-    evaluation?.claimedAt ?? "",
-    evaluation?.finishedAt ?? "",
-    evaluation?.nextAttemptAt ?? "",
-    evaluation?.errorCode ?? "",
-    evaluation?.result?.decision ?? "",
-    attention
-      ? `${attention.errorCode}:${attention.deliveryId ?? attention.evaluationId ?? ""}`
-      : "",
-    view.deliveries.map((item) => `${item.deliveryId}:${item.state}:${item.runId ?? ""}`).join(","),
-  ].join("|");
-}
-
 /**
- * 可见时每 1.2s 读一次这条 Chat 的消息、run 状态与对话接续判定，页面只把结果叠在 loader 事实之上。
+ * 可见时每 1.2s 读一次这条 Chat 的消息与 run 状态，页面只把结果叠在 loader 事实之上。
  * 消息只读 loader 那批之后的增量，按 id 去重后追加到 overlay；run 指纹变化时回报一次
  * `onRunChanged`，新消息到达时回报一次 `onMessagesChanged`，由页面做一次整树 invalidate。
  * 每次 tick 只发三个读，不再重跑整棵路由的 loader。
@@ -129,7 +94,6 @@ export function createChatLiveRefresh({
   reads: {
     messages: (after: MessageCursor | null) => Promise<ChatResult<MessageWindow>>;
     runState: () => Promise<AgentRunResult<ChatRunState>>;
-    continuation: () => Promise<AppResult<ChatContinuationData>>;
     crewDelegations?: () => Promise<AppResult<CrewDelegationRail>>;
   };
   onFacts: (facts: ChatLiveFacts) => void;
@@ -154,8 +118,6 @@ export function createChatLiveRefresh({
   let pushPending = false;
   let signature = seedSignature;
   let crewSeen = delegationSignature(seedDelegations);
-  // 判定指纹只在 tick 之间比较：第一次读到的那份就是基准，不为了对齐它再重读一次整树。
-  let continuationSeen: string | null = null;
   // overlay = loader 那批 + 之后 tick 追加的增量；`known` 用来去掉两者重叠的部分。
   let overlay = [...seed.messages];
   let known = new Set(overlay.map((entry) => entry.id));
@@ -167,7 +129,6 @@ export function createChatLiveRefresh({
     known = new Set(overlay.map((entry) => entry.id));
     cursor = next.cursor;
     messageSignature = overlay.at(-1)?.id ?? null;
-    continuationSeen = null;
   };
 
   const schedule = () => {
@@ -198,10 +159,9 @@ export function createChatLiveRefresh({
     }
     inFlight = true;
     try {
-      const [window, runState, continuation, crewDelegations] = await Promise.all([
+      const [window, runState, crewDelegations] = await Promise.all([
         reads.messages(cursor),
         reads.runState(),
-        reads.continuation(),
         reads.crewDelegations?.(),
       ]);
       if (stopped) return;
@@ -223,7 +183,6 @@ export function createChatLiveRefresh({
       onFacts({
         messages,
         runState,
-        continuation,
         ...(crewDelegations ? { crewDelegations } : {}),
       });
       const nextCrew = delegationSignature(crewDelegations);
@@ -239,12 +198,9 @@ export function createChatLiveRefresh({
         runMoved = next !== signature;
         signature = next;
       }
-      const nextContinuation = continuationSignature(continuation);
-      const continuationMoved = continuationSeen !== null && nextContinuation !== continuationSeen;
-      continuationSeen = nextContinuation;
-      // run 或判定变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
-      // Info Hub 消息计数、最近消息时间与对话接续读视图跟上来。同一 tick 变化时只重读一次。
-      if (runMoved || continuationMoved || crewMoved) onRunChanged();
+      // run 或 Crew 变了就整树重读；只有消息变化时也重读一次，让不在 tick 读取范围内的
+      // Info Hub 消息计数与最近消息时间跟上来。同一 tick 变化时只重读一次。
+      if (runMoved || crewMoved) onRunChanged();
       else if (messageMoved) onMessagesChanged?.();
       // run 状态读不到时不改门禁：下一 tick 继续读，结束判定只认成功的响应。
       if (runState.ok && !active && stopWhenIdle) {
@@ -298,7 +254,7 @@ export function createChatLiveRefresh({
   };
 }
 
-/** 生产接法：一次 tick 并发读消息增量、run 状态与对话接续判定，每个读各自保留自己的错误语义。 */
+/** 生产接法：一次 tick 并发读消息增量与 run 状态，每个读各自保留自己的错误语义。 */
 export function chatLiveReads(chatId: string, projectId: string, crew = false) {
   return {
     ...(crew
@@ -309,7 +265,6 @@ export function chatLiveReads(chatId: string, projectId: string, crew = false) {
     messages: (after: MessageCursor | null) =>
       listMessagesFn({ data: { chatId, ...(after === null ? {} : { after }) } }),
     runState: () => getChatRunStateFn({ data: { chatId } }),
-    continuation: () => getChatContinuationFn({ data: { projectId, chatId } }),
   };
 }
 
@@ -323,7 +278,7 @@ function loaderSeed(loader: ChatDetailLoaderData): ChatLiveSeed {
  * 页面的活跃读数。`loader` 同时是种子（已读到的 run 指纹）与重置锚点：
  * loader 一换（invalidate 之后）就丢掉 overlay，游标回到 loader 的尾巴，
  * 让更晚的 loader 事实优先，不让一次早于 loader 的 tick 覆盖它。换 Chat 时旧 tick 的结果按 chatId 丢弃。
- * 可见时始终轮询：有活动 run 用 1.2s，空闲用 5s，确保判定器后来启动的 run 也能被发现。
+ * 可见时始终轮询：有活动 run 用 1.2s，空闲用 5s，确保后台后来启动的 run 也能被发现。
  */
 export function useChatLive({
   chatId,

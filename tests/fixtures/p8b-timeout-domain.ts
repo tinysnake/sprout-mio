@@ -11,7 +11,6 @@ import { migrateDatabase } from "../../src/db/migrate";
 import {
   agentRun,
   agentRunInput,
-  chatContinuationControl,
   chatMember,
   leaseAuthorization,
   leaseEscrow,
@@ -20,14 +19,13 @@ import {
 } from "../../src/db/schema";
 import { addProjectMember, createAgentProfile } from "../../src/domain/agent";
 import { ensureInstance } from "../../src/domain/chat";
-import { applyChatContinuationCommand } from "../../src/domain/chat-continuation";
 import {
   leaseEscalationRecipients,
   sweepLeaseEscrowTimeouts,
 } from "../../src/domain/lease-timeout";
 import { waitForLease } from "../../src/domain/lease-wait";
 import { createMachine, hashCredential, saveProjectMachineBinding } from "../../src/domain/machine";
-import { createProject, updateProjectWakePolicy } from "../../src/domain/project";
+import { createProject } from "../../src/domain/project";
 import {
   acquireLease,
   claimLease,
@@ -195,15 +193,12 @@ const keys = [0, 1, 2, 3, 4].map((index) => {
   return key;
 });
 
-// Project 级覆盖：把两个时限压到秒/分钟级，其余字段沿用既有判定器配置。
-updateProjectWakePolicy(
-  { projectId: project.id, provider: "llm", expectedConfigRevision: 1, requestId: req() },
-  projectCtx,
-  {
-    thresholdVersion: "p8b-test",
+// Project 级覆盖：把两个时限压到秒/分钟级。产品没有写这个字段的界面，测试直接落库。
+sqlite.prepare("UPDATE project SET runtime_policy=? WHERE id=?").run(
+  JSON.stringify({
     leaseTimeouts: { timeoutMs: TIMEOUT_MS, escalationMs: ESCALATION_MS },
-  },
-  NOW,
+  }),
+  project.id,
 );
 
 const escorer = actor(projectOwner, project.id, groupOwner.id, initiatorAgent.id);
@@ -237,34 +232,6 @@ db.delete(chatMember)
     ),
   )
   .run();
-
-// T10 的前置：这条 chat 被人类走真实产品命令关掉了自动唤醒，超时提醒仍必须照发。
-const quietControl = db
-  .select()
-  .from(chatContinuationControl)
-  .where(eq(chatContinuationControl.chatId, groupQuiet.id))
-  .get();
-applyChatContinuationCommand(
-  {
-    projectId: project.id,
-    chatId: groupQuiet.id,
-    action: "disable",
-    expectedRevision: quietControl?.revision ?? 1,
-    requestId: req(),
-    reason: "p8b-test",
-  },
-  projectCtx,
-  NOW,
-);
-assert.equal(
-  db
-    .select()
-    .from(chatContinuationControl)
-    .where(eq(chatContinuationControl.chatId, groupQuiet.id))
-    .get()?.mode,
-  "off",
-  "前置：人类已暂停这条 chat 的自动唤醒",
-);
 
 const at = (ms: number) => new Date(NOW.getTime() + ms);
 const escrowRow = (escrowId: string) =>
@@ -379,23 +346,11 @@ assert.equal(escrowRow(main.escrow.escrowId).state, "escrowed");
 assert.ok(reminder.body.includes("在你处理之前，租约占用与权限保持不变"));
 pass("T6：超时只加只读标记，绝不释放租约");
 
-// —— T3/T4 分流：owner 是人类 → 只在该 Group 的 chat 发一条消息，不唤醒、不自动接续、不再升级。
+// —— T3/T4 分流：owner 是人类 → 只在该 Crew 的 chat 发一条消息，不唤醒、不再升级。
 const crewReminders = reminders(groupHuman.id);
 assert.equal(crewReminders.length, 1, "Crew 的提醒发给 lead");
 assert.ok(crewReminders[0]!.body.includes("挂靠超时"));
 pass("T3/T4：人类 owner 只收到一条 chat 提醒，不唤醒也不自动接续");
-
-// —— T10：人类关掉自动唤醒也不影响超时提醒（明确例外）。
-assert.equal(
-  db
-    .select()
-    .from(chatContinuationControl)
-    .where(eq(chatContinuationControl.chatId, groupQuiet.id))
-    .get()!.mode,
-  "off",
-);
-assert.equal(reminders(groupQuiet.id).length, 2, "被暂停的 chat 里超时照常提醒（machine 3/4）");
-pass("T10：人类暂停自动唤醒不影响超时提醒与升级");
 
 // —— T8：唤醒失败复用既有重试规则——提醒只发一次，只重投唤醒。
 // （owner 分身已在装配时移出群成员，所以这次唤醒是失败的。）

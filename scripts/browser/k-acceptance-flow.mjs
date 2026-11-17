@@ -486,7 +486,7 @@ async function before() {
         const listed = await test(page, "chat-item").evaluateAll((nodes) =>
           nodes.map((node) => node.dataset.chatId),
         );
-        // Project 出生即带唯一公共频道（I-P5a 频道单元）：列表恒为「最新更新的 DM + 频道」。
+        // Project 出生即带唯一 Crew：列表恒为「最新更新的 DM + Crew」。
         assert.equal(listed.length, 2);
         assert.equal(listed[0], observed.chatId);
       },

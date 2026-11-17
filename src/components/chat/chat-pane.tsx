@@ -5,10 +5,9 @@ import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
 import type { ChatSession, ChatResult, Message, MessageWindow } from "../../contracts/chat";
 import type { ChatInfoView } from "../../contracts/info-hub";
-import type { ChatContinuationData } from "../../domain/chat-continuation";
 import type { FieldErrors } from "../../contracts/project";
 import { isOffline } from "../../lib/connectivity";
-import type { AppError, AppResult } from "../../contracts/result";
+import type { AppError } from "../../contracts/result";
 import { abortAgentRunFn } from "../../server/functions/agent-run";
 import { clearChatTitleFn, sendMessageFn, updateChatTitleFn } from "../../server/functions/chat";
 import { ChatThread } from "./chat-thread";
@@ -45,7 +44,6 @@ export function ChatPane({
   runState,
   runActivities,
   skills,
-  continuation,
   inspectorOpen,
   onToggleInspector,
   filesOpen = false,
@@ -65,7 +63,6 @@ export function ChatPane({
   /** 已结束 run 的工作记录：按产出消息归属，在消息底部回看。 */
   runActivities: AgentRunResult<ChatRunActivity[]>;
   skills: import("../../contracts/skill").ChatSkillChoices;
-  continuation: AppResult<ChatContinuationData>;
   inspectorOpen: boolean;
   onToggleInspector: () => void;
   filesOpen?: boolean;
@@ -311,7 +308,6 @@ export function ChatPane({
           messages={messages}
           history={history}
           runState={runState}
-          continuation={continuation}
           inspectorOpen={inspectorOpen}
           onToggleInspector={onToggleInspector}
           filesOpen={filesOpen}

@@ -1,5 +1,7 @@
 # P7 章节结论：客户端体验、恢复与诊断
 
+> **历史记录：** 本文描述的对话接续、唤醒判定与判定器选择已随 Crew 迁移整体移除（`drizzle/0069_remove_continuation.sql`）；文中命令、表名与界面入口不再存在，只用于追溯当时的事实。
+
 P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要路径走完，并且看得见状态、看不见内部术语」这一层：登录后回到原来的目标、详情深链与刷新、断线与旧数据反馈、只读离线、Management 的服务与数据事实、备份恢复与响应基线、Pi 资源继承的明确边界，以及在真实页面上跑通的对话接续控制。判据、返回形状与边界见 [P7 契约](contracts.md)。
 
 技术交付基线：**`fef2612`**（合入 main 的提交；`b828755` 之后只有文档、门禁与断言收紧）。
@@ -28,20 +30,20 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 ## 怎么验的
 
-| 门禁                         | 覆盖什么                                                                                                                                                                            | 重跑                                           |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| `p7-client-navigation`       | 登录后回到原目标（含深链带 search/hash）、`safeReturnTarget` 的拒绝清单逐条、前进后退与刷新、详情 URL 直达、`/login` 保持裸路径                                                     | `bash scripts/verify/p7-client-navigation.sh`  |
-| `p7-client-pwa`              | 生产构建下的 manifest 与 service worker 注册、应用壳离线可用、白名单读命中缓存带 `x-sprout-offline`、写入不被 service worker 接管、主题色随主题                                     | `bash scripts/verify/p7-client-pwa.sh`         |
-| `p7-client-states`           | 三态动作结果（成功/失败/未知）在真实页面上的呈现、断线与恢复、旧数据标注、窄屏布局                                                                                                  | `bash scripts/verify/p7-client-states.sh`      |
-| `p7-loop-multiround`         | 真实 macOS Worker + 真实 Pi SDK：同一条 run 上五轮人类介入、停止后不再接受轮次、上下文与 Task 归属保持、超长与空消息在 HTTP 边界被拒（LOCAL）                                       | `bash scripts/verify/p7-loop-multiround.sh`    |
-| `p7-loop-collaboration`      | 群聊扇出恰好一次、租约冲突、交接链（pending → fence → revoked → 旧持有者失权）、DM 跨对话越界一律 `not_found`                                                                       | `bash scripts/verify/p7-loop-collaboration.sh` |
-| `p7-loop-runtime`            | 空闲 → 自动新 run → 人类插入让位、投递一次且幂等、暂停后不再检查                                                                                                                    | `bash scripts/verify/p7-loop-runtime.sh`       |
-| `p7-loop-restart`            | 真实 SIGKILL 崩溃 + 重启：在途 run 一律 `interrupted`，第二次重启不重复推进                                                                                                         | `bash scripts/verify/p7-loop-restart.sh`       |
-| `p7-storage-recovery`        | 空库→0028、0025 历史库升级、重跑幂等、备份期间并发写入的分组原子性、`cp` 主库反证、全新目录恢复启动、旧 run/execution 非成功、诊断关联链                                            | `bash scripts/verify/p7-storage-recovery.sh`   |
-| `p7-service-baseline`        | 5 个本地端点 p50/p95、日志 512 帧 × 1 KiB 分页完整性与延迟、outbox 4 MiB 高水位与 1 MiB 低水位回落                                                                                  | `bash scripts/verify/p7-service-baseline.sh`   |
-| `p7-pi-inheritance`          | 缺省打开/显式关闭接线、私有 HOME 与 pi.skills 包、A/B 各自技能、38 个工具不变、宿主目录哈希一致、系统提示 142→1500 字符、真实 `sprout_status` 调用（LOCAL）                         | `bash scripts/verify/p7-pi-inheritance.sh`     |
-| `bf-p6b-pages`（含接线断言） | 真实页面接线：Chat 页出现 `continuation-card` 且没有 `continuation-unavailable`、轮询正常态不渲染状态行、not_found 走页面自己的错误态                                               | `bash scripts/verify/bf-p6b-pages.sh`          |
-| 回归                         | `i-chat`（not_found 深链）、`aq-p4d-pages`（读失败保留旧事实并标未确认）、`ag-execution-wiring-ui`（读日志失败可见）、`as-p5b-task-pages`、`p6a-pages`、`k-acceptance`、`b-tooling` | 各自 `bash scripts/verify/<id>.sh`             |
+| 门禁                         | 覆盖什么                                                                                                                                                               | 重跑                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `p7-client-navigation`       | 登录后回到原目标（含深链带 search/hash）、`safeReturnTarget` 的拒绝清单逐条、前进后退与刷新、详情 URL 直达、`/login` 保持裸路径                                        | `bash scripts/verify/p7-client-navigation.sh`  |
+| `p7-client-pwa`              | 生产构建下的 manifest 与 service worker 注册、应用壳离线可用、白名单读命中缓存带 `x-sprout-offline`、写入不被 service worker 接管、主题色随主题                        | `bash scripts/verify/p7-client-pwa.sh`         |
+| `p7-client-states`           | 三态动作结果（成功/失败/未知）在真实页面上的呈现、断线与恢复、旧数据标注、窄屏布局                                                                                     | `bash scripts/verify/p7-client-states.sh`      |
+| `p7-loop-multiround`         | 真实 macOS Worker + 真实 Pi SDK：同一条 run 上五轮人类介入、停止后不再接受轮次、上下文与 Task 归属保持、超长与空消息在 HTTP 边界被拒（LOCAL）                          | `bash scripts/verify/p7-loop-multiround.sh`    |
+| `p7-loop-collaboration`      | 群聊扇出恰好一次、租约冲突、交接链（pending → fence → revoked → 旧持有者失权）、DM 跨对话越界一律 `not_found`                                                          | `bash scripts/verify/p7-loop-collaboration.sh` |
+| `p7-loop-runtime`            | 空闲 → 自动新 run → 人类插入让位、投递一次且幂等、暂停后不再检查                                                                                                       | `bash scripts/verify/p7-loop-runtime.sh`       |
+| `p7-loop-restart`            | 真实 SIGKILL 崩溃 + 重启：在途 run 一律 `interrupted`，第二次重启不重复推进                                                                                            | `bash scripts/verify/p7-loop-restart.sh`       |
+| `p7-storage-recovery`        | 空库→0028、0025 历史库升级、重跑幂等、备份期间并发写入的分组原子性、`cp` 主库反证、全新目录恢复启动、旧 run/execution 非成功、诊断关联链                               | `bash scripts/verify/p7-storage-recovery.sh`   |
+| `p7-service-baseline`        | 5 个本地端点 p50/p95、日志 512 帧 × 1 KiB 分页完整性与延迟、outbox 4 MiB 高水位与 1 MiB 低水位回落                                                                     | `bash scripts/verify/p7-service-baseline.sh`   |
+| `p7-pi-inheritance`          | 缺省打开/显式关闭接线、私有 HOME 与 pi.skills 包、A/B 各自技能、38 个工具不变、宿主目录哈希一致、系统提示 142→1500 字符、真实 `sprout_status` 调用（LOCAL）            | `bash scripts/verify/p7-pi-inheritance.sh`     |
+| `bf-p6b-pages`（含接线断言） | 真实页面接线：Chat 页出现 `continuation-card` 且没有 `continuation-unavailable`、轮询正常态不渲染状态行、not_found 走页面自己的错误态                                  | `bash scripts/verify/bf-p6b-pages.sh`          |
+| 回归                         | `i-chat`（not_found 深链）、`aq-p4d-pages`（读失败保留旧事实并标未确认）、`ag-execution-wiring-ui`（读日志失败可见）、`as-p5b-task-pages`、`k-acceptance`、`b-tooling` | 各自 `bash scripts/verify/<id>.sh`             |
 
 门禁总数 98（CI 73 + LOCAL 24 + MANUAL 1），与 [验证约定](../verification.md) 的记录一致。
 
@@ -49,8 +51,8 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 - **登录后目标恢复**：`p7-client-navigation` 逐条喂 `safeReturnTarget`（`//evil`、`/\evil`、含控制字符、`https://evil.invalid`、`/login`、`/api/x`）都退回 `/`，合法深链保留 `search` 与 `hash`；浏览器里从任务详情深链登录后回到同一地址。
 - **只读离线**：`p7-client-pwa` 装 service worker 后断网，应用壳仍渲染，白名单读返回缓存并带 `x-sprout-offline: 1`；写请求在断网时不被 service worker 接管（浏览器直接失败），页面显示「未知」而不是成功。
-- **对话接续接线**：`bf-p6b-pages` 的 `continuation_panel_wired_on_real_chat` 断言真实 Chat 页 `continuation-card` 出现且 `continuation-unavailable` 为 0；`p6a-pages` 125 组断言三态渲染与失败文案。
-- **判定器可用性**：`tests/p6a-contracts.test.ts` 覆盖无配置、缺凭据、可用三种输入下的 `wakeProviderAvailabilityFromEnv()` 结果；`p6a-pages` 断言 `wake-provider-unwired` 与 `wake-provider-unavailable` 两种形态与保存按钮数量。
+- **对话接续接线**：`bf-p6b-pages` 的 `continuation_panel_wired_on_real_chat` 断言真实 Chat 页 `continuation-card` 出现且 `continuation-unavailable` 为 0。对话接续与判定器页面已随 Crew 迁移移除，原 `p6a-pages` 门禁不再存在。
+- **判定器可用性**：`tests/p6a-contracts.test.ts` 覆盖无配置、缺凭据、可用三种输入下的 `wakeProviderAvailabilityFromEnv()` 结果。判定器与 `p6a-pages` 门禁已随对话接续移除。
 - **闭环**：`p7-loop-*` 四条在真实 SQLite 与真实 Worker 上跑多轮、扇出、交接、崩溃重启；`p7-loop-multiround` 的 `paid-model-calls=0`（模型由 `model-fixture` 在回环上代答）。
 
 证据提交 `fef2612`：重跑 `bash scripts/verify/p7-client-navigation.sh`、`bash scripts/verify/p7-client-pwa.sh`、`bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/p7-loop-multiround.sh`、`bash scripts/verify/bf-p6b-pages.sh`。
@@ -68,7 +70,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 页面形状由 Human 在真实页面上逐条确认过（两轮反馈共 15 条，另有一轮延续评审修掉站内跳转的整页重载），除 PWA 装机外的条目都在电脑与手机上走过一遍。
 
-证据提交 `6a676a9`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p6a-pages.sh`、`bash scripts/verify/p7-client-navigation.sh`。
+证据提交 `6a676a9`：重跑 `bash scripts/verify/p7-client-states.sh`、`bash scripts/verify/as-p5b-task-pages.sh`、`bash scripts/verify/p7-client-navigation.sh`。
 
 ## 集成线与技术验收证据
 
@@ -82,7 +84,7 @@ P7 交付「一个人在一台 Mac 上，用浏览器与手机把一期的主要
 
 - **补上的门禁**：`info_hub_polling_line_stays_quiet`（去掉 `QUIET_STATES` 判断立即红）、`metadata_edit_shares_the_heading_row`（用 `boundingBox` 量中心线）、`non_owner_agent_denials_are_real_capabilities`（改成断言 `task-action-*` 数量为 0 且整页无 denial code）、`continuation_panel_wired_on_real_chat`（真实 Chat 页不得出现 `continuation-unavailable`）。
 - **drizzle 快照**：`0028_snapshot.json` 的 `prevId` 曾指向 0026 且 `chat_continuation_control` 是 0027 重建前旧版，导致 `drizzle-kit` collision 与 `c-data-auth` 长期红。修法是只改快照（`prevId` + 表内容），不改 `_journal.json` 的 `when`（改晚会让已应用过 0028 的库重放它，撞 `table turn_context already exists`）。验证：`pnpm exec drizzle-kit generate` 输出 `No schema changes, nothing to migrate`，`c-data-auth` exit 0。
-- **增量验收**（`p7-acceptance2`，受验 `b828755`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`72c7241` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p6a-pages` 24.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
+- **增量验收**（`p7-acceptance2`，受验 `b828755`）判「可以合入」，四问的结论：三条回归各自两次全绿且修法经复核不是掩盖（`i-chat` 的 `chat-error` 真的来自服务端、写入请求确实由页面直接发出 `fromServiceWorker: false`、`item-log-error` 仍被断言）；三处改坏里两处已被新门禁守住（轮询行、编辑按钮同行），**第三处「被拒动作打印 reason」仍绿**——门禁只断言 code 不在页面上，协调者据此补了 reason 断言（`fef2612`），注入 reason 立即红；三条旧红门禁在 `main@8f0ddf3` 的临时工作树里各跑两次同样全红，脚本/fixture/契约在 `main..HEAD` 逐字未变，不是本轮引入也没被条件化跳过；`72c7241` 之后的页面裁定无回归（`bf-p6b-pages` 67.0s、`as-p5b-task-pages` 46.5s、`p7-client-navigation` 24.4s、`p7-client-states` 17.3s、`p7-client-pwa` 14.9s 全绿）。
 
 证据提交 `fef2612`：重跑 `bash scripts/verify/i-chat.sh`、`bash scripts/verify/aq-p4d-pages.sh`、`bash scripts/verify/ag-execution-wiring-ui.sh`、`bash scripts/verify/c-data-auth.sh`。
 

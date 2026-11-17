@@ -654,34 +654,6 @@ describe("P6b active query and Human refresh", () => {
     ).toBe(false);
   });
 
-  it("keeps P6a's minimal continuation summary in Chat queries", () => {
-    const continuation = {
-      mode: "enabled",
-      epoch: 1,
-      nextDueAt: null,
-      lastDecision: null,
-      attentionCode: null,
-      remindedHuman: false,
-    };
-    expect(
-      infoHubViewSchema.safeParse({
-        view: "chat",
-        section: "summary",
-        projectId,
-        chatId,
-        revision: "rev-a",
-        asOf: at,
-        data: { ...chat, continuation },
-      }).success,
-    ).toBe(true);
-    expect(
-      infoHubChatSummarySchema.safeParse({
-        ...chat,
-        continuation: { ...continuation, providerSecret: "secret" },
-      }).success,
-    ).toBe(false);
-  });
-
   it("uses changed/unchanged revisions and resumes without knownRevision", () => {
     const query = { view: "project", section: "agents" };
     expect(infoHubRefreshInputSchema.safeParse({ projectId, query }).success).toBe(true);
@@ -736,7 +708,7 @@ describe("P6b ephemeral run hints", () => {
     ).toBe(false);
   });
 
-  it.each(["retryAt", "messageId", "wakeIdleRun", "resourceNoticeId", "continuationEpoch"])(
+  it.each(["retryAt", "messageId", "turnId", "resourceNoticeId", "unknownField"])(
     "cannot become a queued or durable input via %s",
     (field) => {
       expect(infoHubHintSchema.safeParse({ ...hint, [field]: "invalid" }).success).toBe(false);

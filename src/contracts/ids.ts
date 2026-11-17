@@ -27,8 +27,6 @@ export const ID_PREFIXES = {
   notice: "ntc",
   repoCheckout: "rco",
   repoProvenance: "rpn",
-  continuationDelivery: "dlv",
-  wakeEvaluation: "evl",
   delegation: "dlg",
   delegationEvent: "dge",
   delegationDelivery: "ddv",

@@ -8,7 +8,6 @@ import { randomBytes } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import {
-  chatContinuationGetResponseSchema,
   remoteAgentRequestSchema,
   taskGetResponseSchema,
   taskListResponseSchema,
@@ -31,7 +30,6 @@ import {
 } from "../db/schema";
 import type { ProjectContext } from "../domain/access";
 import { getInfoHub } from "../domain/info-hub";
-import { getChatContinuation } from "../domain/chat-continuation";
 import { getTaskDetail, getTasksForChat, mutateTask } from "../domain/task";
 import {
   blockDelegation,
@@ -311,7 +309,6 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
               throw error;
             }
           case "info_hub_get":
-          case "chat_continuation_get":
           case "task_get":
           case "task_list":
           case "task_mutate":
@@ -337,10 +334,6 @@ export async function remoteAgentResponse(request: Request): Promise<Response> {
                 const { projectId: _projectId, ...query } = call.input;
                 return getInfoHub(projectId, query, { ...projectContext, ...current });
               }
-              case "chat_continuation_get":
-                return chatContinuationGetResponseSchema.parse(
-                  getChatContinuation(projectId, chatId, projectContext).view,
-                );
               case "task_get":
                 return taskGetResponseSchema.parse(
                   getTaskDetail(call.input.taskId, projectContext),

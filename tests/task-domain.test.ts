@@ -61,7 +61,6 @@ function group(owner: "human" | "agent" = "agent") {
     {
       projectId: project.id,
       title: "@Beta task group",
-      wakePolicy: "owner_led",
       members: [
         { kind: "human", id: ctx.userId },
         { kind: "agent", id: alpha.id },
@@ -373,7 +372,6 @@ describe("responsibility, Agent scopes and explicit start delivery", () => {
     expect(taskCommandResultSchema.safeParse(result).success).toBe(true);
     expect(result.startDelivery).toMatchObject({ kind: "agent_input", recipientId: alpha.id });
     const target = group();
-    db.update(chat).set({ wakePolicy: "mention_only" }).where(eq(chat.id, target.id)).run();
     let detail = assigned(target.id);
     const first = domain.startTask(input(detail), ctx);
     detail = first.detail;

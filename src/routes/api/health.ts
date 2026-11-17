@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { config } from "../../lib/config";
 import { getRequestContext, REQUEST_ID_HEADER } from "../../server/request-context";
 import { databaseHealth, runtimeSnapshot } from "../../server/runtime";
 
@@ -17,7 +16,6 @@ export function healthResponse(request: Request): Response {
       requestId,
       version: snapshot.version,
       activeBackgroundTasks: snapshot.activeBackgroundTasks,
-      continuationEnabled: config.SPROUT_CONTINUATION_ENABLED,
       database,
     },
     {

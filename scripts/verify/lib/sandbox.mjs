@@ -24,7 +24,6 @@ const gates = new Set([
   "d-runtime",
   "ad-execution-log-ui",
   "as-p5b-task-pages",
-  "p6a-pages",
   "p7-client-states",
   "bf-p6b-pages",
   "y-lease-ui",

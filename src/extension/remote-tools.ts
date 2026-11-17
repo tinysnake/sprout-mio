@@ -39,13 +39,12 @@ type ToolName = keyof typeof remoteToolInputSchemas;
 const descriptions: Record<ToolName, string> = {
   sprout_resource_request:
     "提交绑定原 run 的 Crew Machine 资源需求，等 lead 批准；目录范围校验≠文件系统沙箱。先读 sprout_info_hub 当前 Crew 上下文；crewChatId=所属 Crew 对话 ID，非委派子对话 ID；crewEpoch=当前 Crew epoch。",
-  sprout_resource_approve: "当前 Crew lead 按 epoch/revision 批准请求内的 Machine、目录与操作范围。",
+  sprout_resource_approve:
+    "当前 Crew lead 按 epoch/revision 批准请求内的 Machine、目录与操作范围。",
   sprout_resource_revoke: "当前 Crew lead 撤销请求并冻结新写；远端排空后归还。",
   sprout_resource_release: "原 worker/lead run 提交资源归还意图；排空前保持占槽。",
   sprout_resource_takeover:
-    "当前 Crew lead 可不经原 worker 同意，把 Machine 资源改派给自己或同 Crew 另一运行中 worker。旧授权先冻结，远端排空后新目标才获授权；重复调用按 clientRequestId 去重。",
-  sprout_chat_continuation_get:
-    "读取当前 Chat 的接续模式、周期检查、提醒与投递状态；不能暂停/停止/恢复/重发。",
+    "当前 Crew lead 在不经原 worker 同意的情况下把 Machine 资源改派给自己或另一名同 Crew 运行中的 worker。旧授权先冻结，待远端执行排空后新目标才获得授权；重复调用按 clientRequestId 去重。",
   sprout_lease_acquire:
     "申请当前 Project 内显式指定的远端 Machine 租约。machineId 必填；expectedGeneration 来自 lease_get。空闲分身也可持有。",
   sprout_lease_release:
@@ -107,15 +106,7 @@ function buildRequest(name: ToolName, parameters: unknown, projectId: string): B
   let call: unknown;
   let blockMs: number | undefined;
   let machineId: string | undefined;
-  if (name === "sprout_chat_continuation_get") {
-    call = {
-      type: "chat_continuation_get",
-      input: {
-        ...remoteToolInputSchemas.sprout_chat_continuation_get.parse(parameters),
-        projectId,
-      },
-    };
-  } else if (name === "sprout_remote_execution_cancel") {
+  if (name === "sprout_remote_execution_cancel") {
     const input = cancelToolInputSchema.parse(parameters) as Record<string, unknown>;
     if (typeof input.machineId === "string") machineId = input.machineId;
     call = { type: "execution_cancel", input: { ...input, projectId } };
@@ -703,8 +694,7 @@ export function registerRemoteTools(
           return toolInputFailure(error);
         }
         // 五个创建工具默认阻塞到终态；`execution_get` 保持立刻读一次当前快照。
-        // machineId 只在这里要求：创建工具的 schema 必填 machineId，阻塞路径需要这个窄化；
-        // `sprout_chat_continuation_get` 按 run 自己的 Project 取，本来就没有 machineId。
+        // machineId 只在这里要求：创建工具的 schema 必填 machineId，阻塞路径需要这个窄化。
         if (EXECUTION_CREATE_TOOLS.has(name)) {
           const machineId = built.machineId;
           if (!machineId)

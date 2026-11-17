@@ -1,4 +1,3 @@
-import { signalScheduleChange } from "./chat-schedule";
 import { publishProjectChange } from "./change-feed";
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -247,7 +246,6 @@ export function mutateTask(
   ctx: ProjectContext,
 ): contract.TaskCommandResult {
   const command = commandSchema.parse({ action, input: raw });
-  let chatId: string | null | undefined;
   try {
     const result = sqlite
       .transaction(() => {
@@ -401,13 +399,10 @@ export function mutateTask(
         return { detail: readTaskDetail(row, ctx), ...(startDelivery ? { startDelivery } : {}) };
       })
       .immediate();
-    chatId = result.detail.task.chatId;
     publishProjectChange(result.detail.task.projectId, result.detail.task.chatId ?? undefined);
     return result;
   } catch (error) {
     return rethrowTaskError(error);
-  } finally {
-    signalScheduleChange(chatId ?? undefined);
   }
 }
 

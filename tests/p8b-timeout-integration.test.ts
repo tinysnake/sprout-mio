@@ -3,11 +3,11 @@
 //
 // 真实 SQLite + 真实 runtime + process-scoped grant + 真实 HTTP 网关（remoteAgentResponse）
 // + 真实 extension 工具注册（registerRemoteTools）与真实 RemoteToolClient（createRemoteClient）。
-// 时限由 project.wake_policy.leaseTimeouts 从 30 分钟 / 2 小时压到 4 秒 / 60 秒——改的是
+// 时限由 project.runtime_policy.leaseTimeouts 从 30 分钟 / 2 小时压到 4 秒 / 60 秒——改的是
 // 同一个 Project 级配置，产品代码读的是同一常量（LEASE_TIMEOUT_DEFAULT_MS /
 // LEASE_ESCALATION_DEFAULT_MS，只在 Project 未覆盖时生效），所以这里跑的不是测试替身。
 //
-// 超时提醒 / 升级走生产驱动路径：createContinuationScheduler 的 advance()，而不是直接调
+// 超时提醒 / 升级走生产驱动路径：createScheduler 的 advance()，而不是直接调
 // sweepLeaseEscrowTimeouts。
 import { afterAll, describe, expect, it } from "vite-plus/test";
 import assert from "node:assert/strict";
@@ -75,10 +75,9 @@ const { sqlite } = await import("../src/db");
 const { db } = await import("../src/db");
 const { and, eq } = await import("drizzle-orm");
 const { newId, ID_PREFIXES } = await import("../src/contracts/ids");
-const { agentRun, agentRunInput, chatContinuationControl, leaseEscrow, machineLease, message } =
+const { agentRun, agentRunInput, leaseEscrow, machineLease, message } =
   await import("../src/db/schema");
-const { applyChatContinuationCommand } = await import("../src/domain/chat-continuation");
-const { createProject, updateProjectWakePolicy } = await import("../src/domain/project");
+const { createProject } = await import("../src/domain/project");
 const { createAgentProfile, addProjectMember } = await import("../src/domain/agent");
 const { ensureInstance } = await import("../src/domain/chat");
 
@@ -87,7 +86,7 @@ const { createMachine, hashCredential, saveProjectMachineBinding } =
 const { openInitialMembership } = await import("../src/server/membership");
 const { acquireLease, escrowLease, getLease, leaseWhere } = await import("../src/server/lease");
 type AgentRemoteContext = import("../src/server/lease").AgentRemoteContext;
-const { createContinuationScheduler } = await import("../src/server/continuation-scheduler");
+const { createScheduler } = await import("../src/server/scheduler");
 const { PiSessionProcess } = await import("../src/server/pi-host/process");
 const { issueRemoteToolGrant, remoteAgentResponse } =
   await import("../src/server/remote-agent-gateway");
@@ -232,31 +231,6 @@ const groupQuiet = createCrewChat(
   }),
   chatActor,
 );
-// T10：即使这条 chat 的自动接续被 Human 关掉，超时提醒与升级照样发。
-const quietControl = db
-  .select()
-  .from(chatContinuationControl)
-  .where(eq(chatContinuationControl.chatId, groupQuiet.id))
-  .get();
-applyChatContinuationCommand(
-  {
-    projectId: project.id,
-    chatId: groupQuiet.id,
-    action: "disable",
-    expectedRevision: quietControl?.revision ?? 1,
-    requestId: req(),
-    reason: "p8b-int",
-  },
-  projectCtx,
-  NOW,
-);
-const quietMode = db
-  .select()
-  .from(chatContinuationControl)
-  .where(eq(chatContinuationControl.chatId, groupQuiet.id))
-  .get();
-assert.equal(quietMode?.mode, "off", "quiet chat 的自动接续必须确实是 off");
-
 const machineCtx = { userId: projectOwner, bootId: boot(), requestId: req(), now: NOW };
 const keys = [0, 1, 2, 3].map((index) => {
   const enrolled = createMachine({ name: `P8b Integration Machine ${index}` }, machineCtx);
@@ -266,15 +240,12 @@ const keys = [0, 1, 2, 3].map((index) => {
   return key;
 });
 
-updateProjectWakePolicy(
-  { projectId: project.id, provider: "llm", expectedConfigRevision: 1, requestId: req() },
-  projectCtx,
-  {
-    thresholdVersion: "p8b-int",
-    leaseTimeouts: { timeoutMs: TIMEOUT_MS, escalationMs: ESCALATION_MS },
-  },
-  NOW,
-);
+sqlite
+  .prepare("UPDATE project SET runtime_policy=? WHERE id=?")
+  .run(
+    JSON.stringify({ leaseTimeouts: { timeoutMs: TIMEOUT_MS, escalationMs: ESCALATION_MS } }),
+    project.id,
+  );
 
 const escrowerOwner = actor(projectOwner, project.id, groupOwner.id, initiatorAgent.id);
 const escrowerHuman = actor(projectOwner, project.id, groupHuman.id, initiatorAgent.id);
@@ -397,7 +368,7 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
 
     let clockNow = NOW.getTime();
     const clockErrors: unknown[] = [];
-    const scheduler = createContinuationScheduler({
+    const scheduler = createScheduler({
       clock: { now: () => new Date(clockNow), setTimeout: () => 0, clearTimeout: () => {} },
       onError: (error) => clockErrors.push(error),
     });
@@ -443,9 +414,9 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
         "Crew lead 收到 run input",
       );
 
-      // T10：这条 chat 的自动接续被 Human 关掉，提醒照样发。
+      // 同一个 Crew 的挂靠超时只提醒一次。
       const quietReminder = reminders(groupQuiet.id);
-      assert.equal(quietReminder.length, 1, "mode=off 也要提醒");
+      assert.equal(quietReminder.length, 1, "另一个 Crew 同样提醒一次");
       assert.ok(quietReminder[0]!.body.includes("P8b Integration Machine 3"));
 
       // 反复 sweep 不产生第二条提醒。
@@ -453,7 +424,7 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
       await scheduler.advance();
       assert.equal(reminders(groupOwner.id).length, 1, "不重复提醒");
       assert.equal(reminders(groupHuman.id).length, 1, "人类 owner 不重复提醒");
-      assert.equal(reminders(groupQuiet.id).length, 1, "mode=off 也不重复提醒");
+      assert.equal(reminders(groupQuiet.id).length, 1, "提醒不重复投递");
       assert.equal(runsInChat(groupOwner.id).length, ownerRunsBefore + 1);
 
       // 超时后再过升级时限仍然没人处理 → 升级 Human，并暂停 owner 的自动尝试。
@@ -470,11 +441,11 @@ describe("I-P8b 集成线：超时提醒与升级由生产 scheduler 驱动", ()
       assert.equal(timeout.escalatedAt, at(TIMEOUT_MS + ESCALATION_MS).toISOString());
       assert.equal(timeout.ownerAutoAttemptsPaused, true, "owner 自动尝试被暂停");
 
-      // T10：升级也照样发，不受 mode=off 影响。
+      // 超时升级同样只发一次。
       assert.equal(
         escrowRow(quiet.escrow.escrowId).timeoutEscalatedAt?.getTime(),
         at(TIMEOUT_MS + ESCALATION_MS).getTime(),
-        "mode=off 的 chat 同样被升级",
+        "另一个 Crew 同样被升级",
       );
       assert.equal(
         reminders(groupQuiet.id).filter((row) => row.body.includes("挂靠超时升级")).length,

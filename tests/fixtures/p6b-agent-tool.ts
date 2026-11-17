@@ -10,10 +10,7 @@ const { PiSessionProcess } = await import("../../src/server/pi-host/process");
 const { issueRemoteToolGrant, revokeRemoteToolGrant, remoteAgentResponse } =
   await import("../../src/server/remote-agent-gateway");
 const { InfoHubHintChannel } = await import("../../src/domain/info-hub-hint");
-const processHandle = new PiSessionProcess(
-  f.runA,
-  resolve("tests/fixtures/p6a-continuation-runner.mjs"),
-);
+const processHandle = new PiSessionProcess(f.runA, resolve("tests/fixtures/pi-session-runner.mjs"));
 try {
   const grant = issueRemoteToolGrant(f.runA, processHandle, f.ctx);
   let wireCalls = 0;

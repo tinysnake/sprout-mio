@@ -18,7 +18,7 @@ import {
   parseUtcOffset,
 } from "../../domain/timezone";
 import { listAgentProfilesFn, listProjectMembersFn } from "../../server/functions/agent";
-import { listChatMembersFn, listChatsFn } from "../../server/functions/chat";
+import { listChatsFn } from "../../server/functions/chat";
 import {
   createCronRuleFn,
   createWebhookRuleFn,
@@ -51,7 +51,7 @@ const initial = {
   enabled: false,
   expression: "0 9 * * *",
   timezone: "current",
-  kind: "dm_agent",
+  kind: "dm_agent" as "dm_agent" | "crew",
   chatId: "",
   agentProfileId: "",
 };
@@ -74,13 +74,13 @@ const listRules = (kind: Kind, projectId: string) =>
     ? listCronRulesFn({ data: { projectId } })
     : listWebhookRulesFn({ data: { projectId } });
 function actionLabel(action: AutomationAction, agents: AgentProfile[], chats: Chat[]) {
-  const agent =
-    "agentProfileId" in action
-      ? (agents.find((a) => a.id === action.agentProfileId)?.name ?? action.agentProfileId)
-      : "当前 Agent owner";
-  if (action.kind === "dm_agent") return `DM → ${agent}`;
+  if (action.kind === "dm_agent") {
+    const agent = agents.find((a) => a.id === action.agentProfileId);
+    return `DM → ${agent?.name ?? action.agentProfileId}`;
+  }
   const chat = chats.find((c) => c.id === action.chatId);
-  return `Crew · ${chat?.title || action.chatId} → ${agent}`;
+  const lead = chat?.leadProfileId ? agents.find((a) => a.id === chat.leadProfileId) : undefined;
+  return `Crew · ${chat?.title || action.chatId} → ${lead?.name ?? "lead"}`;
 }
 function nextTime(rule: CronRule) {
   if (!rule.nextAt) return "停用，无下次时间";
@@ -253,7 +253,6 @@ function Editor({
   const [chats, setChats] = useState<Chat[]>([]);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [chatAgentIds, setChatAgentIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [uncertain, setUncertain] = useState(false);
@@ -310,24 +309,6 @@ function Editor({
       secretVersion.current++;
     };
   }, [projectId, kind, ruleId]);
-  useEffect(() => {
-    let live = true;
-    setChatAgentIds([]);
-    if (draft.kind !== "dm_agent" && draft.chatId)
-      void listChatMembersFn({ data: { chatId: draft.chatId } })
-        .then((r) => {
-          if (!live) return;
-          if (r.ok)
-            setChatAgentIds(r.data.filter((m) => m.memberKind === "agent").map((m) => m.memberId));
-          else setError(r.error.message);
-        })
-        .catch(() => {
-          if (live) setError("Group 成员读取失败，请重新选择目标。");
-        });
-    return () => {
-      live = false;
-    };
-  }, [draft.kind, draft.chatId]);
   async function readHistory(id: string) {
     const version = ++historyVersion.current;
     setHistoryLoading(true);
@@ -379,10 +360,7 @@ function Editor({
     if (kind === "webhooks") void readSecret(selected.id);
   }, [selected?.id]);
   const eligible = agents.filter(
-    (a) =>
-      a.purpose === "worker" &&
-      members.some((m) => m.agentProfileId === a.id) &&
-      (draft.kind === "dm_agent" || chatAgentIds.includes(a.id)),
+    (a) => a.purpose === "worker" && members.some((m) => m.agentProfileId === a.id),
   );
   const dirty = JSON.stringify(draft) !== JSON.stringify(selected ? edit(selected) : initial);
   const ready =
@@ -396,9 +374,7 @@ function Editor({
     const action: AutomationAction =
       draft.kind === "dm_agent"
         ? { kind: "dm_agent", agentProfileId: draft.agentProfileId }
-        : draft.kind === "group_owner"
-          ? { kind: "group_owner", chatId: draft.chatId }
-          : { kind: "group_agent", chatId: draft.chatId, agentProfileId: draft.agentProfileId };
+        : { kind: "crew", chatId: draft.chatId };
     const timezone =
       draft.timezone === "current"
         ? formatUtcOffset(-new Date().getTimezoneOffset())
@@ -690,15 +666,19 @@ function Editor({
                   className={field}
                   value={draft.kind}
                   onChange={(e) =>
-                    setDraft({ ...draft, kind: e.target.value, chatId: "", agentProfileId: "" })
+                    setDraft({
+                      ...draft,
+                      kind: e.target.value as Draft["kind"],
+                      chatId: "",
+                      agentProfileId: "",
+                    })
                   }
                 >
                   <option value="dm_agent">DM → Agent</option>
-                  <option value="group_agent">Group → Agent</option>
-                  <option value="group_owner">Group → 当前 Agent owner</option>
+                  <option value="crew">Crew → lead</option>
                 </select>
               </label>
-              {draft.kind !== "dm_agent" && (
+              {draft.kind === "crew" && (
                 <label className="block space-y-1 text-sm">
                   目标 Chat
                   <select
@@ -721,7 +701,7 @@ function Editor({
                   </select>
                 </label>
               )}
-              {draft.kind !== "group_owner" && (
+              {draft.kind === "dm_agent" && (
                 <label className="block space-y-1 text-sm">
                   目标 Agent
                   <select
@@ -743,7 +723,7 @@ function Editor({
               <p className="text-xs leading-6 text-muted-foreground">
                 {draft.kind === "dm_agent"
                   ? "选择 Project 中的工作 Agent；实际触发时自动使用或创建你的 DM，无需预先打开会话。"
-                  : "Group 包含公共频道。仅有效成员可以执行；当前 owner 为 Human 时跳过 owner 动作。"}
+                  : "消息交给 Crew 当前 lead；lead 缺失或 Crew 已停止时跳过本次触发。"}
                 目标失效时不会自动改投其他 Agent。
               </p>
               <label className="flex items-center gap-2 text-sm">

@@ -26,7 +26,7 @@ import { readAssistantNativeFacts } from "./assistant-native-facts";
 import type { AssistantCall, AssistantFact, AssistantTarget } from "../contracts/assistant";
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { getChat, ensureInstance, ChatError } from "./chat";
-import { allocateContinuationRun } from "./agent-run";
+import { allocateRunFor } from "./agent-run";
 import { resolveAutomationTarget } from "./automation-target";
 import {
   enrollAssistantInterest,
@@ -336,7 +336,7 @@ export function confirmAssistantProposal(
           createdAt: now,
         })
         .run();
-      const run = allocateContinuationRun(
+      const run = allocateRunFor(
         {
           instanceId: target.instance.id,
           chatId: row.targetChatId,

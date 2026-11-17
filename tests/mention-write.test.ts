@@ -46,7 +46,6 @@ const group = createCrewChat(
   crewInput({
     projectId: project.id,
     title: "点名落库",
-    wakePolicy: "mention_only",
     members: [
       { kind: "human", id: creatorId },
       { kind: "human", id: guestId },

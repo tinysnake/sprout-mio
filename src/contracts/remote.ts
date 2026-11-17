@@ -14,7 +14,6 @@ import {
 } from "./crew-resource";
 import { assistantCallSchema } from "./assistant";
 import { chatSessionSchema, messageSchema } from "./chat";
-import { chatContinuationViewSchema } from "./chat-continuation";
 import { crewMutateInputSchema, delegationMutateInputSchema } from "./delegation";
 import {
   addTaskChecklistItemInputSchema,
@@ -604,16 +603,6 @@ export const taskMutateInputSchema = z.discriminatedUnion("action", [
   completeTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("complete") }),
   cancelTaskInputSchema.extend({ ...taskProjectFields, action: z.literal("cancel") }),
 ]);
-/** Chat is resolved from the active run grant, as with chat_get. */
-export const chatContinuationGetInputSchema = z.strictObject(taskProjectFields);
-export const chatContinuationGetCall = z.strictObject({
-  type: z.literal("chat_continuation_get"),
-  input: chatContinuationGetInputSchema,
-});
-export const chatContinuationGetResponseSchema = chatContinuationViewSchema;
-export type ChatContinuationGetInput = z.infer<typeof chatContinuationGetInputSchema>;
-export type ChatContinuationGetResponse = z.infer<typeof chatContinuationGetResponseSchema>;
-
 export const chatGetInputSchema = z.strictObject(taskProjectFields);
 export const chatSendInputSchema = taskToolInputSchemas.sprout_chat_send.extend(taskProjectFields);
 
@@ -693,7 +682,6 @@ export const remoteAgentRequestSchema = z.strictObject({
         command: crewResourceCallSchema,
       }),
     }),
-    chatContinuationGetCall,
     infoHubGetCall,
     z.strictObject({ type: z.literal("chat_get"), input: chatGetInputSchema }),
     z.strictObject({ type: z.literal("chat_send"), input: chatSendInputSchema }),
@@ -738,7 +726,6 @@ export const remoteToolInputSchemas = {
   sprout_resource_revoke: crewResourceDecisionSchema,
   sprout_resource_release: crewResourceReleaseSchema,
   sprout_resource_takeover: crewResourceTakeoverSchema,
-  sprout_chat_continuation_get: chatContinuationGetInputSchema.omit({ projectId: true }),
   sprout_lease_acquire: z.strictObject({
     ...toolMutationBase,
     expectedGeneration: nonnegativeSafeIntegerSchema,
@@ -765,7 +752,7 @@ export const remoteToolInputSchemas = {
     machineId: leaseKeySchema.shape.machineId,
     mutationId: mutationIdSchema.optional(),
   }),
-  /** 挂靠到本 Project 的 Group（或 Public Channel），可指定该 Group 内的 Agent profile。 */
+  /** 挂靠到本 Project 的 Crew，可指定该 Crew 内的 Agent profile。 */
   sprout_lease_escrow: z.strictObject({
     ...toolMutationBase,
     expectedGeneration: positiveSafeIntegerSchema,

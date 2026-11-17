@@ -16,10 +16,6 @@ const memberKind = z.enum(["human", "agent"]);
 export const chatKindSchema = z.enum(["dm", "crew", "delegation"]);
 export type ChatKind = z.infer<typeof chatKindSchema>;
 
-/** 唤醒策略：Crew 不走判定器，路由固定到 lead；DM 也不使用判定器。 */
-export const chatWakePolicySchema = z.enum(["mention_only", "owner_led", "contextual"]);
-export type ChatWakePolicy = z.infer<typeof chatWakePolicySchema>;
-
 /** 对话所有者：Human 引用 user.id，Agent 引用 agentProfileId；DM 只能是创建者本人。 */
 export const chatOwnerSchema = z.object({
   kind: memberKind,
@@ -76,7 +72,7 @@ export const clearChatTitleInput = z.object({ chatId });
 export type ClearChatTitleInput = z.infer<typeof clearChatTitleInput>;
 
 /**
- * 群组成员条目。Agent 一律用既有 `agp_` id 模式；Human 的 id 来自认证供应方，没有前缀，
+ * Crew 成员条目。Agent 一律用既有 `agp_` id 模式；Human 的 id 来自认证供应方，没有前缀，
  * 只收非空标识并由领域层核对 user 行存在性，不用正则发明一个认证层没有的格式。
  */
 export const chatMemberInput = z.discriminatedUnion("kind", [
@@ -153,7 +149,6 @@ export const chatSchema = z.object({
   control: z.enum(["active", "stopped"]).optional(),
   archivedAt: z.iso.datetime().optional(),
   owner: chatOwnerSchema,
-  wakePolicy: chatWakePolicySchema,
   governanceRevision: z.number().int().nonnegative(),
   createdBy: z.string().min(1),
   createdAt: z.iso.datetime(),
@@ -183,16 +178,6 @@ export const messageAttachmentSpanSchema = z.object({
   end: z.number().int().positive(),
 });
 export type MessageAttachmentSpan = z.infer<typeof messageAttachmentSpanSchema>;
-
-/**
- * 一条消息的唤醒派发契约（裁定 §3.3 / §4.5）：唤醒路由只读这条消息写时解析落库的点名
- * 记录，正文文本不再参与路由。所以派发方交出的就是消息自己的 mention span，不另带名字字典。
- */
-export const chatWakeDispatchSchema = z.object({
-  chatId,
-  mentions: z.array(mentionSpanSchema),
-});
-export type ChatWakeDispatch = z.infer<typeof chatWakeDispatchSchema>;
 
 export const chatMemberSchema = z.object({
   chatId,
@@ -256,7 +241,7 @@ export const chatSessionSchema = z.discriminatedUnion("kind", [
 ]);
 export type ChatSession = z.infer<typeof chatSessionSchema>;
 
-/** DM 会话详情：DM 恰有一个分身，群组与公共频道的会话详情见 `ChatSession`（不共用本形状）。 */
+/** DM 会话详情：DM 恰有一个分身；Crew 与委派子对话的会话详情见 `ChatSession`（不共用本形状）。 */
 export type ChatDetail = { chat: Chat; instance: AgentInstance };
 /**
  * @deprecated 名称把「一对一」写进了通用类型，I-P5a 起统一用 ChatDetail。

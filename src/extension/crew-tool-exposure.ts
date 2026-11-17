@@ -14,7 +14,6 @@ const deferredNames = new Set([
   "sprout_resource_revoke",
   "sprout_resource_takeover",
   "sprout_chat_get",
-  "sprout_chat_continuation_get",
 ]);
 
 export function isCrewDeferredTool(situation: Situation | undefined, name: string): boolean {

@@ -92,7 +92,6 @@ function group() {
     {
       projectId: project.id,
       title: "Tool scope",
-      wakePolicy: "owner_led",
       initialOwner: { kind: "agent", id: alpha.id },
       members: [
         { kind: "human", id: ctx.userId },

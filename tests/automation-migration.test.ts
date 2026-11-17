@@ -43,10 +43,7 @@ function seedRule({ sqlite }: DatabaseConnection) {
     .prepare(
       "INSERT INTO webhook_rule(id,project_id,created_by,name,enabled,revision,instruction,action,secret_digest,created_at,updated_at) VALUES ('rule','project','human','Rule',1,0,'Instruction',?,?,1,1)",
     )
-    .run(
-      JSON.stringify({ kind: "group_agent", chatId: "chat", agentProfileId: "agent" }),
-      "a".repeat(64),
-    );
+    .run(JSON.stringify({ kind: "crew", chatId: "chat" }), "a".repeat(64));
 }
 
 describe("0037 webhook migration: populated upgrade and SQL counterexamples", () => {
@@ -72,7 +69,9 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
     const triggers = before.sqlite
       .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
       .all()
-      .filter((row) => (row as { name: string }).name !== "chat_member_no_channel_insert");
+      .filter(
+        (row) => !/^(chat_member_no_channel_insert|p6a_)/.test((row as { name: string }).name),
+      );
     before.sqlite.close();
     try {
       migrateDatabase(file);
@@ -103,11 +102,16 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
           after.sqlite.prepare("SELECT purpose FROM agent_profile WHERE id='agent'").get(),
         ).toEqual({ purpose: "worker" });
         expect(rows(after, "task")).toEqual(tasks);
-        expect(
+        const afterTriggerNames = (
           after.sqlite
             .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
-            .all(),
-        ).toEqual(expect.arrayContaining(triggers));
+            .all() as { name: string }[]
+        ).map((row) => row.name);
+        expect(
+          (triggers as { name: string }[])
+            .map((row) => row.name)
+            .filter((name) => !afterTriggerNames.includes(name)),
+        ).toEqual([]);
         expect(() =>
           after.sqlite.prepare("UPDATE message SET body='corrupt' WHERE id='progress'").run(),
         ).toThrow(/task_record_immutable/);
@@ -139,9 +143,8 @@ describe("0037 webhook migration: populated upgrade and SQL counterexamples", ()
       const action = sqlite.prepare("UPDATE webhook_rule SET action=? WHERE id='rule'");
       for (const invalid of [
         {},
-        { kind: "group_agent", chatId: "chat" },
         { kind: "dm_agent", chatId: null, agentProfileId: "agent" },
-        { kind: "group_owner" },
+        { kind: "crew" },
         { kind: null, chatId: "chat" },
       ])
         expect(() => action.run(JSON.stringify(invalid))).toThrow(/CHECK/);

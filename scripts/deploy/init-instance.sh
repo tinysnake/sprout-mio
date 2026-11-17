@@ -22,11 +22,6 @@ else
     printf 'APP_ORIGIN=http://localhost:%s\n' "$(port_for "$instance")"
     printf 'SPROUT_PI_DATA_DIR=%s/pi\n' "$dir"
     printf 'SPROUT_REPO_DIR=%s/repos\n' "$dir"
-    if [[ "$instance" == "prod" ]]; then
-      printf 'SPROUT_CONTINUATION_ENABLED=true\n'
-    else
-      printf 'SPROUT_CONTINUATION_ENABLED=false\n'
-    fi
     if [[ "$instance" != "prod" ]]; then
       printf 'SPROUT_DRILL_MACHINE_SECRET=%s\n' "$(openssl rand -hex 32)"
     fi

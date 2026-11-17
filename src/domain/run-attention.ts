@@ -13,7 +13,8 @@ import { ID_PREFIXES, newId } from "../contracts/ids";
 import { RUN_ATTENTION_SENDER_ID } from "../contracts/run-attention";
 import { appendSystemOwnerRunInput } from "./agent-run";
 import { readChatEffectiveMembers } from "./chat-members";
-import { retryDelay, signalScheduleChange } from "./chat-schedule";
+import { retryDelay } from "./retry";
+import { signalSchedulerChange } from "./scheduler-signal";
 import { publishProjectChange } from "./change-feed";
 import { readRunActivity } from "../server/pi-host/run-activity";
 import type { AgentRunStatus } from "../contracts/agent-run";
@@ -56,11 +57,11 @@ export function runAttentionStep(input: RunAttentionStepInput): RunAttentionStep
 
 export function projectRunAttentionPolicy(projectId: string): RunAttentionPolicy {
   const row = db
-    .select({ wakePolicy: project.wakePolicy })
+    .select({ runtimePolicy: project.runtimePolicy })
     .from(project)
     .where(eq(project.id, projectId))
     .get();
-  return resolveRunAttentionPolicy(row?.wakePolicy?.runAttention);
+  return resolveRunAttentionPolicy(row?.runtimePolicy?.runAttention);
 }
 
 export function runAttentionFacts(row: AgentRunRow, now: Date): RunAttentionFacts | null {
@@ -260,7 +261,7 @@ export function sweepRunAttention(now: Date): RunAttentionSweepResult {
     }
   }
   if (retried || result.marked + result.reminded + result.rewoken + result.escalated > 0) {
-    signalScheduleChange();
+    signalSchedulerChange();
     for (const { id } of rows) {
       const row = db.select().from(agentRun).where(eq(agentRun.id, id)).get();
       if (row) publishProjectChange(row.projectId, row.chatId);

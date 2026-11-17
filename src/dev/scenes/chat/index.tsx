@@ -44,7 +44,6 @@ function chat(id: string, title: string, updatedAt: string): Chat {
     crewEpoch: 0,
     title,
     owner: { kind: "human", id: "usr_demo" },
-    wakePolicy: "owner_led",
     governanceRevision: 0,
     createdBy: "usr_demo",
     createdAt: "2026-06-18T02:00:00.000Z",

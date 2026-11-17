@@ -28,16 +28,15 @@ describe("webhook action contracts", () => {
         senderId: "user",
       }).success,
     ).toBe(false);
-    expect(
-      automationActionSchema.safeParse({ kind: "group_owner", chatId, agentProfileId }).success,
-    ).toBe(false);
+    expect(automationActionSchema.safeParse({ kind: "crew", chatId, agentProfileId }).success).toBe(
+      false,
+    );
   });
 
-  it("accepts only one of the three fixed Chat delivery modes", () => {
+  it("accepts only one of the two fixed Chat delivery modes", () => {
     for (const action of [
       { kind: "dm_agent", chatId, agentProfileId },
-      { kind: "group_agent", chatId, agentProfileId },
-      { kind: "group_owner", chatId },
+      { kind: "crew", chatId },
     ]) {
       expect(webhookRuleDraftSchema.safeParse({ ...base, action }).success).toBe(true);
     }

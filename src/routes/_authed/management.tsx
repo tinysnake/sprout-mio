@@ -17,7 +17,6 @@ type Summary = {
   asOf: string;
   migration: { id: number; hash: string; journalTimestamp: number } | null;
   pendingResourceNotices: number;
-  pendingContinuations: number;
   mcpFrames: { state: string; count: number; bytes: number }[];
 };
 export const Route = createFileRoute("/_authed/management")({ component: Management });
@@ -138,9 +137,7 @@ function Management() {
             {
               label: "交付队列",
               testId: "event-backlog",
-              value: summary
-                ? `${summary.pendingResourceNotices} 个资源事件 · ${summary.pendingContinuations} 个续行（pending / bound）`
-                : "尚未读取",
+              value: summary ? `${summary.pendingResourceNotices} 个资源事件` : "尚未读取",
             },
             {
               label: "MCP 队列水位",
@@ -157,7 +154,7 @@ function Management() {
           ]}
         />
         <p className="mt-4 max-w-[45rem] text-xs leading-6 text-muted-foreground">
-          队列摘要仅含当前账号 Project 的资源通知、续行与 MCP 帧；sent 等待确认，unknown
+          队列摘要仅含当前账号 Project 的资源通知与 MCP 帧；sent 等待确认，unknown
           表示交付结果未知。
         </p>
         {updated && <p className="mt-1 text-xs text-muted-foreground">最后更新 {updated}</p>}

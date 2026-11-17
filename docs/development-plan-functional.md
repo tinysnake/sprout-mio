@@ -36,7 +36,7 @@
 - <a id="p5-完成多人协作与-task-记录"></a>[P5 完成多人协作与 Task 记录](archive/phase-one/development-plan-functional.md#p5-完成多人协作与-task-记录)
 - <a id="p5a-完成多人-chat"></a>[P5a 完成多人 Chat](archive/phase-one/development-plan-functional.md#p5a-完成多人-chat)
 - <a id="p5b-完成-task-协作"></a>[P5b 完成 Task 协作](archive/phase-one/development-plan-functional.md#p5b-完成-task-协作)
-- <a id="p6a-完成对话接续与人类控制"></a>[P6a 完成对话接续与人类控制](archive/phase-one/development-plan-functional.md#p6a-完成对话接续与人类控制)
+- <a id="p6a-完成对话接续与人类控制"></a>[P6a 完成对话接续与人类控制（已移除）](archive/phase-one/development-plan-functional.md#p6a-完成对话接续与人类控制)
 - <a id="p6b-完成-info-hub-全部一期视角"></a>[P6b 完成 Info Hub 全部一期视角](archive/phase-one/development-plan-functional.md#p6b-完成-info-hub-全部一期视角)
 - <a id="p6c-完成成员治理与重新加入"></a>[P6c 完成成员治理与重新加入](archive/phase-one/development-plan-functional.md#p6c-完成成员治理与重新加入)
 - <a id="p7-验收完整一期与客户端体验"></a>[P7 验收完整一期与客户端体验](archive/phase-one/development-plan-functional.md#p7-验收完整一期与客户端体验)

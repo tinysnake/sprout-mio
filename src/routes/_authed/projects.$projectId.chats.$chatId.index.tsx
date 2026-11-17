@@ -63,8 +63,6 @@ function ProjectChatDetailPage() {
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
   const runState = facts?.runState ?? loader.runState;
-  // 判定不改消息也不改 run：不盖住 loader 的 continuation，「正在检查」就只在整树重读时闪现。
-  const continuation = facts?.continuation ?? loader.continuation;
 
   return (
     <>
@@ -83,7 +81,6 @@ function ProjectChatDetailPage() {
         runState={runState}
         runActivities={loader.runActivities}
         skills={loader.skills.ok ? loader.skills.data : { state: "unavailable", items: [] }}
-        continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         filesOpen={filesOpen}
