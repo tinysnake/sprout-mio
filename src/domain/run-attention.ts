@@ -124,7 +124,7 @@ function writeNotice(row: AgentRunRow, human: boolean, now: Date): string {
   const elapsed = Math.floor((now.getTime() - row.startedAt!.getTime()) / 60_000);
   const activity = readRunActivity(row.id)?.current ?? row.activity?.current;
   const recipients = human ? runAttentionHumanRecipients(row) : [];
-  const body = `【运行注意力${human ? "：需要人类关注" : "提醒"}】Agent「${context.profileName}」的 run ${row.id} 已运行 ${elapsed} 分钟。\n${activity ? `当前可观察活动：${activity.label}${activity.detail ? `（${activity.detail}）` : ""}` : "近期无可观察事件"}。\n请在本对话的运行条目查看进度，需要时使用「停止」。提醒不会结束 run、取消远程执行或释放租约。${human ? `\n面向人类：${recipients.join("、") || "本对话有访问权的人类"}。这条消息不触发唤醒或自动接续。` : ""}`;
+  const body = `【运行注意力${human ? "：需要人类关注" : "提醒"}】Agent「${context.profileName}」的 run ${row.id} 已运行 ${elapsed} 分钟。\n${activity ? `当前可观察活动：${activity.label}${activity.detail ? `（${activity.detail}）` : ""}` : "近期无可观察事件"}。\n请在本对话的运行条目查看进度，需要时使用「停止」。提醒不会结束 run、取消远程执行或释放租约。${human ? `\n面向人类：${recipients.join("、") || "本对话有访问权的人类"}。这条消息不触发唤醒。` : ""}`;
   const id = newId(ID_PREFIXES.message);
   db.insert(message)
     .values({

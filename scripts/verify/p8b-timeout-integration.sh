@@ -22,8 +22,8 @@ export no_proxy="$NO_PROXY"
 pnpm exec vp test run tests/remote-tools.test.ts
 
 # 2) 真实链路：等待期间只发只读 lease_get、持有者完全不可见、不抢占不释放；Agent owner 超时
-#    真的造出 queued run 并在提醒里说明处理什么；人类 owner 只提醒一次、零唤醒、零自动接续；
-#    T10 关闭自动接续的 chat 照样提醒与升级；再过升级时限升级 Human 并暂停 owner 自动尝试；
+#    真的造出 queued run 并在提醒里说明处理什么；人类 owner 只提醒一次、零唤醒；
+#    提醒与升级不受运行时开关影响；再过升级时限升级 Human 并暂停 owner 自动尝试；
 #    超时绝不释放租约。
 DATABASE_URL="$verification_dir/integration.sqlite" \
   pnpm exec vp test run tests/p8b-timeout-integration.test.ts

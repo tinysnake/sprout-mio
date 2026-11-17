@@ -316,8 +316,7 @@ async function unavailable(page, target, expectedHumanMessages) {
         RUN_STATUS_LABELS,
         "pi-host-status",
       );
-      // 对话接续状态现在也渲染在 run-status 里、且排在运行状态之前；只要求状态行存在，
-      // 不再假设它是首行。
+      // run-status 里除了分身运行状态还会有 Task 信息；只要求状态行存在，不假设它是首行。
       assert.match(flat(await test(page, "run-status").innerText()), /分身运行状态：/);
     } else {
       await sameText(page, "pi-host-status", HOST_DISABLED);
