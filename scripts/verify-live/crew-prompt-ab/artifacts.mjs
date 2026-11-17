@@ -117,7 +117,7 @@ console.log('PASS ' + kind);
 `;
 
 export function artifactAssertions(task, root, facts, { corrected = true } = {}) {
-  if (task.oracle === discoveryOracle) return discoveryArtifacts(facts.machineScopes ?? []);
+  if (task.oracle === discoveryOracle) return discoveryArtifacts(facts.machineScopes ?? [], facts);
   const taskset2 = inspectTaskset2Artifacts(
     task,
     facts.machineScopes?.length ? facts.machineScopes : [{ worktree: root }],

@@ -1,0 +1,781 @@
+{
+  "exitCode": 1,
+  "rows": [
+    {
+      "arm": "A",
+      "task": "clarify-before-guessing",
+      "status": "failed",
+      "dry": true,
+      "head": "8d46a13645d85a4cd73458fc8f2a82b25d0fe22e",
+      "artifactAssertions": [
+        {
+          "name": "clarification-kept-inputs",
+          "exitCode": 0
+        }
+      ],
+      "wallClockPerPhase": {
+        "prepare": 61,
+        "startup": 4535,
+        "sendTask": 7,
+        "settle": 3323,
+        "judge": 2
+      },
+      "verdict": {
+        "oracle": "clarify_before_guessing",
+        "passed": false,
+        "failedGates": [
+          "clarification"
+        ],
+        "gates": {
+          "runs": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allCompleted": true
+            },
+            "actual": {
+              "runs": [
+                {
+                  "runId": "run_4f71ddda",
+                  "profileId": "agp_3674192f",
+                  "chatId": "cnv_31e6c231",
+                  "startedAt": "2026-11-17T11:45:29.000Z",
+                  "settledAt": "2026-11-17T11:45:29.000Z",
+                  "status": "completed",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "provider": "sprout-verify-local",
+                  "model": "chat-owner",
+                  "thinkingRequested": "low",
+                  "thinkingEffective": "off",
+                  "sdkVersion": "1.5.2",
+                  "transcript": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-clarify-before-guessing/pi-data/ins_f092504b/sessions/2026-11-17T11-45-29-175Z_ins_f092504b.jsonl",
+                  "transcriptObserved": true,
+                  "readySnapshot": {
+                    "resources": {
+                      "inheritHostResources": false,
+                      "agentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-clarify-before-guessing/repos/prj_a13d8113/.sprout-pi",
+                      "hostAgentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-clarify-before-guessing/model-fixture/model-fixture-agent",
+                      "skillPaths": [],
+                      "promptPaths": [],
+                      "skills": [],
+                      "prompts": [],
+                      "themes": [],
+                      "contextFiles": [],
+                      "systemPromptChars": 1336
+                    },
+                    "tools": [
+                      "current_time",
+                      "fetch_content",
+                      "find",
+                      "get_search_content",
+                      "git_read",
+                      "grep",
+                      "ls",
+                      "read",
+                      "sleep",
+                      "source_check",
+                      "sprout_delegation_cancel",
+                      "sprout_delegation_input",
+                      "sprout_delegation_list",
+                      "sprout_delegation_start",
+                      "sprout_info_hub_get",
+                      "sprout_remote_file_read",
+                      "sprout_remote_file_write",
+                      "sprout_remote_shell",
+                      "sprout_resource_release",
+                      "sprout_status",
+                      "tool_search",
+                      "web_search"
+                    ]
+                  },
+                  "role": "lead",
+                  "systemPromptChars": 1336,
+                  "availableTools": [
+                    "current_time",
+                    "fetch_content",
+                    "find",
+                    "get_search_content",
+                    "git_read",
+                    "grep",
+                    "ls",
+                    "read",
+                    "sleep",
+                    "source_check",
+                    "sprout_delegation_cancel",
+                    "sprout_delegation_input",
+                    "sprout_delegation_list",
+                    "sprout_delegation_start",
+                    "sprout_info_hub_get",
+                    "sprout_remote_file_read",
+                    "sprout_remote_file_write",
+                    "sprout_remote_shell",
+                    "sprout_resource_release",
+                    "sprout_status",
+                    "tool_search",
+                    "web_search"
+                  ],
+                  "inheritHostResources": false,
+                  "cwd": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-clarify-before-guessing/repos/prj_a13d8113",
+                  "finalReplyText": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+                  "tools": [],
+                  "usage": [
+                    {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0,
+                      "totalTokens": 0,
+                      "cost": {
+                        "input": 0,
+                        "output": 0,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "total": 0
+                      }
+                    }
+                  ],
+                  "tokens": 0,
+                  "finalReplyAtMs": 1794915929274,
+                  "systemPromptHashes": [
+                    "7d9a20e2c60dfff5a75da135867e3901d35b1ace569ff4d982b67c2ed465e42c"
+                  ]
+                }
+              ]
+            }
+          },
+          "artifactsPass": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allExitZero": true
+            },
+            "actual": {
+              "assertions": [
+                {
+                  "name": "clarification-kept-inputs",
+                  "exitCode": 0
+                }
+              ]
+            }
+          },
+          "validFinal": {
+            "passed": true,
+            "checks": {
+              "timestampPresent": true,
+              "nonemptyText": true
+            },
+            "actual": {
+              "atMs": 1794915929274,
+              "text": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          },
+          "clarification": {
+            "passed": false,
+            "checks": {
+              "noDelegation": true,
+              "oneQuestion": false,
+              "asksMissingFact": false
+            },
+            "actual": {
+              "reply": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+              "delegatedCount": 0
+            }
+          }
+        },
+        "evaluated": true,
+        "outcome": "failed",
+        "execution": {
+          "reason": null,
+          "error": null,
+          "evidenceError": null,
+          "evidenceProbe": null,
+          "cleanupError": null,
+          "runs": []
+        }
+      }
+    },
+    {
+      "arm": "B",
+      "task": "clarify-before-guessing",
+      "status": "failed",
+      "dry": true,
+      "head": "9c160c644a90392a2874a3eef64d8b21e9585f61",
+      "artifactAssertions": [
+        {
+          "name": "clarification-kept-inputs",
+          "exitCode": 0
+        }
+      ],
+      "wallClockPerPhase": {
+        "prepare": 51,
+        "startup": 4348,
+        "sendTask": 7,
+        "settle": 2890,
+        "judge": 0
+      },
+      "verdict": {
+        "oracle": "clarify_before_guessing",
+        "passed": false,
+        "failedGates": [
+          "clarification"
+        ],
+        "gates": {
+          "runs": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allCompleted": true
+            },
+            "actual": {
+              "runs": [
+                {
+                  "runId": "run_e4e4002d",
+                  "profileId": "agp_0e6da084",
+                  "chatId": "cnv_96f764d7",
+                  "startedAt": "2026-11-17T11:45:36.000Z",
+                  "settledAt": "2026-11-17T11:45:36.000Z",
+                  "status": "completed",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "provider": "sprout-verify-local",
+                  "model": "chat-owner",
+                  "thinkingRequested": "low",
+                  "thinkingEffective": "off",
+                  "sdkVersion": "1.5.2",
+                  "transcript": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-clarify-before-guessing/pi-data/ins_b2131e4e/sessions/2026-11-17T11-45-36-547Z_ins_b2131e4e.jsonl",
+                  "transcriptObserved": true,
+                  "readySnapshot": {
+                    "resources": {
+                      "inheritHostResources": false,
+                      "agentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-clarify-before-guessing/repos/prj_74ab466e/.sprout-pi",
+                      "hostAgentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-clarify-before-guessing/model-fixture/model-fixture-agent",
+                      "skillPaths": [],
+                      "promptPaths": [],
+                      "skills": [],
+                      "prompts": [],
+                      "themes": [],
+                      "contextFiles": [],
+                      "systemPromptChars": 1336
+                    },
+                    "tools": [
+                      "current_time",
+                      "fetch_content",
+                      "find",
+                      "get_search_content",
+                      "git_read",
+                      "grep",
+                      "ls",
+                      "read",
+                      "sleep",
+                      "source_check",
+                      "sprout_delegation_cancel",
+                      "sprout_delegation_input",
+                      "sprout_delegation_list",
+                      "sprout_delegation_start",
+                      "sprout_info_hub_get",
+                      "sprout_remote_file_read",
+                      "sprout_remote_file_write",
+                      "sprout_remote_shell",
+                      "sprout_resource_release",
+                      "sprout_status",
+                      "tool_search",
+                      "web_search"
+                    ]
+                  },
+                  "role": "lead",
+                  "systemPromptChars": 1336,
+                  "availableTools": [
+                    "current_time",
+                    "fetch_content",
+                    "find",
+                    "get_search_content",
+                    "git_read",
+                    "grep",
+                    "ls",
+                    "read",
+                    "sleep",
+                    "source_check",
+                    "sprout_delegation_cancel",
+                    "sprout_delegation_input",
+                    "sprout_delegation_list",
+                    "sprout_delegation_start",
+                    "sprout_info_hub_get",
+                    "sprout_remote_file_read",
+                    "sprout_remote_file_write",
+                    "sprout_remote_shell",
+                    "sprout_resource_release",
+                    "sprout_status",
+                    "tool_search",
+                    "web_search"
+                  ],
+                  "inheritHostResources": false,
+                  "cwd": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-clarify-before-guessing/repos/prj_74ab466e",
+                  "finalReplyText": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+                  "tools": [],
+                  "usage": [
+                    {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0,
+                      "totalTokens": 0,
+                      "cost": {
+                        "input": 0,
+                        "output": 0,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "total": 0
+                      }
+                    }
+                  ],
+                  "tokens": 0,
+                  "finalReplyAtMs": 1794915936806,
+                  "systemPromptHashes": [
+                    "8b9bca6f0e05b5eac267ce03a96eb167247534315f4496a70452ca7ce6c5ffc6"
+                  ]
+                }
+              ]
+            }
+          },
+          "artifactsPass": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allExitZero": true
+            },
+            "actual": {
+              "assertions": [
+                {
+                  "name": "clarification-kept-inputs",
+                  "exitCode": 0
+                }
+              ]
+            }
+          },
+          "validFinal": {
+            "passed": true,
+            "checks": {
+              "timestampPresent": true,
+              "nonemptyText": true
+            },
+            "actual": {
+              "atMs": 1794915936806,
+              "text": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          },
+          "clarification": {
+            "passed": false,
+            "checks": {
+              "noDelegation": true,
+              "oneQuestion": false,
+              "asksMissingFact": false
+            },
+            "actual": {
+              "reply": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+              "delegatedCount": 0
+            }
+          }
+        },
+        "evaluated": true,
+        "outcome": "failed",
+        "execution": {
+          "reason": null,
+          "error": null,
+          "evidenceError": null,
+          "evidenceProbe": null,
+          "cleanupError": null,
+          "runs": []
+        }
+      }
+    },
+    {
+      "arm": "A",
+      "task": "resolve-from-context",
+      "status": "failed",
+      "dry": true,
+      "head": "8d46a13645d85a4cd73458fc8f2a82b25d0fe22e",
+      "artifactAssertions": [
+        {
+          "name": "context-selected-customer",
+          "exitCode": 1
+        }
+      ],
+      "wallClockPerPhase": {
+        "prepare": 46,
+        "startup": 3972,
+        "sendTask": 8,
+        "settle": 2984,
+        "judge": 1
+      },
+      "verdict": {
+        "oracle": "resolve_from_context",
+        "passed": false,
+        "failedGates": [
+          "artifactsPass",
+          "resolvedContext"
+        ],
+        "gates": {
+          "runs": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allCompleted": true
+            },
+            "actual": {
+              "runs": [
+                {
+                  "runId": "run_0cea2c40",
+                  "profileId": "agp_3e87850f",
+                  "chatId": "cnv_6eb2725c",
+                  "startedAt": "2026-11-17T11:45:43.000Z",
+                  "settledAt": "2026-11-17T11:45:43.000Z",
+                  "status": "completed",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "provider": "sprout-verify-local",
+                  "model": "chat-owner",
+                  "thinkingRequested": "low",
+                  "thinkingEffective": "off",
+                  "sdkVersion": "1.5.2",
+                  "transcript": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-resolve-from-context/pi-data/ins_dc69b53d/sessions/2026-11-17T11-45-43-310Z_ins_dc69b53d.jsonl",
+                  "transcriptObserved": true,
+                  "readySnapshot": {
+                    "resources": {
+                      "inheritHostResources": false,
+                      "agentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-resolve-from-context/repos/prj_741b5d03/.sprout-pi",
+                      "hostAgentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-resolve-from-context/model-fixture/model-fixture-agent",
+                      "skillPaths": [],
+                      "promptPaths": [],
+                      "skills": [],
+                      "prompts": [],
+                      "themes": [],
+                      "contextFiles": [],
+                      "systemPromptChars": 1333
+                    },
+                    "tools": [
+                      "current_time",
+                      "fetch_content",
+                      "find",
+                      "get_search_content",
+                      "git_read",
+                      "grep",
+                      "ls",
+                      "read",
+                      "sleep",
+                      "source_check",
+                      "sprout_delegation_cancel",
+                      "sprout_delegation_input",
+                      "sprout_delegation_list",
+                      "sprout_delegation_start",
+                      "sprout_info_hub_get",
+                      "sprout_remote_file_read",
+                      "sprout_remote_file_write",
+                      "sprout_remote_shell",
+                      "sprout_resource_release",
+                      "sprout_status",
+                      "tool_search",
+                      "web_search"
+                    ]
+                  },
+                  "role": "lead",
+                  "systemPromptChars": 1333,
+                  "availableTools": [
+                    "current_time",
+                    "fetch_content",
+                    "find",
+                    "get_search_content",
+                    "git_read",
+                    "grep",
+                    "ls",
+                    "read",
+                    "sleep",
+                    "source_check",
+                    "sprout_delegation_cancel",
+                    "sprout_delegation_input",
+                    "sprout_delegation_list",
+                    "sprout_delegation_start",
+                    "sprout_info_hub_get",
+                    "sprout_remote_file_read",
+                    "sprout_remote_file_write",
+                    "sprout_remote_shell",
+                    "sprout_resource_release",
+                    "sprout_status",
+                    "tool_search",
+                    "web_search"
+                  ],
+                  "inheritHostResources": false,
+                  "cwd": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-A-resolve-from-context/repos/prj_741b5d03",
+                  "finalReplyText": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+                  "tools": [],
+                  "usage": [
+                    {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0,
+                      "totalTokens": 0,
+                      "cost": {
+                        "input": 0,
+                        "output": 0,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "total": 0
+                      }
+                    }
+                  ],
+                  "tokens": 0,
+                  "finalReplyAtMs": 1794915943785,
+                  "systemPromptHashes": [
+                    "00dfdad8b1f895b6e2684d2fecaa30633079cbafe823f3b6c797f46047ceee24"
+                  ]
+                }
+              ]
+            }
+          },
+          "artifactsPass": {
+            "passed": false,
+            "checks": {
+              "present": true,
+              "allExitZero": false
+            },
+            "actual": {
+              "assertions": [
+                {
+                  "name": "context-selected-customer",
+                  "exitCode": 1
+                }
+              ]
+            }
+          },
+          "validFinal": {
+            "passed": true,
+            "checks": {
+              "timestampPresent": true,
+              "nonemptyText": true
+            },
+            "actual": {
+              "atMs": 1794915943785,
+              "text": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          },
+          "resolvedContext": {
+            "passed": false,
+            "checks": {
+              "contextAvailable": true,
+              "didNotAsk": false
+            },
+            "actual": {
+              "projectContext": "本次交付的客户是 Northstar，客户数据在 data/customers.json；摘要遵循 README。",
+              "reply": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          }
+        },
+        "evaluated": true,
+        "outcome": "failed",
+        "execution": {
+          "reason": null,
+          "error": null,
+          "evidenceError": null,
+          "evidenceProbe": null,
+          "cleanupError": null,
+          "runs": []
+        }
+      }
+    },
+    {
+      "arm": "B",
+      "task": "resolve-from-context",
+      "status": "failed",
+      "dry": true,
+      "head": "9c160c644a90392a2874a3eef64d8b21e9585f61",
+      "artifactAssertions": [
+        {
+          "name": "context-selected-customer",
+          "exitCode": 1
+        }
+      ],
+      "wallClockPerPhase": {
+        "prepare": 48,
+        "startup": 4235,
+        "sendTask": 7,
+        "settle": 2843,
+        "judge": 0
+      },
+      "verdict": {
+        "oracle": "resolve_from_context",
+        "passed": false,
+        "failedGates": [
+          "artifactsPass",
+          "resolvedContext"
+        ],
+        "gates": {
+          "runs": {
+            "passed": true,
+            "checks": {
+              "present": true,
+              "allCompleted": true
+            },
+            "actual": {
+              "runs": [
+                {
+                  "runId": "run_9255c38d",
+                  "profileId": "agp_3e817140",
+                  "chatId": "cnv_8e82157e",
+                  "startedAt": "2026-11-17T11:45:50.000Z",
+                  "settledAt": "2026-11-17T11:45:51.000Z",
+                  "status": "completed",
+                  "errorCode": null,
+                  "errorMessage": null,
+                  "provider": "sprout-verify-local",
+                  "model": "chat-owner",
+                  "thinkingRequested": "low",
+                  "thinkingEffective": "off",
+                  "sdkVersion": "1.5.2",
+                  "transcript": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-resolve-from-context/pi-data/ins_972a14ff/sessions/2026-11-17T11-45-50-619Z_ins_972a14ff.jsonl",
+                  "transcriptObserved": true,
+                  "readySnapshot": {
+                    "resources": {
+                      "inheritHostResources": false,
+                      "agentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-resolve-from-context/repos/prj_a0812c60/.sprout-pi",
+                      "hostAgentDir": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-resolve-from-context/model-fixture/model-fixture-agent",
+                      "skillPaths": [],
+                      "promptPaths": [],
+                      "skills": [],
+                      "prompts": [],
+                      "themes": [],
+                      "contextFiles": [],
+                      "systemPromptChars": 1333
+                    },
+                    "tools": [
+                      "current_time",
+                      "fetch_content",
+                      "find",
+                      "get_search_content",
+                      "git_read",
+                      "grep",
+                      "ls",
+                      "read",
+                      "sleep",
+                      "source_check",
+                      "sprout_delegation_cancel",
+                      "sprout_delegation_input",
+                      "sprout_delegation_list",
+                      "sprout_delegation_start",
+                      "sprout_info_hub_get",
+                      "sprout_remote_file_read",
+                      "sprout_remote_file_write",
+                      "sprout_remote_shell",
+                      "sprout_resource_release",
+                      "sprout_status",
+                      "tool_search",
+                      "web_search"
+                    ]
+                  },
+                  "role": "lead",
+                  "systemPromptChars": 1333,
+                  "availableTools": [
+                    "current_time",
+                    "fetch_content",
+                    "find",
+                    "get_search_content",
+                    "git_read",
+                    "grep",
+                    "ls",
+                    "read",
+                    "sleep",
+                    "source_check",
+                    "sprout_delegation_cancel",
+                    "sprout_delegation_input",
+                    "sprout_delegation_list",
+                    "sprout_delegation_start",
+                    "sprout_info_hub_get",
+                    "sprout_remote_file_read",
+                    "sprout_remote_file_write",
+                    "sprout_remote_shell",
+                    "sprout_resource_release",
+                    "sprout_status",
+                    "tool_search",
+                    "web_search"
+                  ],
+                  "inheritHostResources": false,
+                  "cwd": "/tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406/1-B-resolve-from-context/repos/prj_a0812c60",
+                  "finalReplyText": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished.",
+                  "tools": [],
+                  "usage": [
+                    {
+                      "input": 0,
+                      "output": 0,
+                      "cacheRead": 0,
+                      "cacheWrite": 0,
+                      "totalTokens": 0,
+                      "cost": {
+                        "input": 0,
+                        "output": 0,
+                        "cacheRead": 0,
+                        "cacheWrite": 0,
+                        "total": 0
+                      }
+                    }
+                  ],
+                  "tokens": 0,
+                  "finalReplyAtMs": 1794915951008,
+                  "systemPromptHashes": [
+                    "900d4e45182a253c4133f20c562aaf2e19f7f84d6c2226404f7f5d54ebc13f1b"
+                  ]
+                }
+              ]
+            }
+          },
+          "artifactsPass": {
+            "passed": false,
+            "checks": {
+              "present": true,
+              "allExitZero": false
+            },
+            "actual": {
+              "assertions": [
+                {
+                  "name": "context-selected-customer",
+                  "exitCode": 1
+                }
+              ]
+            }
+          },
+          "validFinal": {
+            "passed": true,
+            "checks": {
+              "timestampPresent": true,
+              "nonemptyText": true
+            },
+            "actual": {
+              "atMs": 1794915951008,
+              "text": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          },
+          "resolvedContext": {
+            "passed": false,
+            "checks": {
+              "contextAvailable": true,
+              "didNotAsk": false
+            },
+            "actual": {
+              "projectContext": "本次交付的客户是 Northstar，客户数据在 data/customers.json；摘要遵循 README。",
+              "reply": "automatic continuation (auto_continuation); cerebellum continuation (cerebellum_continuation). Local harness transport finished."
+            }
+          }
+        },
+        "evaluated": true,
+        "outcome": "failed",
+        "execution": {
+          "reason": null,
+          "error": null,
+          "evidenceError": null,
+          "evidenceProbe": null,
+          "cleanupError": null,
+          "runs": []
+        }
+      }
+    }
+  ]
+}

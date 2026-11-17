@@ -31,7 +31,7 @@ import {
 import { artifactAssertions, parallelReportSignals } from "./artifacts.mjs";
 import { machineFixtureCount } from "./fixtures.mjs";
 import { readEvidence, settled, factsFrom, systemPromptEvidence } from "./evidence.mjs";
-import { createSettlementCheck } from "./settlement.mjs";
+import { artifactSnapshot, createSettlementCheck } from "./settlement.mjs";
 
 export async function runTask({
   task,
@@ -481,7 +481,10 @@ export async function runTask({
       );
       latest = readEvidence(env, input, remaining());
       if (latest.evidenceProbe) row.evidenceProbe = latest.evidenceProbe;
-      return settlementCheck(latest);
+      return settlementCheck(latest, artifactSnapshot(
+        row.machineScopes,
+        [...new Set([...Object.keys(initial), ...(fixtureDefinition(task.fixture).expected.delegationArtifacts ?? [])])],
+      ));
     }, "Crew settle");
     next("judge");
     Object.assign(

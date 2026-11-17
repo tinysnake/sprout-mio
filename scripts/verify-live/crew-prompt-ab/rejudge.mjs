@@ -9,6 +9,7 @@ import { fixtureDefinition } from "./fixtures.mjs";
 import { costMetricsFrom } from "./cost-metrics.mjs";
 import { factsFrom } from "./evidence.mjs";
 import { successCohort, successPopulation } from "./taskset2.mjs";
+import { discoveryOracle, discoveryWriteAuthorization } from "./discovery.mjs";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const uniform = (values) =>
@@ -16,7 +17,12 @@ const uniform = (values) =>
 
 export function rejudgeRow(input) {
   const row = structuredClone(input);
-  const audit = { version: 1, evidence: [], warnings: [] };
+  const audit = { version: 2, evidence: [], warnings: [],
+    originalOutcome: ["passed", "failed"].includes(input.status) ? {
+      status: input.status, passed: input.passed ?? null,
+      failedGates: input.verdict?.failedGates ?? [],
+    } : null,
+  };
   let evidence;
   if (row.evidenceDirectory) {
     const path = join(row.evidenceDirectory, "domain-evidence.json");
@@ -102,8 +108,15 @@ export function rejudgeRow(input) {
       return entry;
     }
   });
-  if (["passed", "failed"].includes(row.status))
-    audit.originalOutcome = { status: row.status, passed: row.passed ?? null };
+  if (row.oracle === discoveryOracle && !discoveryWriteAuthorization(row)) {
+    for (const key of ["artifactAssertions", "artifactAssertionsCorrected"]) {
+      row[key] = (row[key] ?? []).map((entry) => ({ ...entry, exitCode: 1,
+        rejudged: { originalExitCode: entry.exitCode,
+          source: "persisted worker request, lead approval and operation order",
+          error: "missing or unapproved Machine write provenance" },
+      }));
+    }
+  }
   finalizeVerdict(row);
   if (audit.originalOutcome) {
     row.status = row.verdict.outcome;

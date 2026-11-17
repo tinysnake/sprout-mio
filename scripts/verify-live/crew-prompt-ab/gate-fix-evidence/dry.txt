@@ -1,0 +1,41 @@
+FAILED A clarify-before-guessing repeat=1 out=/tmp/crew-ab-gate-dry-final/ledger.jsonl
+FAILED B clarify-before-guessing repeat=1 out=/tmp/crew-ab-gate-dry-final/ledger.jsonl
+FAILED A resolve-from-context repeat=1 out=/tmp/crew-ab-gate-dry-final/ledger.jsonl
+FAILED B resolve-from-context repeat=1 out=/tmp/crew-ab-gate-dry-final/ledger.jsonl
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: system prompt character counts overlap for clarify-before-guessing/lead; system prompt character counts overlap for resolve-from-context/lead
+┌─────────┬───────────────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group                         │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / clarify-before-guessing' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'                     │ 2       │ 2         │ 2         │ 0      │ 2      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 2       │ 'B / clarify-before-guessing' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 3       │ 'B / ALL'                     │ 2       │ 2         │ 2         │ 0      │ 2      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 4       │ 'A / resolve-from-context'    │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 5       │ 'B / resolve-from-context'    │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — both arms saturated; no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                             │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'clarify-before-guessing #1 / A' │ 0           │ 0                │ 0                 │ 0          │ null         │ 0            │
+│ 1       │ 'clarify-before-guessing #1 / B' │ 0           │ 0                │ 0                 │ 0          │ null         │ 0            │
+│ 2       │ 'resolve-from-context #1 / A'    │ 0           │ 0                │ 0                 │ 0          │ null         │ 0            │
+│ 3       │ 'resolve-from-context #1 / B'    │ 0           │ 0                │ 0                 │ 1000       │ null         │ 0            │
+└─────────┴──────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+工具面差异（信息；工具数量及名称按各臂所有运行的并集）
+clarify-before-guessing/lead: 基线臂 A=22; 精简臂 B=22
+  无差异
+resolve-from-context/lead: 基线臂 A=22; 精简臂 B=22
+  无差异
+体量对比（字符；压缩率相对 A）
+| arm | role | system | system compression | tools incl. parameters | tools compression |
+|---|---|---:|---:|---:|---:|
+| A | lead | 1247 | 0.00% | 5528 | 0.00% |
+| B | lead | 1247 | 0.00% | 5528 | 0.00% |
+| A | worker | 989 | 0.00% | 4728 | 0.00% |
+| B | worker | 989 | 0.00% | 4728 | 0.00% |
+Evidence: /tmp/crew-ab-gate-dry-final/crew-prompt-ab-1794915889247-41406
+Ledger: /tmp/crew-ab-gate-dry-final/ledger.jsonl

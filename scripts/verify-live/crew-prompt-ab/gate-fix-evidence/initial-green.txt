@@ -1,0 +1,13 @@
+✔ clarification groups requests for the missing customer, independent of punctuation (1.072291ms)
+✔ context resolution accepts own verified delivery or a human question; rejects neither (0.101459ms)
+✔ parallel budget ignores sleep policy but still enforces overlap and deadline (0.149041ms)
+✔ discovery refuses a correct artifact written without successful prior authorization (1.102917ms)
+✔ artifact assertions wait for the last evidence and file change to be stable for one second (0.135417ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 98.449084

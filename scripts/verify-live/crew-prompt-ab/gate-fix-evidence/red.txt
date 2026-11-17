@@ -1,0 +1,94 @@
+✖ clarification groups requests for the missing customer, independent of punctuation (0.874375ms)
+✖ context resolution accepts own verified delivery or a human question; rejects neither (0.170042ms)
+✔ parallel budget ignores sleep policy but still enforces overlap and deadline (0.19625ms)
+✖ discovery refuses a correct artifact written without successful prior authorization (1.216917ms)
+✖ artifact assertions wait for the last evidence and file change to be stable for one second (0.158542ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 229.530459
+
+✖ failing tests:
+
+test at scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:17:1
+✖ clarification groups requests for the missing customer, independent of punctuation (0.874375ms)
+  AssertionError [ERR_ASSERTION]: 这次交付要写给哪个客户？Northstar 还是 Harbor？还是另有指定客户？
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///Users/snake/.t3/worktrees/sprout-mio/t3-b84fc363-4d701f92cef9ddfb/scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:23:13)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:35:1
+✖ context resolution accepts own verified delivery or a human question; rejects neither (0.170042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  false !== true
+
+      at TestContext.<anonymous> (file:///Users/snake/.t3/worktrees/sprout-mio/t3-b84fc363-4d701f92cef9ddfb/scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:41:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:56:1
+✖ discovery refuses a correct artifact written without successful prior authorization (1.216917ms)
+  AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to: 0
+      at TestContext.<anonymous> (file:///Users/snake/.t3/worktrees/sprout-mio/t3-b84fc363-4d701f92cef9ddfb/scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:72:12)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 0,
+    operator: 'notStrictEqual',
+    diff: 'simple'
+  }
+
+test at scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:81:1
+✖ artifact assertions wait for the last evidence and file change to be stable for one second (0.158542ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  true !== false
+
+      at TestContext.<anonymous> (file:///Users/snake/.t3/worktrees/sprout-mio/t3-b84fc363-4d701f92cef9ddfb/scripts/verify-live/crew-prompt-ab/gate-behavior.test.mjs:89:10)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: true,
+    expected: false,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
