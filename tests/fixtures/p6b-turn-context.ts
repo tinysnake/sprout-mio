@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { p6bFixture } from "./p6b-support";
 import { turnContextPromptInputSchema } from "../../src/contracts/turn-context";
 import { INFO_HUB_LIMITS } from "../../src/contracts/info-hub";
@@ -102,8 +102,53 @@ try {
     "receipt generation alone does not persist submitted",
   );
   const { runId, contentHash, submittedAt } = receipts[0]!;
-  const submitted = f.turns.confirmTurnContext({ runId, contentHash, submittedAt }, f.ctx);
-  f.equal(submitted.deliveryState, "submitted");
+  const writer = spawn(
+    process.execPath,
+    [
+      "-e",
+      `const Database = require("better-sqlite3");
+       const db = new Database(process.argv[1]);
+       db.pragma("journal_mode = WAL");
+       db.pragma("busy_timeout = 5000");
+       db.exec("BEGIN IMMEDIATE");
+       db.exec("INSERT INTO user(id,name,email,email_verified,created_at,updated_at) VALUES ('usr_turn_context_lock','Lock holder','turn-context-lock@example.test',0,1,1)");
+       console.log("locked");
+       setTimeout(() => { db.exec("COMMIT"); db.close(); }, 650);`,
+      process.env.DATABASE_URL!,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 },
+  );
+  let writerStderr = "";
+  writer.stderr.setEncoding("utf8").on("data", (chunk: string) => {
+    writerStderr += chunk;
+  });
+  const writerClosed = new Promise<number | null>((resolve) => {
+    writer.once("close", resolve);
+  });
+  let submitted: ReturnType<typeof f.turns.confirmTurnContext>;
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let stdout = "";
+      writer.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+        stdout += chunk;
+        if (stdout.includes("locked\n")) resolve();
+      });
+      writer.once("error", reject);
+      writer.once("close", (code) => {
+        reject(new Error(`Lock holder exited before readiness (${code}): ${writerStderr}`));
+      });
+    });
+    const confirmStarted = performance.now();
+    submitted = f.turns.confirmTurnContext({ runId, contentHash, submittedAt }, f.ctx);
+    const confirmElapsedMs = performance.now() - confirmStarted;
+    f.equal(submitted.deliveryState, "submitted");
+    f.check(
+      confirmElapsedMs > 300,
+      `confirmation waits for the other process's write lock (${confirmElapsedMs.toFixed(1)}ms)`,
+    );
+  } finally {
+    f.equal(await writerClosed, 0, `lock holder commits and exits successfully: ${writerStderr}`);
+  }
   f.equal(submitted.injectedIntoPrompt, true);
   f.equal(submitted.serializedText, b.serializedText);
   f.equal(f.turns.confirmTurnContext({ runId, contentHash, submittedAt }, f.ctx), submitted);
