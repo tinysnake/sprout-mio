@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { costMetricsFrom, pairedCostRows } from "./cost-metrics.mjs";
 import { readFileSync } from "node:fs";
 export { seedFixture, fixtureDefinition } from "./fixtures.mjs";
 
@@ -18,6 +19,7 @@ export function taskSet(path) {
   return tasks;
 }
 export const unknownEvidence = {
+  ...costMetricsFrom(),
   delegatedCount: null,
   distinctWorkerProfiles: null,
   workerRunTerminalStatuses: null,
@@ -258,7 +260,7 @@ export function finalizeVerdict(row) {
       : "failed"
     : row.status;
   if (!evaluated) row.verdictCorrected.passed = null;
-  row.probeDelegations = (
+  row.probeDelegationEvidence = (
     row.verdictCorrected.gates.attribution?.actual.probeDelegations ?? []
   ).map((d) => ({ delegationId: d.delegationId, requestSummary: d.requestSummary }));
   return row.verdict;
@@ -468,5 +470,9 @@ export function summarize(rows, options = {}) {
   console.log(
     "Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.",
   );
+  console.log(
+    "Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.",
+  );
+  console.table(pairedCostRows(rows));
   return { reasons, groups: [...groups.values()] };
 }

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
+import { costMetricsFrom } from "./cost-metrics.mjs";
 
 const probe = `
 import {sqlite} from './src/db/index.ts';
@@ -121,20 +122,26 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
     perWorker[d.workerProfileId] = (perWorker[d.workerProfileId] ?? 0) + 1;
   const workerRuns = e.runs.filter((r) => r.chatId !== chatId);
   const sessions = new Map();
+  const toolResults = new Map();
   for (const r of e.runs) {
     const file = r.configSnapshot?.sessionFile;
     if (!file) continue;
     if (!existsSync(file)) throw new Error(`missing real transcript ${file}`);
-    if (!sessions.has(file))
-      sessions.set(
+    if (!sessions.has(file)) {
+      const entries = readFileSync(file, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      sessions.set(file, assistantMessagesByRun(entries));
+      toolResults.set(
         file,
-        assistantMessagesByRun(
-          readFileSync(file, "utf8")
-            .split("\n")
-            .filter(Boolean)
-            .map((line) => JSON.parse(line)),
+        new Map(
+          entries
+            .filter((entry) => entry.message?.role === "toolResult")
+            .map((entry) => [entry.message.toolCallId, entry.message.isError === true]),
         ),
       );
+    }
   }
   const observations = e.runs.map((r) => {
     const messages = sessions.get(r.configSnapshot?.sessionFile)?.get(r.id) ?? [];
@@ -183,7 +190,12 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
         .filter((c) => c.type === "text")
         .map((c) => c.text)
         .join("\n"),
-      tools: tools.map((t) => ({ id: t.id, name: t.name, arguments: t.arguments })),
+      tools: tools.map((t) => ({
+        id: t.id,
+        name: t.name,
+        arguments: t.arguments,
+        isError: toolResults.get(r.configSnapshot?.sessionFile)?.get(t.id) ?? null,
+      })),
       usage,
       tokens,
       finalReplyAtMs:
@@ -266,6 +278,15 @@ export function factsFrom(e, chatId, artifactFiles = [], requiredDelegationArtif
     }
   }
   return {
+    ...costMetricsFrom({
+      transcript: observations.map((run) => ({
+        ...run,
+        tools: sessions.get(run.transcript)?.has(run.runId) ? run.tools : null,
+      })),
+      toolNames: Object.fromEntries(observations.map((run) => [run.runId, run.availableTools])),
+      timings: observations,
+      delegations: e.delegations,
+    }),
     delegatedCount: e.delegations.length,
     requiredDelegationArtifacts,
     delegationEvidence,

@@ -146,7 +146,7 @@ export function summarizeRejudged(rows) {
     readings,
     tasks,
     probeDelegations: rows.flatMap((r) =>
-      r.probeDelegations.map((d) => ({ arm: r.arm, task: r.task, repeat: r.repeat, ...d })),
+      r.probeDelegationEvidence.map((d) => ({ arm: r.arm, task: r.task, repeat: r.repeat, ...d })),
     ),
     thinking,
     comparisonReasons: comparisonReasons(rows),

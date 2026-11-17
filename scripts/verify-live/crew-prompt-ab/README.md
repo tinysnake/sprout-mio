@@ -36,7 +36,31 @@ The batch refuses to start if both arms resolve to the same commit, including di
 for that commit. `refs.json` and every ledger row record the resolved `head`; `ref` and
 `testedRef` retain the requested ref.
 
-Before preparation, `plan.json` enumerates every arm/task/repeat. Every planned item receives
+Before preparation, `plan.json` enumerates every arm/task/repeat.
+
+Cost fields are derived without model calls by `costMetricsFrom` in `cost-metrics.mjs`.
+`delegations` counts persisted delegation records, including failed/blocked ones, rather
+than attempted start-tool calls. `probeDelegations` counts requests labelled with the word
+`probe`, `read-only`/`read only`, `只读`, or `侦察`; this is requested intent, not proof of compliance.
+The existing corrected-oracle probe details live in `probeDelegationEvidence` so verdict
+finalization cannot overwrite the numeric `probeDelegations` cost field; the rejudge report
+continues to expose its existing aggregate probe-detail list.
+`unmappedArtifacts` counts distinct paths from successful explicit `write`, `edit`, and
+`sprout_remote_file_write` calls that do not match a file path named in any delegation
+request. Reads and failed writes do not count; repeated writes to one path count once.
+Relative request paths match suffixes at directory boundaries; bare filenames match basenames,
+and `/private/tmp` normalizes to `/tmp`. Shell-created files are outside this explicit-write
+metric; opaque nested writes or missing write results produce `null`.
+`leadWallMs` and `workerWallMs` sum each role's run `settledAt - startedAt` in milliseconds,
+including pauses; overlapping worker runs count separately. An unfinished/invalid clock
+makes that role's sum `null`. `sleepMsTotal` sums lead `sleep` argument `ms` directly regardless
+of tool success: requested sleep, not measured waiting. `toolCallsByRole` counts observed
+top-level calls per role, including failures; nested calls are not expanded.
+Missing transcripts/tool surfaces, opaque nested sleeps, missing roles and absent runtime
+evidence remain `null`; only observed empty sets yield zero. The additional summary table
+pairs A/B by task and repeat, keeps repeats separate, and preserves success-rate semantics.
+
+Every planned item receives
 exactly one ledger row. SIGINT/SIGTERM abort active work, clean up child processes and worktrees,
 and append `not_run` rows for all items that never started, including interruption during builds.
 Rows completed before interruption remain measured. The summary reports `planned`, `attempted`,
