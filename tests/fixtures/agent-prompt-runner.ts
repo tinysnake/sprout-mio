@@ -226,8 +226,8 @@ async function request(
       for (const match of system.matchAll(/\bsprout_[a-z_]+\b/g))
         assert(firstNames.includes(match[0]), `${label}: prompt tool ${match[0]} is active`);
       assert(system.includes("## 工作描述\n[[STEP3-DESC-MARKER]] 只负责验证"));
-      assert(system.includes("## 项目背景\n这是一个编程项目。"));
-      assert(system.includes("以下补充要求与本节默认指引冲突时，以补充要求为准"));
+      assert(system.includes("## 项目背景\n编程项目。"));
+      assert(system.includes("补充要求优先于本节"));
       assert(system.indexOf("## 工作描述") < system.indexOf("## 项目背景"));
       assert(system.indexOf("## 项目背景") < system.indexOf("## 说话风格"));
       assert(system.length <= 4000);

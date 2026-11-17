@@ -47,4 +47,19 @@ Live 来源：`/tmp/promptprune-arm-D.md` 对 `/tmp/crew-ab-prune1/` 的 10 格�
 Inventory 保留原 AST/工厂采集，随后使用真实 SDK session 的 `getActiveToolNames()` 与 `getAllTools()` 分别测量初始活动集与注册集，单列 deferred。未发模型请求。
 真实 runner fixture 用模型 HTTP 请求的 tools 数组作 ground truth：首轮与 ready.tools 完全相同，遍历发现 lead 23 项与 worker 11 项，每项都在后续请求出现；DM 全部候选仍直接声明，DM session 恢复成 Crew 后重新按角色延迟。
 A/B harness `scripts/verify-live/crew-prompt-ab/evidence.mjs:187` 读取 `r.configSnapshot?.tools`，其源头是 ready.snapshot.tools 的活动集；registeredTools 是独立字段，因此 availableTools 可反映首轮裁面。
-工具改造后：lead 1271 + 5528（18 active / 41 registered），worker 986 + 4728（16 / 27）；分别首轮节省 4868、4035 字符。提示词压缩与最终验收随后独立提交记录。
+## 提示词与最终体量
+
+三条原文逐字保留：`按名字与工作描述挑人，勿凭职级或习惯`；`结束这一轮就是等待，sleep 后查或循环调用 sprout_delegation_list 都是错的`；`重试同次派发保持成员与 request 文本不变`。
+发现指引为「更多工具用tool_search找」，已计入体量；保留派发状态、幂等、资源边界、worker 完成/阻塞、artifact 与项目默认要求。七个 sprout 名字分属各角色热工具，真实请求逐一核对。
+
+| 角色 | `9e0405f` system + tools（active） | arm D system + tools（active / registered） | 本轮总节省 |
+| --- | --- | --- | --- |
+| lead | 1271 + 10396（41） | 1147 + 5528（18 / 41） | 4992 / 42.79% |
+| worker | 986 + 8763（27） | 889 + 4728（16 / 27） | 4132 / 42.38% |
+
+同一 inventory facts 下，应用 prompt（含固定 HTML、persona 与工作描述）从 1232/947 降至 1108/850，分别省 124（10.06%）/97（10.24%）。SDK 附加仍为每角色 39 字符。工具说明首轮分别省 4868/4035；全激活后说明体量恢复为基线 10396/8763。
+
+复现：`node scripts/verify-live/crew-prompt-ab/prompt-inventory.mjs "$PWD"`，基线可指定 `/private/tmp/wt-prune-arm`。
+本机结果 `/tmp/promptprune-arm-d-inventory.json`；基线 `/tmp/promptprune-arm-d-base-sdk-inventory.json`。
+
+最终验证：`pnpm typecheck`、`pnpm test`、`bash scripts/verify/crew-delegation.sh` 均退出 0。全量测试 206 文件、1976 项通过，runner Duration 104.42s；日志分别是 `/tmp/promptprune-arm-d-typecheck-final.log`、`/tmp/promptprune-arm-d-test-final.log`、`/tmp/promptprune-arm-d-crew-delegation-final.log`。未运行付费 live A/B，本轮的 10 格调用数沿用 brief；发现与再次声明由本地真实 Pi SDK + HTTP 模型 fixture 验证。

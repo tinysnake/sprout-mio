@@ -10,7 +10,7 @@ import { sdkRoot } from "../../pi-host-skills.mjs";
 
 const rootDefault = fileURLToPath(new URL("../../../", import.meta.url));
 const sectionNames = ["情境", "职责", "成员选择", "边界与权限", "结果事件与等待", "Sprout 能力入口", "身份", "职责与边界", "完成上报", "阻塞上报", "结果回流", "能力概览", "工作描述", "项目背景", "HTML 交付", "说话风格"];
-const crewNames = new Set(sectionNames.slice(0, 12));
+const crewNames = new Set([...sectionNames.slice(0, 12), "事件与等待"]);
 export const defaultFacts = {
   cwd: "/sprout/prompt-inventory",
   profile: { persona: "Prompt inventory agent.", description: "Prompt inventory agent." },
