@@ -109,7 +109,7 @@ export function registerSproutStatus(pi: SproutExtensionAPI): void {
     name: "sprout_status",
     label: "Sprout Status",
     description:
-      "返回 Sprout Mio 版本、宿主实况、Worker 进程与会话身份、MCP 工具面诊断。排查 Sprout 状态或工具为什么不可用时调用此工具。",
+      "返回 Sprout Mio 版本、宿主实况、Worker 进程与会话身份、MCP 工具面诊断；排查 Sprout 状态或工具不可用时调用。",
     parameters: { type: "object", properties: {}, additionalProperties: false },
     async execute(_toolCallId, _parameters, _signal, _onUpdate, context) {
       const current = sproutStatusPayload(context);

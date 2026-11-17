@@ -49,19 +49,19 @@ export const ASSISTANT_TOOL_SPEC = {
   sprout_assistant_observe: {
     call: "assistant_observe",
     description:
-      "Read bounded factual Projects, effective worker Agents (with agentProfileId even without a DM), Chats, messages and run activity currently visible to the Human. Omit targetProjectId to list Projects, provide it to list workers/Chats. Does not execute work.",
+      "Read bounded Projects, effective worker Agents (with agentProfileId even without a DM), Chats, messages and run activity visible to the Human. Omit targetProjectId to list Projects; provide it to list workers/Chats. Does not execute work.",
     input: observe,
   },
   sprout_assistant_propose: {
     call: "assistant_propose",
     description:
-      "Create an immutable concrete work proposal in this DM. For dm_agent, provide projectId and agentProfileId; chatId is optional and resolves to the Human's canonical DM. Write body as a concise, concrete work instruction, without internal IDs, routing metadata or forwarding commentary. Only the Human can confirm it. No work starts here.",
+      "Create an immutable concrete work proposal in this DM. For dm_agent give projectId and agentProfileId; chatId is optional and resolves to the Human's canonical DM. Write body as a concise concrete work instruction, without internal IDs, routing metadata or forwarding commentary. Only the Human can confirm it. No work starts here.",
     input: propose,
   },
   sprout_assistant_watch: {
     call: "assistant_watch",
     description:
-      "Watch a Chat in this assistant DM: omit active (or use true) to request Human consent, or update an already authorized interval (integer 60..86400, default 300). Reports combine the window's messages and work activity, never notify per run. Use active:false to STOP the current Human's watch of that target in this DM immediately, including pending intents; stopping needs no new consent, is idempotent, and does not cancel work. Only a fresh native Human confirmation can re-enable a stopped watch.",
+      "Watch a Chat in this assistant DM: omit active (or use true) to request Human consent, or update an already authorized interval (integer 60..86400, default 300). Reports combine the window's messages and work activity; never notify per run. active:false STOPS the current Human's watch of that target in this DM immediately, including pending intents; it needs no new consent, is idempotent, and does not cancel work. Only a fresh native Human confirmation can re-enable a stopped watch.",
     input: watch,
   },
 } as const;

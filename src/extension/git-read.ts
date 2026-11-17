@@ -306,7 +306,7 @@ export function createGitReadTool(options: GitReadOptions = {}): RegisteredTool 
     name: "git_read",
     label: "Git Read",
     description:
-      "以只读方式查询宿主仓库副本的 git 状态、历史、diff、blame、pickaxe、分支、标签、文件列表和 grep。operation 必填；所有 ref 与路径都限制在仓库内，不执行写命令、不访问网络、不运行 hooks 或外部 diff。",
+      "以只读方式查询宿主仓库副本的 git 状态、历史、diff、blame、pickaxe、分支、标签、文件列表和 grep。operation 必填；ref 与路径都限制在仓库内；不执行写命令、不访问网络、不运行 hooks 或外部 diff。",
     parameters: {
       type: "object",
       properties: {

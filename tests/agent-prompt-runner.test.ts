@@ -9,5 +9,7 @@ it("observes role prompts and delegation tools in actual provider requests, incl
     ["--import", "tsx", resolve("tests/fixtures/agent-prompt-runner.ts")],
     { timeout: 120000, maxBuffer: 1024 * 1024 },
   );
-  expect(stdout).toContain("agent prompt runner: 4 requests PASS; paidModelCalls=0");
+  expect(stdout).toContain(
+    "agent prompt runner: initial surfaces and every deferred tool discovery PASS; paidModelCalls=0",
+  );
 }, 130000);

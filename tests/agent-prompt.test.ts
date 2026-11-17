@@ -35,6 +35,12 @@ describe("crew lead 的 system prompt", () => {
     expect(crewLeadPrompt).toContain("sprout_delegation_list");
     expect(crewLeadPrompt).toContain("clientRequestId");
     expect(crewLeadPrompt).toContain("sleep");
+    for (const rule of [
+      "按名字与工作描述挑人，勿凭职级或习惯",
+      "结束这一轮就是等待，sleep 后查或循环调用 sprout_delegation_list 都是错的",
+      "重试同次派发保持成员与 request 文本不变",
+    ]) expect(crewLeadPrompt).toContain(rule);
+    expect(crewLeadPrompt).toContain("更多工具用tool_search找");
     expect(crewLeadPrompt).toContain("只承诺");
     expect(crewLeadPrompt).toContain(persona);
     expect(crewLeadPrompt).toContain(htmlGuide);
@@ -74,6 +80,7 @@ describe("delegation worker 的 system prompt", () => {
     expect(delegationWorkerPrompt).toContain("Human 或 Crew lead");
     for (const reason of ["needs_input", "resource_unavailable", "out_of_scope", "failed"])
       expect(delegationWorkerPrompt).toContain(reason);
+    expect(delegationWorkerPrompt).toContain("更多工具用tool_search找");
     expect(delegationWorkerPrompt).toContain(persona);
     expect(delegationWorkerPrompt).toContain(htmlGuide);
   });
@@ -104,10 +111,11 @@ describe("项目与工作描述", () => {
         htmlGuide,
       });
       expect(prompt).toContain("## 工作描述\n只负责代码评审");
-      expect(prompt).toContain(
-        "## 项目背景\n这是一个编程项目。先阅读项目约定与相关实现，修改后运行与变更相称的验证，交付可复核的代码与证据。",
-      );
-      expect(prompt).toContain("以下补充要求与本节默认指引冲突时，以补充要求为准");
+      expect(prompt).toContain("## 项目背景\n编程项目。");
+      expect(prompt).toContain("读约定/实现");
+      expect(prompt).toContain("相称验证");
+      expect(prompt).toContain("可核代码/证据");
+      expect(prompt).toContain("补充要求优先于本节");
       expect(prompt.indexOf("## 工作描述")).toBeGreaterThan(prompt.indexOf("## 职责"));
       expect(prompt.indexOf("## 项目背景")).toBeGreaterThan(prompt.indexOf("## 工作描述"));
       expect(prompt.indexOf("## 说话风格")).toBeGreaterThan(prompt.indexOf("## 项目背景"));
@@ -135,7 +143,7 @@ describe("项目与工作描述", () => {
         htmlGuide: "",
       }),
     ).toContain(
-      "这是一个工作项目。明确目标、依据与交付标准，整理信息并推进执行；结论注明证据、责任人与未决事项。",
+      "工作项目。明确目标、依据与交付标准，整理信息并推进执行；结论注明证据、责任人与未决事项。",
     );
   });
   it.each(["crew_lead", "delegation_worker"] as const)("%s 满字段仍满足分段和总预算", (kind) => {

@@ -37,15 +37,13 @@ const submittedContexts = new Set();
 
 /** 个人助理的表达约定，只有 assistant 职责挂。 */
 const ASSISTANT_GUIDE = `
+面向 Human 的表达简短自然：先说结论、进展或待决定。用名称，不罗列内部 ID、工具响应字段或活动日志，不重复提案或转发原始数据。提案 body 只写具体工作要求，不附传话背景、成员 ID。区分已提交/处理中/已回复/结果未经验证，不把运行结束当业务成功。
 
-面向 Human 的表达应简短自然。先说结论、进展或需要对方决定的事。使用 Project、Agent、对话的名称，不向 Human 罗列内部 ID、工具响应字段或活动日志。不要重复整份提案或转发原始数据。提案 body 只写交给工作 Agent 的具体工作要求，避免附加传话背景、成员 ID 和其他无关信息。确实需要排查时再提供细节。区分已提交、正在处理、已回复与结果未经验证，不把运行结束称作业务成功。
-
-频道关注由程序按 Human 授权的 interval 时间窗口合并消息和工作活动，不是每次 run 结束立即转发。Human 要求停止关注时，调用 sprout_assistant_watch，传当前目标的 targetProjectId、chatId 和 active:false；你能停止本 DM 的关注，无需再次确认。看到 action:stopped、active:false 后明确告知已停止汇报；这不会取消正在执行的工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注必须提出新请求并由 Human 确认。`;
+频道关注由程序按 Human 授权 interval 窗口合并消息与工作活动，不是每次 run 结束即转发。Human 要求停止时，调 sprout_assistant_watch 传当前 targetProjectId、chatId 和 active:false；可停止本 DM 关注，无需再确认。见 action:stopped、active:false 后告知已停止汇报；不取消在办工作。不要声称工具不能取消，不要用 intervalSeconds:0。重新关注须提出新请求并经 Human 确认。`;
 
 /** 消息里的 HTML 代码块会进沙箱，这段说清沙箱里有什么、没什么。 */
 const HTML_ARTIFACT_GUIDE = `
-
-消息里的 HTML 代码块会在沙箱里渲染成页面，用来交付图表、原型和报告。页面拿不到应用的样式和网络，不要在文档里引用外部图片、字体或 CDN，图片用 data URI，脚本内联。颜色用主题变量，深色主题会自动换成对应的值，写死颜色在深色下会失真。常用变量有 --background、--foreground、--muted、--muted-foreground、--border、--border-soft、--card、--card-foreground、--primary、--primary-foreground、--secondary、--accent、--accent-foreground、--destructive、--status-success、--status-warning、--status-failed、--chart-1 到 --chart-5、--radius、--font-body、--font-display、--font-sans、--font-mono。页面高度随内容自适应并回填到消息里，不要给 html 或 body 设 100vh 或固定高度。整份文档和片段都可以，片段会自动补上外壳。`;
+消息里的 HTML 代码块在沙箱渲染成页面，用于交付图表、原型和报告。页面无应用样式与网络：不引用外部图片/字体/CDN，图片用 data URI，脚本内联。颜色用主题变量（深色自动换值，写死颜色在深色失真）：--background、--foreground、--muted、--muted-foreground、--border、--card、--primary、--secondary、--accent、--destructive、--status-success、--status-warning、--status-failed、--chart-1~--chart-5、--radius、--font-sans、--font-mono。高度随内容自适应回填；不要给 html/body 设 100vh 或固定高度。整份文档或片段均可，片段会自动补外壳。`;
 
 function failure(id, code, message, stopReason, text) {
   line({
@@ -91,6 +89,9 @@ async function open(config) {
   const sdkRequire = createRequire(join(root, "package.json"));
   const { createJiti } = await import(pathToFileURL(sdkRequire.resolve("jiti")).href);
   const jiti = createJiti(import.meta.url);
+  const { isCrewDeferredTool } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/crew-tool-exposure.ts"),
+  );
   const { describeToolCall } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/run-activity.ts"),
   );
@@ -257,7 +258,17 @@ async function open(config) {
         ]
       : [
           // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
-          { name: "codemode", factory: sdk.createCodemodeExtension() },
+          {
+            name: "codemode",
+            factory: async (pi) => sdk.createCodemodeExtension()({
+              ...pi,
+              registerTool(tool) {
+                pi.registerTool(isCrewDeferredTool(situation, tool.name)
+                  ? { ...tool, exposure: "deferred" }
+                  : tool);
+              },
+            }),
+          },
           { name: "tool-search", factory: sdk.createToolSearchExtension() },
           {
             name: "sprout-extension",
@@ -308,8 +319,29 @@ async function open(config) {
                 machineId: () => target?.machineId ?? null,
                 authorizationGeneration: () => target?.generation ?? null,
               });
-              registerRemoteTools(pi, remote);
-              registerTaskTools(pi, remote);
+              const rolePi = {
+                ...pi,
+                registerTool(tool) {
+                  const isCrew =
+                    situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
+                  if (isCrew && tool.name.startsWith("sprout_lease_")) return;
+                  if (
+                    situation?.kind === "delegation_worker" &&
+                    (tool.name.startsWith("sprout_task_") ||
+                      [
+                        "sprout_resource_takeover",
+                        "sprout_resource_approve",
+                        "sprout_resource_revoke",
+                      ].includes(tool.name))
+                  )
+                    return;
+                  pi.registerTool(isCrewDeferredTool(situation, tool.name)
+                    ? { ...tool, exposure: "deferred" }
+                    : tool);
+                },
+              };
+              registerRemoteTools(rolePi, remote);
+              registerTaskTools(rolePi, remote);
               registerDelegationTools(pi, remote);
               registerCrewDelegationTools(pi, remote);
               registerInfoHubTools(pi, remote);
@@ -379,11 +411,29 @@ async function open(config) {
             ...(memoryFactory ? MEMORY_TOOL_NAMES : []),
             ...hostToolNames(webAccessEntry),
             "mcp__*",
-            ...Object.keys(remoteToolInputSchemas),
+            ...Object.keys(remoteToolInputSchemas).filter(
+              (name) =>
+                !(
+                  (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
+                  name.startsWith("sprout_lease_")
+                ) &&
+                !(
+                  situation?.kind === "delegation_worker" &&
+                  [
+                    "sprout_resource_takeover",
+                    "sprout_resource_approve",
+                    "sprout_resource_revoke",
+                  ].includes(name)
+                ),
+            ),
             // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
             // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
             // 后续跨 Chat 或 Agent 间通信再启用。
-            ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+            ...Object.keys(taskToolInputSchemas).filter(
+              (name) =>
+                name !== "sprout_chat_send" &&
+                !(situation?.kind === "delegation_worker" && name.startsWith("sprout_task_")),
+            ),
             ...Object.keys(infoHubToolInputSchemas),
             ...delegationToolNames(situation),
           ],
@@ -478,6 +528,11 @@ async function open(config) {
             : JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})),
         )
         .join("; ")}`,
+    );
+  // The allowlist grants registration and also activates names; keep deferred tools searchable.
+  if (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker")
+    session.setActiveToolsByName(
+      session.getActiveToolNames().filter((name) => !isCrewDeferredTool(situation, name)),
     );
   if (session.model?.provider !== model.provider || session.model?.id !== model.id)
     throw new Error("Pi 实际模型与显式配置不匹配");
