@@ -1,0 +1,301 @@
+✔ review accepts exact paired ledger findings from arm A (114.520625ms)
+✔ review accepts exact paired ledger findings from arm B (152.944208ms)
+✔ review accepts detached defect lines while retaining its evidence requirements (2327.894416ms)
+✔ counts actual delegations, unique explicit writes, lead sleep milliseconds and each role (1.7625ms)
+✔ missing evidence is null, while observed empty calls and delegations are zero (0.15525ms)
+✔ partial transcripts, missing tool surfaces and unfinished clocks do not fabricate zero (0.114792ms)
+✔ invalid sleep arguments and opaque nested writes/sleeps remain unknown (0.216042ms)
+✔ failed writes are excluded, unfinished writes are unknown, and request filenames map exactly (0.131083ms)
+✔ ledger reads bound transcript calls and results without charging another run (2.717375ms)
+✔ cost table pairs arms by task and repeat without converting missing values to zero (7.573042ms)
+✔ no_delegation waits for runs and a stable settled snapshot before failing (0.536167ms)
+✔ no_delegation_but_work_done waits for runs and a stable settled snapshot before failing (0.06525ms)
+✔ settlement still throws classified terminal failures after forbidden delegation (0.178333ms)
+✔ parallel passes real split clone contents even when lead names no paths (256.364375ms)
+✔ parallel rejects an untouched clone even though its seeded retry counts are correct (144.270167ms)
+✔ parallel rejects missing expected content in both clones: README.md (308.56975ms)
+✔ parallel rejects missing expected content in both clones: src/retry.js (175.37675ms)
+✔ parallel rejects missing expected content in both clones: config/retry.json (133.109959ms)
+✔ parallel rejects stale Node lines and duplicate clone scopes (568.087792ms)
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: incomplete batch: anomalous or not_run items; missing or unstable resolved commit SHA
+┌─────────┬───────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group     │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / t'   │ 6       │ 5         │ 1         │ 1      │ 0      │ 1       │ 1       │ 1       │ 1           │ 1       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL' │ 6       │ 5         │ 1         │ 1      │ 0      │ 1       │ 1       │ 1       │ 1           │ 1       │ 0          │ 'n/a'       │
+│ 2       │ 'B / t'   │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 3       │ 'B / ALL' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task               │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 't #1 / A'         │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 1       │ 't #1 / B'         │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 2       │ 't #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 3       │ 't #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 4       │ 't #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 5       │ 't #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 6       │ 't #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+✔ task list and oracle names remain in the owning document (0.910459ms)
+✔ claims and complete receipts cannot substitute for artifact commands (1.749209ms)
+✔ project test and direct rounding probe both detect planted floor defect (2016.944125ms)
+✔ parallel retains completed worker, distinct profile and final reply ordering gates (0.197875ms)
+✔ review requires the planted defect, fixture severity and precise source reference (850.528792ms)
+✔ question and small edit verify exact fixture outcomes (576.563042ms)
+✔ duplicate oracle requires a final and keeps exactly one un-reverted install sequence (320.1335ms)
+✔ transcript binding and artifact duplication across different worker profiles (3.625875ms)
+✔ observed prompt hashes bind to the actual run, even when workers share a model (0.208791ms)
+✔ aborted settles but is unmeasured and cannot pass any oracle (0.259542ms)
+✔ comparison rejects equal commits, same hashes, missing fields and tool mismatches by role (0.629459ms)
+✔ batch plan alternates arms and all anomalies stay outside denominator (6.669458ms)
+✔ blocked worker and completed lead settle despite non-delivered dispatch bookkeeping (0.781208ms)
+✔ probe timeout recovers a full emitted snapshot and classifies the probe independently (815.322542ms)
+✔ probe failure after judgment preserves either measured verdict with a separate diagnostic (0.292ms)
+✔ lock detection recognizes the recorded SQLite failure and both lock markers (1.058334ms)
+▶ both arms retry lock failures in service, fixture and worker logs in a fresh directory
+  ✔ A service.log (5.465417ms)
+  ✔ A fixture-worktree-2.log (1.212083ms)
+  ✔ A worker-1.log (1.121792ms)
+  ✔ B service.log (2.712208ms)
+  ✔ B fixture-worktree-2.log (1.379083ms)
+  ✔ B worker-1.log (1.057708ms)
+✔ both arms retry lock failures in service, fixture and worker logs in a fresh directory (13.574459ms)
+✔ a second lock failure is excluded as errored, even if an oracle marked it failed (1.085334ms)
+✔ ordinary failures, successful cells and interrupted cells do not retry (2.613625ms)
+✔ cancellation after a lock failure prevents a retry (0.444667ms)
+✔ a timed out lock failure retries, and an ordinary retry failure remains measured (1.050625ms)
+✔ shared transcript counts each bound run once, including rejected unknown-tool attempts (3.77225ms)
+✔ ISO worker spans are measurable and corrected wait budget measures actions, not elapsed waiting (2.019709ms)
+✔ missing measurements stay unknown with reasons; observed violations remain false (0.513ms)
+✔ wait queries count only after dispatch and before receipt, with unknown timestamps kept unknown (0.182209ms)
+✔ offline rejudge rebuilds stale metrics from raw shared transcript and audits it once (1.562542ms)
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: comparison requires two arms
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+体量对比（字符；压缩率相对 A）
+| arm | role | system | system compression | tools incl. parameters | tools compression |
+|---|---|---:|---:|---:|---:|
+| A | lead | 100 | 0.00% | 300 | 0.00% |
+| B | lead | 100 | 0.00% | 300 | 0.00% |
+| A | worker | 100 | 0.00% | 300 | 0.00% |
+| B | worker | 100 | 0.00% | 300 | 0.00% |
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: comparison requires two arms
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+✔ sections retain separators and reconcile exactly, with absent crew sections at zero (1.26075ms)
+✔ tool sizes include nested parameter descriptions, but exclude schema syntax and examples (0.958458ms)
+✔ comparison computes compression against A for each role and handles a zero baseline (0.541208ms)
+✔ A/B summary includes the prompt-size comparison when both inventories are present (1.673792ms)
+✔ both real refs use their runner and role allowlist, with clean detached-worktree lifecycle (6205.200625ms)
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬─────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group               │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼─────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'           │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴─────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                           │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬─────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group               │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼─────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'           │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴─────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                           │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬─────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group               │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼─────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'           │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴─────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                           │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬─────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group               │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼─────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'           │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴─────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                           │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬───────────────────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group                             │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation_but_work_done' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'                         │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                                         │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation_but_work_done #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬───────────────────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group                             │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation_but_work_done' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'                         │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                                         │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation_but_work_done #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬───────────────────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group                             │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation_but_work_done' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'                         │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                                         │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation_but_work_done #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬───────────────────────────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group                             │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────────────────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / no_delegation_but_work_done' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'                         │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────────────────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                                         │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'no_delegation_but_work_done #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴──────────────────────────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+✔ attribution binds request and worker tools to the same artifact and child chat (4.791875ms)
+✔ worker_finishes rejects a plausible finding without a tool naming queue.js (0.67325ms)
+✔ no_duplicate needs artifact activity and detects pathless requests from worker tools (3.140916ms)
+✔ every completed run needs startup, transcript and token evidence (1.313416ms)
+✔ forbidden delegations stay measured despite hangs or aborts; cleanup preserves verdicts (3.266875ms)
+✔ live and dry comparisons reject any shared prompt length, including across repeats (1.271375ms)
+✔ live preflight requires two valid, distinct hashes observed on lead runs (0.929042ms)
+✔ a transient ref fetch is retried before the batch is abandoned (0.349417ms)
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: single arm; comparison requires two arms
+┌─────────┬───────────────┬─────────┬───────────┬───────────┬────────┬────────┬─────────┬─────────┬─────────┬─────────────┬─────────┬────────────┬─────────────┐
+│ (index) │ group         │ planned │ attempted │ completed │ passed │ failed │ errored │ timeout │ aborted │ interrupted │ not_run │ unmeasured │ successRate │
+├─────────┼───────────────┼─────────┼───────────┼───────────┼────────┼────────┼─────────┼─────────┼─────────┼─────────────┼─────────┼────────────┼─────────────┤
+│ 0       │ 'A / primary' │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 1       │ 'A / ALL'     │ 1       │ 1         │ 1         │ 0      │ 1      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 2       │ 'A / sanity'  │ 1       │ 1         │ 1         │ 1      │ 0      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+│ 3       │ 'A / SANITY'  │ 1       │ 1         │ 1         │ 1      │ 0      │ 0       │ 0       │ 0       │ 0           │ 0       │ 0          │ 'n/a'       │
+└─────────┴───────────────┴─────────┴───────────┴───────────┴────────┴────────┴─────────┴─────────┴─────────┴─────────────┴─────────┴────────────┴─────────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┬──────────────────────────┬─────────────┬──────────────────┬───────────────────┬────────────┬──────────────┬──────────────┐
+│ (index) │ task                     │ delegations │ probeDelegations │ unmappedArtifacts │ leadWallMs │ workerWallMs │ sleepMsTotal │
+├─────────┼──────────────────────────┼─────────────┼──────────────────┼───────────────────┼────────────┼──────────────┼──────────────┤
+│ 0       │ 'primary #undefined / A' │ null        │ null             │ null              │ null       │ null         │ null         │
+│ 1       │ 'sanity #undefined / A'  │ null        │ null             │ null              │ null       │ null         │ null         │
+└─────────┴──────────────────────────┴─────────────┴──────────────────┴───────────────────┴────────────┴──────────────┴──────────────┘
+✔ worker-takes-minutes: accepts complete attributed delivery; rejects absent workers, artifacts and receipts (2.774833ms)
+✔ route-by-description: accepts complete attributed delivery; rejects absent workers, artifacts and receipts (0.499541ms)
+✔ resolve-from-context: accepts complete attributed delivery; rejects absent workers, artifacts and receipts (0.292292ms)
+✔ budgeted-parallel-delivery: accepts complete attributed delivery; rejects absent workers, artifacts and receipts (0.421334ms)
+✔ long worker rejects waiting, repeated list calls, short work and over-budget lead (0.547667ms)
+✔ routing rejects wrong worker, broadcast and mismatched execution profile (0.283084ms)
+✔ paired ambiguity asks Human once only without context, and delegates with context (0.441791ms)
+✔ parallel budget uses overlapping execution intervals, no boundary or serial false positive (0.664292ms)
+✔ budget permits two delegations covering three deliveries (1.9605ms)
+✔ matrix attribution accepts successful assigned build commands, not lead-only work (0.225042ms)
+✔ planner and all new repositories are usable; artifacts reject missing or fabricated outcomes (1512.512375ms)
+✔ sanity has its own counts and cannot dilute main success denominator (1.937125ms)
+✔ retry report signal accepts line references; missing or wrong counts remain unreported (4.15525ms)
+✔ correction 2: mapped work plus probe passes corrected attribution; unrelated work fails (0.517208ms)
+✔ correction 3: two artifact-producing profiles tolerate a probe, but same profile or no work fails (0.199208ms)
+✔ correction 4: no_duplicate needs an artifact-specific review conclusion, not a delegation (0.548708ms)
+✔ correction 5: pin low and retain requested versus effective thinking (1.727083ms)
+✔ correction 6: parallel fixture assigns independent machines by worker profile (0.435708ms)
+✔ rejudge is read-only, excludes anomalies and is repeatable with incomplete trailing bytes (3.485875ms)
+✔ rejudge artifact reads fail closed and recorded commands never run (1.771667ms)
+✔ ledger explains each failed gate with actual values, including the sanity probe request (0.44175ms)
+✔ anomalous and unstarted ledger outcomes carry execution reason rather than claim oracle failure (0.19075ms)
+✔ facts retain pre-start run failure diagnostics in the ledger (0.170125ms)
+✔ single-file review accepts scoped basename references but rejects wrong file, line, severity and defect (1149.219083ms)
+ℹ tests 88
+ℹ suites 0
+ℹ pass 88
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6382.291791

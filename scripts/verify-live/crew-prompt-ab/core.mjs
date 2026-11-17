@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { compareInventories, renderComparison } from "./prompt-inventory.mjs";
 import { taskset2Oracles, taskset2Gates, successCohort, successPopulation } from "./taskset2.mjs";
 import { costMetricsFrom, pairedCostRows } from "./cost-metrics.mjs";
 import { readFileSync } from "node:fs";
@@ -509,5 +510,15 @@ export function summarize(rows, options = {}) {
     "Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.",
   );
   console.table(pairedCostRows(rows));
-  return { reasons, successPopulation, groups: [...groups.values()] };
+  const promptSizeComparison =
+    options.promptInventories?.length === 2
+      ? compareInventories(options.promptInventories)
+      : undefined;
+  if (promptSizeComparison) console.log(renderComparison(promptSizeComparison));
+  return {
+    reasons,
+    successPopulation,
+    groups: [...groups.values()],
+    ...(promptSizeComparison ? { promptSizeComparison } : {}),
+  };
 }

@@ -24,6 +24,7 @@ import {
 } from "./core.mjs";
 import { runTask } from "./run-task.mjs";
 import { runTaskWithLockRetry } from "./lock-retry.mjs";
+import { inventory, renderComparison } from "./prompt-inventory.mjs";
 
 const root = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
 const model = process.env.AB_MODEL || process.env.SPROUT_VERIFY_PI_MODEL;
@@ -187,6 +188,11 @@ try {
       );
       process.chdir(checkout);
       await command(process.execPath, ["scripts/verify/prepare.mjs", "install"], log("install"));
+      arm.promptInventory = { arm: arm.arm, ...(await inventory(checkout, { root })) };
+      writeFileSync(
+        join(evidence, `prompt-inventory-${arm.arm}.json`),
+        JSON.stringify(arm.promptInventory, null, 2),
+      );
       await command(
         process.execPath,
         ["scripts/verify/prepare.mjs", "server"],
@@ -301,7 +307,10 @@ try {
     }
   }
 }
-const summary = summarize(rows, { batch, dry });
+const promptInventories = arms.map((arm) => arm.promptInventory).filter(Boolean);
+const summary = summarize(rows, { batch, dry, promptInventories });
+if (summary.promptSizeComparison)
+  writeFileSync(join(evidence, "prompt-size.md"), renderComparison(summary.promptSizeComparison) + "\n");
 writeFileSync(join(evidence, "summary.json"), JSON.stringify(summary, null, 2));
 console.log(`Evidence: ${evidence}\nLedger: ${out}`);
 if (

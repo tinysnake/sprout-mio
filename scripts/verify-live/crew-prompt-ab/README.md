@@ -38,6 +38,37 @@ for that commit. `refs.json` and every ledger row record the resolved `head`; `r
 
 Before preparation, `plan.json` enumerates every arm/task/repeat.
 
+Prompt size inventory (no model calls):
+
+```sh
+node scripts/verify-live/crew-prompt-ab/prompt-inventory.mjs [ref-or-checkout]
+```
+
+The default ref is local `origin/main`; the inventory resolves it without fetching. Ref inputs
+run in a detached temporary worktree that is removed in `finally`; existing checkouts are read
+in place. Dependencies come from the harness installation (`node_modules` must be installed).
+The JSON records the resolved SHA, fixed facts and installed Pi SDK version. The fixed fixture
+uses a coding project, a short persona/description, stable role names/IDs and a canonical cwd;
+it disables skills, prompt templates, Web extensions, memory and Machine leases. Repeat with
+the same SDK version to reproduce counts; these are controlled inventory values, not per-task
+ready snapshots.
+
+The script evaluates the target runner's prompt expression, guide constants, registration
+factories and tool allowlist. It calls the target `composeSystemPrompt` when present, captures
+`registerTool` from the actual registration functions (including idle MCP), and includes SDK
+read-only and codemode/search tools. Unregistered allowlist entries fail measurement. Dynamic
+MCP tools require a Machine lease and are absent from this fixture. Counts use JS string.length
+(UTF-16 code units). Tool totals sum top-level description plus parameter-schema description
+values, excluding JSON syntax and example data. Sections include heading and trailing separators;
+missing sections are zero, legacy HTML is identified from the runner constant, and the SDK's
+rendered suffix is accounted separately so sections reconcile to the complete system prompt.
+
+Each prepared arm saves `prompt-inventory-A.json` or `prompt-inventory-B.json` in its evidence
+directory. Once both inventories exist, `summary.json.promptSizeComparison`, `prompt-size.md`
+and the console report show each role's system/tool totals and `(1 - B / A) * 100` compression.
+A zero baseline gives `null`/`n/a`; negative compression means growth. Prompt-size reporting is
+independent of the behavioral comparison eligibility checks.
+
 Cost fields are derived without model calls by `costMetricsFrom` in `cost-metrics.mjs`.
 `delegations` counts persisted delegation records, including failed/blocked ones, rather
 than attempted start-tool calls. `probeDelegations` counts requests labelled with the word
