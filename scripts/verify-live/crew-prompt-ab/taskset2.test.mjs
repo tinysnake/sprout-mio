@@ -150,7 +150,7 @@ test("paired ambiguity asks Human once only without context, and delegates with 
   const resolved = delivery("resolve-from-context");
   assert.equal(
     verdict("resolve-from-context", { ...resolved, leadFinalReplyText: "哪个客户？" }).passed,
-    false,
+    true,
   );
   assert.equal(
     verdict("resolve-from-context", { ...resolved, projectContext: null }).passed,

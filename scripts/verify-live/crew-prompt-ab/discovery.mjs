@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve, relative } from "node:path";
 
 export const discoveryOracle = "discover_deferred_tool";
 export const discoveryFixture = {
@@ -19,8 +19,42 @@ export function discoveryPrompt(task, scopes) {
   );
 }
 
-export function discoveryArtifacts(scopes) {
-  const passed =
+export function discoveryWriteAuthorization(facts = {}) {
+  const workers = (facts.runs ?? []).filter((run) => run.role === "worker");
+  const remoteCalls = workers.flatMap((run) => (run.tools ?? [])
+    .filter((tool) => tool.isError === false && /^sprout_remote_(?:shell|file_write)$/.test(tool.name))
+    .map((tool) => ({ run, tool })));
+  const authorized = ({ run, tool }) => {
+    if (!Number.isFinite(tool.atMs)) return false;
+    return (facts.resourceRequests ?? []).some((request) => {
+      if (request.runId !== run.runId || request.machineId !== tool.arguments?.machineId) return false;
+      const normalize = (path) => path.replace(/^\/private\/tmp(?=\/|$)/, "/tmp");
+      const root = normalize(request.directoryRealPath ?? "");
+      const target = tool.arguments?.path ?? tool.arguments?.cwd;
+      if (target) {
+        const inside = relative(root, resolve(root, normalize(target)));
+        if (inside === ".." || inside.startsWith("../")) return false;
+      }
+      const beforeWrite = {
+        ...facts,
+        resourceRequests: [request],
+        runs: (facts.runs ?? []).map((candidate) => ({
+          ...candidate,
+          tools: (candidate.tools ?? []).filter((call) =>
+            Number.isFinite(call.atMs) && call.atMs <= tool.atMs),
+        })),
+      };
+      return discoveryGates(beforeWrite).resourceAuthorization.actual.approved;
+    });
+  };
+  return remoteCalls.length > 0 && remoteCalls.every(authorized) &&
+    !workers.some((run) => (run.tools ?? []).some((tool) =>
+      tool.isError === false && /^(?:write|edit|file_write)$/.test(tool.name)));
+}
+
+export function discoveryArtifacts(scopes, facts = {}) {
+  const authorizationPass = discoveryWriteAuthorization(facts);
+  const passed = authorizationPass &&
     scopes.length > 0 &&
     scopes.some(({ worktree }) => {
       try {
@@ -30,7 +64,10 @@ export function discoveryArtifacts(scopes) {
         return false;
       }
     });
-  return [{ name: "authorized-machine-release-channel", exitCode: passed ? 0 : 1 }];
+  return [{ name: "authorized-machine-release-channel", exitCode: passed ? 0 : 1,
+    authorizationPass,
+    ...(!authorizationPass ? { error: "missing or unapproved Machine write provenance" } : {}),
+  }];
 }
 
 export function discoverySignals(facts) {

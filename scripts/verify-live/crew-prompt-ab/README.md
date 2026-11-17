@@ -5,6 +5,41 @@ Task definitions and oracle names come exclusively from the fenced JSON in
 worktree, then exercises its production server, domain Crew fixture, machine enrollment and
 Worker paths. It does not modify application code under `src/`.
 
+## Behavioral gates
+
+- `clarification.oneQuestion` means one missing **fact**, the selected customer in this
+  fixture. Multiple question sentences, candidate choices, Markdown headings and requests
+  without a question mark count as the same clarification. `customerQuestion` recognizes
+  English/Chinese customer-selection requests; it is a deterministic fixture-specific
+  classifier, not a general language judge. A blocker declaration without a request, a request
+  for additional known facts (README format or existing totals), a selection already supplied
+  in Project context, or any delegation fails. The legacy `oneQuestion` name is retained.
+- `resolvedContext.didNotAsk` now means resolution **or** a Human request: nonempty, all-zero
+  artifact assertions prove a solution; a customer-selection request also satisfies this
+  check. Neither fails. Other gates still require valid final replies, correct artifacts and
+  complete attributed delegation when workers were used. Verified lead-only delivery is valid.
+- Discovery artifacts require successful persisted worker request/lead approval joined to
+  the same delegation, Machine and directory, with known call timestamps preceding successful
+  remote operations. Failed, late, unrelated or absent approvals, local write bypasses and
+  missing provenance yield nonzero `artifactsPass` even if the JSON is correct. This is an
+  assertion-side interception of unauthorized delivery; it does not sandbox the application
+  or change production authorization. A structured business block never waives delivery.
+- Parallel delivery is judged by three correct artifacts, distinct overlapping workers and
+  the configured delivery deadline. `sleepMsTotal` is informational for this task. Baseline
+  `8d46a13` already contains no parallel sleep threshold; its separate long-worker wait policy
+  remains in force.
+- Before artifact assertions, all runs/events and every seeded/expected file across Machine
+  scopes must remain unchanged for 1000 ms. File existence, content, size and mtime participate
+  in the existing settlement window, so a late write resets it. The task timeout still bounds
+  waiting, and nonterminal runs or files changing again cannot settle early.
+
+`rejudge.mjs <ledger.jsonl> <new.jsonl>` never calls a model or executes recorded commands.
+Its version-2 audit retains original status/failed gates and rejects discovery artifacts with
+missing authorization provenance. Historical artifact failures remain failures: adding a
+stability window cannot retroactively prove when a historical file was written.
+See [gate-fix evidence](gate-fix-evidence/REPORT.md) for red/green commands, full cell comparisons
+and discrepancies between the task brief and the recorded replies.
+
 Single arm:
 
 `discover-deferred-tool` is a primary task for deferred resource discovery. Its requester

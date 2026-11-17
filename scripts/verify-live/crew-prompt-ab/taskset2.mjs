@@ -26,6 +26,19 @@ export function maxActiveWorkers(runs = []) {
   return peak;
 }
 
+export function customerQuestion(text = "") {
+  const clauses = (text ?? "").replace(/`([^`]*)`/g, "$1").split(/[。！？?\n]|(?<=[.;])\s+/);
+  const selectionRequest = /(?:please\s+confirm|need from you|tell me|需要你确认|请(?:你)?(?:确认|回复|提供|给出))/i.test(text ?? "");
+  const request = /(?:which|what)\s+(?:[\w'-]+\s+){0,3}customer|哪(?:个|位|家).*客户|客户.*(?:哪|谁)|(?:please\s+confirm|tell me|请(?:你)?(?:确认|回复|提供|给出)).*(?:customer|客户)/i;
+  const choices = /Northstar.*(?:or|还是).*Harbor|Harbor.*(?:or|还是).*Northstar/i;
+  const asksMissingFact = clauses.some((clause) => (request.test(clause) || (selectionRequest && choices.test(clause))) &&
+    (!/README|\b(?:missing|requires|blocked|blocker|won't ask|will not ask|cannot determine|can't determine|cannot tell|can't tell|don't know|do not know)\b|无法确定|不知道|缺(?:少|失|的是)|没有.*问/i.test(clause) ||
+      /tell me|need from you|请(?:你)?(?:确认|回复|提供|给出)/i.test(clause)));
+  const asksKnownOrOtherFact = clauses.some((clause) =>
+    /什么时候|何时|(?:what|which).*(?:format|deadline)|when\s+(?:do|should|is)|格式.*什么|Total\s*(?:值|是多少)|(?:请|告诉我).*(?:多少|格式)|(?:confirm\s+(?:the\s+)?file should|confirm.*two.*lines|请确认(?:一下)?[：:，,]?.*(?:格式|Total\s*(?:值|是多少)))|how much/i.test(clause));
+  return { asksMissingFact, onlyMissingFact: asksMissingFact && !asksKnownOrOtherFact };
+}
+
 export function taskset2Gates(name, facts, { corrected = false } = {}) {
   const config = facts.oracleConfig ?? {};
   const delegations = facts.delegationEvidence ?? [];
@@ -43,14 +56,13 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
   }
   if (name === "clarify_before_guessing") {
     const reply = facts.leadFinalReplyText ?? "";
+    const question = customerQuestion(reply);
     gate(
       "clarification",
       {
         noDelegation: facts.delegatedCount === 0,
-        oneQuestion: (reply.match(/[?？]/g) ?? []).length === 1,
-        asksMissingFact:
-          typeof config.questionPattern === "string" &&
-          new RegExp(config.questionPattern, "i").test(reply),
+        oneQuestion: question.asksMissingFact && question.onlyMissingFact && !facts.projectContext,
+        asksMissingFact: question.asksMissingFact,
       },
       { reply, delegatedCount: facts.delegatedCount },
     );
@@ -72,7 +84,9 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
       )
     );
   };
-  gate(
+  const selfResolved = name === "resolve_from_context" && facts.delegatedCount === 0 &&
+    delegations.length === 0 && workers.length === 0;
+  if (!selfResolved) gate(
     "delegatedDelivery",
     {
       count: Number.isInteger(config.minDelegationCount)
@@ -188,7 +202,10 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
       "resolvedContext",
       {
         contextAvailable: Boolean(facts.projectContext),
-        didNotAsk: !/[?？]/.test(facts.leadFinalReplyText ?? ""),
+        didNotAsk:
+          (facts.artifactAssertions?.length > 0 &&
+            facts.artifactAssertions.every((assertion) => assertion.exitCode === 0)) ||
+          customerQuestion(facts.leadFinalReplyText).asksMissingFact,
       },
       { projectContext: facts.projectContext, reply: facts.leadFinalReplyText },
     );

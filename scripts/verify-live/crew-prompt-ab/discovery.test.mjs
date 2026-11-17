@@ -143,7 +143,13 @@ test("discovery: missing delegation and unchanged Machine file fail", () => {
   const root = mkdtempSync(join(tmpdir(), "ab-discovery-"));
   try {
     seedFixture(task.fixture, root);
-    const artifactFacts = { machineScopes: [{ worktree: root }] };
+    const artifactFacts = facts();
+    artifactFacts.machineScopes[0].worktree = root;
+    artifactFacts.runs[1].tools[1].atMs = 1;
+    artifactFacts.runs[0].tools[1].atMs = 2;
+    artifactFacts.runs[1].tools.push({
+      ...call("sprout_remote_file_write", { machineId: "machine" }), atMs: 3,
+    });
     assert.equal(artifactAssertions(task, root, artifactFacts)[0].exitCode, 1);
     writeFileSync(join(root, "config/release.json"), '{"channel":"stable","retries":2}\n');
     assert.equal(artifactAssertions(task, root, artifactFacts)[0].exitCode, 0);
