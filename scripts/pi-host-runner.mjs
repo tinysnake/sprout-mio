@@ -306,19 +306,27 @@ async function open(config) {
                 machineId: () => target?.machineId ?? null,
                 authorizationGeneration: () => target?.generation ?? null,
               });
-              registerRemoteTools(
-                {
-                  ...pi,
-                  registerTool(tool) {
-                    const isCrew =
-                      situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
-                    if (isCrew && tool.name.startsWith("sprout_lease_")) return;
-                    pi.registerTool(tool);
-                  },
+              const rolePi = {
+                ...pi,
+                registerTool(tool) {
+                  const isCrew =
+                    situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
+                  if (isCrew && tool.name.startsWith("sprout_lease_")) return;
+                  if (
+                    situation?.kind === "delegation_worker" &&
+                    (tool.name.startsWith("sprout_task_") ||
+                      [
+                        "sprout_resource_takeover",
+                        "sprout_resource_approve",
+                        "sprout_resource_revoke",
+                      ].includes(tool.name))
+                  )
+                    return;
+                  pi.registerTool(tool);
                 },
-                remote,
-              );
-              registerTaskTools(pi, remote);
+              };
+              registerRemoteTools(rolePi, remote);
+              registerTaskTools(rolePi, remote);
               registerDelegationTools(pi, remote);
               registerCrewDelegationTools(pi, remote);
               registerInfoHubTools(pi, remote);
@@ -393,12 +401,24 @@ async function open(config) {
                 !(
                   (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
                   name.startsWith("sprout_lease_")
+                ) &&
+                !(
+                  situation?.kind === "delegation_worker" &&
+                  [
+                    "sprout_resource_takeover",
+                    "sprout_resource_approve",
+                    "sprout_resource_revoke",
+                  ].includes(name)
                 ),
             ),
             // sprout_chat_send 暂不声明给模型：宿主会把 run 的最终回答自动发到 Chat，
             // 再暴露发送工具会让同一轮出现「工具消息 + 最终消息」两条。registry 仍保留，
             // 后续跨 Chat 或 Agent 间通信再启用。
-            ...Object.keys(taskToolInputSchemas).filter((name) => name !== "sprout_chat_send"),
+            ...Object.keys(taskToolInputSchemas).filter(
+              (name) =>
+                name !== "sprout_chat_send" &&
+                !(situation?.kind === "delegation_worker" && name.startsWith("sprout_task_")),
+            ),
             ...Object.keys(infoHubToolInputSchemas),
             ...delegationToolNames(situation),
           ],

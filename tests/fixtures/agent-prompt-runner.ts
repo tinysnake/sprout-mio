@@ -30,6 +30,12 @@ const leaseTools = [
   "escrow", "wait", "claim", "revoke_grant", "escrow_cancel",
   "grant", "handoff", "acquire", "release", "get",
 ].map((name) => `sprout_lease_${name}`);
+const taskTools = [
+  "list", "get", "update", "checklist_add", "checklist_update",
+  "checklist_remove", "record_append", "complete", "cancel",
+].map((name) => `sprout_task_${name}`);
+const resourceTools = ["request", "release", "takeover", "approve", "revoke"]
+  .map((name) => `sprout_resource_${name}`);
 const fixture = await startModelFixture({ privateDir: directory });
 
 async function request(
@@ -178,6 +184,18 @@ async function request(
       isCrew ? [] : [...leaseTools].sort(),
       `${label}: crew uses execution resources; DM keeps all legacy lease tools`,
     );
+    const isWorker = situation.kind === "delegation_worker";
+    for (const [prefix, expectedTools] of [
+      ["sprout_task_", isWorker ? [] : taskTools],
+      ["sprout_resource_", isWorker ? ["sprout_resource_request", "sprout_resource_release"] : resourceTools],
+    ] as const) {
+      const actual = input.tools.map((tool) => tool.function.name)
+        .filter((name) => name.startsWith(prefix));
+      assert.deepEqual(actual.sort(), [...expectedTools].sort(), `${label}: ${prefix} role surface`);
+    }
+    for (const name of ["codemode", "sprout_chat_get", "sprout_chat_continuation_get"]) {
+      assert(input.tools.some((tool) => tool.function.name === name), `${label}: ${name} remains`);
+    }
     if (situation.kind === "crew_lead" || situation.kind === "delegation_worker") {
       assert(system.includes("## 工作描述\n[[STEP3-DESC-MARKER]] 只负责验证"));
       assert(system.includes("## 项目背景\n这是一个编程项目。"));
