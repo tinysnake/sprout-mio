@@ -36,6 +36,13 @@ const taskTools = [
 ].map((name) => `sprout_task_${name}`);
 const resourceTools = ["request", "release", "takeover", "approve", "revoke"]
   .map((name) => `sprout_resource_${name}`);
+const deferredTools = [
+  "codemode", "sprout_chat_get", "sprout_chat_continuation_get",
+  ...["cancel", "wait", "log", "get", "list"].map((name) => `sprout_remote_execution_${name}`),
+  "sprout_remote_process_list", "sprout_remote_process_signal",
+  ...resourceTools.filter((name) => name !== "sprout_resource_release"),
+  ...taskTools,
+];
 const fixture = await startModelFixture({ privateDir: directory });
 
 async function request(
@@ -134,10 +141,14 @@ async function request(
     if (sessionFile)
       assert.equal(snapshot.sessionFile, sessionFile, "resume opens the same session file");
     const text = `PROMPT_FIXTURE_${label}`;
+    const isCrew = situation.kind === "crew_lead" || situation.kind === "delegation_worker";
+    const deferred = isCrew
+      ? deferredTools.filter((name) => snapshot.registeredTools.includes(name))
+      : [];
     fixture.arm("status", {
       expectedUserPrefix: text,
       isolated: true,
-      steps: [],
+      steps: deferred.map((name) => ({ name: "tool_search", arguments: { query: name, limit: 1 } })),
       reply: "Fixture completed.",
     });
     const before = fixture.receivedRequests().length;
@@ -155,8 +166,15 @@ async function request(
     await waitFor("settled");
     fixture.assertDrained();
     const requests = fixture.receivedRequests().slice(before);
-    assert.equal(requests.length, 1, `${label}: one actual HTTP request`);
+    assert.equal(requests.length, 1 + deferred.length, `${label}: each search reaches the provider`);
     const input = requests[0]!;
+    const firstNames = input.tools.map((tool) => tool.function.name).sort();
+    assert.deepEqual(firstNames, snapshot.tools, `${label}: ready tools match first provider request`);
+    for (const [index, name] of deferred.entries()) {
+      assert(!firstNames.includes(name), `${label}: ${name} absent initially`);
+      assert(requests[index + 1]!.tools.some((tool) => tool.function.name === name),
+        `${label}: tool_search activates ${name} for the next provider request`);
+    }
     if (resume) {
       const users = input.messages.filter((message) => message.role === "user");
       assert.equal(users.length, 2, "resumed request includes persisted history");
@@ -175,7 +193,6 @@ async function request(
           ? reportTools
           : [];
     assert.deepEqual(tools.sort(), [...expected].sort(), `${label}: exact delegation tool surface`);
-    const isCrew = situation.kind === "crew_lead" || situation.kind === "delegation_worker";
     const leases = input.tools
       .map((tool) => tool.function.name)
       .filter((name) => name.startsWith("sprout_lease_"));
@@ -189,26 +206,25 @@ async function request(
       ["sprout_task_", isWorker ? [] : taskTools],
       ["sprout_resource_", isWorker ? ["sprout_resource_request", "sprout_resource_release"] : resourceTools],
     ] as const) {
-      const actual = input.tools.map((tool) => tool.function.name)
-        .filter((name) => name.startsWith(prefix));
-      assert.deepEqual(actual.sort(), [...expectedTools].sort(), `${label}: ${prefix} role surface`);
+      const actual = snapshot.registeredTools.filter((name: string) => name.startsWith(prefix));
+      assert.deepEqual(actual.sort(), [...expectedTools].sort(), `${label}: ${prefix} registry surface`);
     }
     for (const name of ["sprout_chat_get", "sprout_chat_continuation_get"]) {
-      assert.equal(
-        input.tools.some((tool) => tool.function.name === name),
-        !isCrew,
-        `${label}: ${name} is only exposed outside crew roles`,
-      );
-      assert.equal(snapshot.registeredTools.includes(name), !isCrew, `${label}: ${name} registry`);
+      assert(snapshot.registeredTools.includes(name), `${label}: ${name} remains searchable`);
     }
     for (const name of [
-      "codemode", "sleep", "read", "ls", "grep", "find", "git_read", "current_time", "tool_search",
-      ...["wait", "get", "log", "list", "cancel"].map((suffix) => `sprout_remote_execution_${suffix}`),
-      "sprout_remote_process_signal", "sprout_remote_process_list",
+      "sleep", "read", "ls", "grep", "find", "git_read", "current_time", "tool_search",
+      "sprout_info_hub_get", "sprout_status", "sprout_resource_release",
+      "sprout_remote_shell", "sprout_remote_file_read", "sprout_remote_file_write",
     ]) {
       assert(input.tools.some((tool) => tool.function.name === name), `${label}: ${name} remains`);
     }
-    if (situation.kind === "crew_lead" || situation.kind === "delegation_worker") {
+    if (!isCrew)
+      for (const name of deferredTools)
+        assert(firstNames.includes(name), `${label}: DM keeps ${name} active`);
+    if (isCrew) {
+      for (const match of system.matchAll(/\bsprout_[a-z_]+\b/g))
+        assert(firstNames.includes(match[0]), `${label}: prompt tool ${match[0]} is active`);
       assert(system.includes("## 工作描述\n[[STEP3-DESC-MARKER]] 只负责验证"));
       assert(system.includes("## 项目背景\n这是一个编程项目。"));
       assert(system.includes("以下补充要求与本节默认指引冲突时，以补充要求为准"));
@@ -265,9 +281,9 @@ try {
     () => request({ kind: "crew_lead" }, "invalid-project", undefined, "invalid"),
     /Invalid option/,
   );
-  assert.equal(fixture.receivedRequests().length, 4);
+  assert.equal(fixture.receivedRequests().length, 4 + 23 * 2 + 11);
   fixture.assertHealthy();
-  console.log("agent prompt runner: 4 requests PASS; paidModelCalls=0");
+  console.log("agent prompt runner: initial surfaces and every deferred tool discovery PASS; paidModelCalls=0");
 } finally {
   await fixture.close();
   rmSync(directory, { recursive: true, force: true });

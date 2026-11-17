@@ -89,6 +89,9 @@ async function open(config) {
   const sdkRequire = createRequire(join(root, "package.json"));
   const { createJiti } = await import(pathToFileURL(sdkRequire.resolve("jiti")).href);
   const jiti = createJiti(import.meta.url);
+  const { isCrewDeferredTool } = await jiti.import(
+    resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension/crew-tool-exposure.ts"),
+  );
   const { describeToolCall } = await jiti.import(
     resolve(dirname(fileURLToPath(import.meta.url)), "../src/lib/run-activity.ts"),
   );
@@ -255,7 +258,17 @@ async function open(config) {
         ]
       : [
           // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
-          { name: "codemode", factory: sdk.createCodemodeExtension() },
+          {
+            name: "codemode",
+            factory: async (pi) => sdk.createCodemodeExtension()({
+              ...pi,
+              registerTool(tool) {
+                pi.registerTool(isCrewDeferredTool(situation, tool.name)
+                  ? { ...tool, exposure: "deferred" }
+                  : tool);
+              },
+            }),
+          },
           { name: "tool-search", factory: sdk.createToolSearchExtension() },
           {
             name: "sprout-extension",
@@ -311,12 +324,7 @@ async function open(config) {
                 registerTool(tool) {
                   const isCrew =
                     situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
-                  if (
-                    isCrew &&
-                    (tool.name.startsWith("sprout_lease_") ||
-                      ["sprout_chat_get", "sprout_chat_continuation_get"].includes(tool.name))
-                  )
-                    return;
+                  if (isCrew && tool.name.startsWith("sprout_lease_")) return;
                   if (
                     situation?.kind === "delegation_worker" &&
                     (tool.name.startsWith("sprout_task_") ||
@@ -327,7 +335,9 @@ async function open(config) {
                       ].includes(tool.name))
                   )
                     return;
-                  pi.registerTool(tool);
+                  pi.registerTool(isCrewDeferredTool(situation, tool.name)
+                    ? { ...tool, exposure: "deferred" }
+                    : tool);
                 },
               };
               registerRemoteTools(rolePi, remote);
@@ -405,7 +415,7 @@ async function open(config) {
               (name) =>
                 !(
                   (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
-                  (name.startsWith("sprout_lease_") || name === "sprout_chat_continuation_get")
+                  name.startsWith("sprout_lease_")
                 ) &&
                 !(
                   situation?.kind === "delegation_worker" &&
@@ -422,10 +432,6 @@ async function open(config) {
             ...Object.keys(taskToolInputSchemas).filter(
               (name) =>
                 name !== "sprout_chat_send" &&
-                !(
-                  (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
-                  name === "sprout_chat_get"
-                ) &&
                 !(situation?.kind === "delegation_worker" && name.startsWith("sprout_task_")),
             ),
             ...Object.keys(infoHubToolInputSchemas),
@@ -522,6 +528,11 @@ async function open(config) {
             : JSON.stringify(error, Object.getOwnPropertyNames(error ?? {})),
         )
         .join("; ")}`,
+    );
+  // The allowlist grants registration and also activates names; keep deferred tools searchable.
+  if (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker")
+    session.setActiveToolsByName(
+      session.getActiveToolNames().filter((name) => !isCrewDeferredTool(situation, name)),
     );
   if (session.model?.provider !== model.provider || session.model?.id !== model.id)
     throw new Error("Pi 实际模型与显式配置不匹配");
