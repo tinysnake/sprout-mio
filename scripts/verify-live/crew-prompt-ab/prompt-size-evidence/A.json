@@ -1,0 +1,800 @@
+{
+  "target": "277f506c15fe771bbd337efa259dc517c3ffc1cd",
+  "head": "277f506c15fe771bbd337efa259dc517c3ffc1cd",
+  "fixture": {
+    "facts": {
+      "cwd": "/sprout/prompt-inventory",
+      "profile": {
+        "persona": "Prompt inventory agent.",
+        "description": "Prompt inventory agent."
+      },
+      "projectContext": {
+        "kind": "coding"
+      },
+      "situations": {
+        "lead": {
+          "kind": "crew_lead",
+          "crewName": "Crew prompt AB"
+        },
+        "worker": {
+          "kind": "delegation_worker",
+          "delegationId": "inventory-delegation",
+          "leadName": "Lead"
+        }
+      }
+    },
+    "memory": "disabled",
+    "webAccess": "disabled",
+    "machineLease": null,
+    "sdkVersion": "1.5.2"
+  },
+  "measurement": "JS string.length (UTF-16); tool description plus schema description values, excluding JSON syntax; section separators belong to preceding section; host skills and prompt templates disabled",
+  "roles": {
+    "lead": {
+      "systemPrompt": {
+        "totalChars": 582,
+        "crewChars": 0,
+        "sections": [
+          {
+            "name": "情境",
+            "chars": 0
+          },
+          {
+            "name": "职责",
+            "chars": 0
+          },
+          {
+            "name": "成员选择",
+            "chars": 0
+          },
+          {
+            "name": "边界与权限",
+            "chars": 0
+          },
+          {
+            "name": "结果事件与等待",
+            "chars": 0
+          },
+          {
+            "name": "Sprout 能力入口",
+            "chars": 0
+          },
+          {
+            "name": "身份",
+            "chars": 0
+          },
+          {
+            "name": "职责与边界",
+            "chars": 0
+          },
+          {
+            "name": "完成上报",
+            "chars": 0
+          },
+          {
+            "name": "阻塞上报",
+            "chars": 0
+          },
+          {
+            "name": "结果回流",
+            "chars": 0
+          },
+          {
+            "name": "能力概览",
+            "chars": 0
+          },
+          {
+            "name": "工作描述",
+            "chars": 0
+          },
+          {
+            "name": "项目背景",
+            "chars": 0
+          },
+          {
+            "name": "HTML 交付",
+            "chars": 520
+          },
+          {
+            "name": "说话风格",
+            "chars": 23
+          },
+          {
+            "name": "Pi 宿主附加",
+            "chars": 39
+          }
+        ],
+        "applicationChars": 543,
+        "hostChars": 39
+      },
+      "tools": {
+        "totalChars": 10171,
+        "tools": [
+          {
+            "name": "codemode",
+            "descriptionChars": 1400,
+            "parameterDescriptionChars": 22,
+            "totalChars": 1422
+          },
+          {
+            "name": "grep",
+            "descriptionChars": 221,
+            "parameterDescriptionChars": 462,
+            "totalChars": 683
+          },
+          {
+            "name": "read",
+            "descriptionChars": 303,
+            "parameterDescriptionChars": 123,
+            "totalChars": 426
+          },
+          {
+            "name": "tool_search",
+            "descriptionChars": 338,
+            "parameterDescriptionChars": 81,
+            "totalChars": 419
+          },
+          {
+            "name": "sprout_remote_execution_cancel",
+            "descriptionChars": 407,
+            "parameterDescriptionChars": 0,
+            "totalChars": 407
+          },
+          {
+            "name": "sprout_info_hub_get",
+            "descriptionChars": 375,
+            "parameterDescriptionChars": 0,
+            "totalChars": 375
+          },
+          {
+            "name": "find",
+            "descriptionChars": 186,
+            "parameterDescriptionChars": 168,
+            "totalChars": 354
+          },
+          {
+            "name": "sprout_remote_shell",
+            "descriptionChars": 284,
+            "parameterDescriptionChars": 50,
+            "totalChars": 334
+          },
+          {
+            "name": "sprout_remote_execution_wait",
+            "descriptionChars": 279,
+            "parameterDescriptionChars": 45,
+            "totalChars": 324
+          },
+          {
+            "name": "sprout_remote_file_write",
+            "descriptionChars": 270,
+            "parameterDescriptionChars": 50,
+            "totalChars": 320
+          },
+          {
+            "name": "sprout_remote_execution_log",
+            "descriptionChars": 309,
+            "parameterDescriptionChars": 0,
+            "totalChars": 309
+          },
+          {
+            "name": "sprout_remote_process_signal",
+            "descriptionChars": 254,
+            "parameterDescriptionChars": 50,
+            "totalChars": 304
+          },
+          {
+            "name": "sprout_lease_escrow",
+            "descriptionChars": 296,
+            "parameterDescriptionChars": 0,
+            "totalChars": 296
+          },
+          {
+            "name": "sprout_remote_file_read",
+            "descriptionChars": 239,
+            "parameterDescriptionChars": 50,
+            "totalChars": 289
+          },
+          {
+            "name": "sprout_remote_process_list",
+            "descriptionChars": 232,
+            "parameterDescriptionChars": 50,
+            "totalChars": 282
+          },
+          {
+            "name": "ls",
+            "descriptionChars": 184,
+            "parameterDescriptionChars": 96,
+            "totalChars": 280
+          },
+          {
+            "name": "sprout_lease_wait",
+            "descriptionChars": 240,
+            "parameterDescriptionChars": 0,
+            "totalChars": 240
+          },
+          {
+            "name": "sprout_remote_execution_list",
+            "descriptionChars": 229,
+            "parameterDescriptionChars": 0,
+            "totalChars": 229
+          },
+          {
+            "name": "sprout_delegation_start",
+            "descriptionChars": 187,
+            "parameterDescriptionChars": 0,
+            "totalChars": 187
+          },
+          {
+            "name": "sprout_remote_execution_get",
+            "descriptionChars": 184,
+            "parameterDescriptionChars": 0,
+            "totalChars": 184
+          },
+          {
+            "name": "sprout_lease_claim",
+            "descriptionChars": 154,
+            "parameterDescriptionChars": 0,
+            "totalChars": 154
+          },
+          {
+            "name": "sprout_lease_revoke_grant",
+            "descriptionChars": 152,
+            "parameterDescriptionChars": 0,
+            "totalChars": 152
+          },
+          {
+            "name": "sprout_lease_escrow_cancel",
+            "descriptionChars": 150,
+            "parameterDescriptionChars": 0,
+            "totalChars": 150
+          },
+          {
+            "name": "sprout_lease_grant",
+            "descriptionChars": 144,
+            "parameterDescriptionChars": 0,
+            "totalChars": 144
+          },
+          {
+            "name": "git_read",
+            "descriptionChars": 124,
+            "parameterDescriptionChars": 8,
+            "totalChars": 132
+          },
+          {
+            "name": "sprout_delegation_input",
+            "descriptionChars": 129,
+            "parameterDescriptionChars": 0,
+            "totalChars": 129
+          },
+          {
+            "name": "current_time",
+            "descriptionChars": 87,
+            "parameterDescriptionChars": 36,
+            "totalChars": 123
+          },
+          {
+            "name": "sprout_resource_takeover",
+            "descriptionChars": 120,
+            "parameterDescriptionChars": 0,
+            "totalChars": 120
+          },
+          {
+            "name": "sprout_lease_handoff",
+            "descriptionChars": 117,
+            "parameterDescriptionChars": 0,
+            "totalChars": 117
+          },
+          {
+            "name": "sprout_lease_acquire",
+            "descriptionChars": 107,
+            "parameterDescriptionChars": 0,
+            "totalChars": 107
+          },
+          {
+            "name": "sleep",
+            "descriptionChars": 96,
+            "parameterDescriptionChars": 0,
+            "totalChars": 96
+          },
+          {
+            "name": "sprout_lease_release",
+            "descriptionChars": 91,
+            "parameterDescriptionChars": 0,
+            "totalChars": 91
+          },
+          {
+            "name": "sprout_lease_get",
+            "descriptionChars": 86,
+            "parameterDescriptionChars": 0,
+            "totalChars": 86
+          },
+          {
+            "name": "sprout_status",
+            "descriptionChars": 75,
+            "parameterDescriptionChars": 0,
+            "totalChars": 75
+          },
+          {
+            "name": "sprout_task_complete",
+            "descriptionChars": 62,
+            "parameterDescriptionChars": 0,
+            "totalChars": 62
+          },
+          {
+            "name": "sprout_delegation_cancel",
+            "descriptionChars": 59,
+            "parameterDescriptionChars": 0,
+            "totalChars": 59
+          },
+          {
+            "name": "sprout_resource_approve",
+            "descriptionChars": 57,
+            "parameterDescriptionChars": 0,
+            "totalChars": 57
+          },
+          {
+            "name": "sprout_resource_request",
+            "descriptionChars": 57,
+            "parameterDescriptionChars": 0,
+            "totalChars": 57
+          },
+          {
+            "name": "sprout_delegation_list",
+            "descriptionChars": 53,
+            "parameterDescriptionChars": 0,
+            "totalChars": 53
+          },
+          {
+            "name": "sprout_task_checklist_remove",
+            "descriptionChars": 52,
+            "parameterDescriptionChars": 0,
+            "totalChars": 52
+          },
+          {
+            "name": "sprout_task_checklist_update",
+            "descriptionChars": 52,
+            "parameterDescriptionChars": 0,
+            "totalChars": 52
+          },
+          {
+            "name": "sprout_task_checklist_add",
+            "descriptionChars": 49,
+            "parameterDescriptionChars": 0,
+            "totalChars": 49
+          },
+          {
+            "name": "sprout_task_get",
+            "descriptionChars": 49,
+            "parameterDescriptionChars": 0,
+            "totalChars": 49
+          },
+          {
+            "name": "sprout_task_update",
+            "descriptionChars": 48,
+            "parameterDescriptionChars": 0,
+            "totalChars": 48
+          },
+          {
+            "name": "sprout_chat_continuation_get",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_task_cancel",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_task_record_append",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_chat_get",
+            "descriptionChars": 42,
+            "parameterDescriptionChars": 0,
+            "totalChars": 42
+          },
+          {
+            "name": "sprout_resource_revoke",
+            "descriptionChars": 41,
+            "parameterDescriptionChars": 0,
+            "totalChars": 41
+          },
+          {
+            "name": "sprout_task_list",
+            "descriptionChars": 38,
+            "parameterDescriptionChars": 0,
+            "totalChars": 38
+          },
+          {
+            "name": "sprout_resource_release",
+            "descriptionChars": 37,
+            "parameterDescriptionChars": 0,
+            "totalChars": 37
+          }
+        ]
+      }
+    },
+    "worker": {
+      "systemPrompt": {
+        "totalChars": 582,
+        "crewChars": 0,
+        "sections": [
+          {
+            "name": "情境",
+            "chars": 0
+          },
+          {
+            "name": "职责",
+            "chars": 0
+          },
+          {
+            "name": "成员选择",
+            "chars": 0
+          },
+          {
+            "name": "边界与权限",
+            "chars": 0
+          },
+          {
+            "name": "结果事件与等待",
+            "chars": 0
+          },
+          {
+            "name": "Sprout 能力入口",
+            "chars": 0
+          },
+          {
+            "name": "身份",
+            "chars": 0
+          },
+          {
+            "name": "职责与边界",
+            "chars": 0
+          },
+          {
+            "name": "完成上报",
+            "chars": 0
+          },
+          {
+            "name": "阻塞上报",
+            "chars": 0
+          },
+          {
+            "name": "结果回流",
+            "chars": 0
+          },
+          {
+            "name": "能力概览",
+            "chars": 0
+          },
+          {
+            "name": "工作描述",
+            "chars": 0
+          },
+          {
+            "name": "项目背景",
+            "chars": 0
+          },
+          {
+            "name": "HTML 交付",
+            "chars": 520
+          },
+          {
+            "name": "说话风格",
+            "chars": 23
+          },
+          {
+            "name": "Pi 宿主附加",
+            "chars": 39
+          }
+        ],
+        "applicationChars": 543,
+        "hostChars": 39
+      },
+      "tools": {
+        "totalChars": 10251,
+        "tools": [
+          {
+            "name": "codemode",
+            "descriptionChars": 1400,
+            "parameterDescriptionChars": 22,
+            "totalChars": 1422
+          },
+          {
+            "name": "grep",
+            "descriptionChars": 221,
+            "parameterDescriptionChars": 462,
+            "totalChars": 683
+          },
+          {
+            "name": "read",
+            "descriptionChars": 303,
+            "parameterDescriptionChars": 123,
+            "totalChars": 426
+          },
+          {
+            "name": "tool_search",
+            "descriptionChars": 338,
+            "parameterDescriptionChars": 81,
+            "totalChars": 419
+          },
+          {
+            "name": "sprout_remote_execution_cancel",
+            "descriptionChars": 407,
+            "parameterDescriptionChars": 0,
+            "totalChars": 407
+          },
+          {
+            "name": "sprout_info_hub_get",
+            "descriptionChars": 375,
+            "parameterDescriptionChars": 0,
+            "totalChars": 375
+          },
+          {
+            "name": "find",
+            "descriptionChars": 186,
+            "parameterDescriptionChars": 168,
+            "totalChars": 354
+          },
+          {
+            "name": "sprout_remote_shell",
+            "descriptionChars": 284,
+            "parameterDescriptionChars": 50,
+            "totalChars": 334
+          },
+          {
+            "name": "sprout_remote_execution_wait",
+            "descriptionChars": 279,
+            "parameterDescriptionChars": 45,
+            "totalChars": 324
+          },
+          {
+            "name": "sprout_remote_file_write",
+            "descriptionChars": 270,
+            "parameterDescriptionChars": 50,
+            "totalChars": 320
+          },
+          {
+            "name": "sprout_remote_execution_log",
+            "descriptionChars": 309,
+            "parameterDescriptionChars": 0,
+            "totalChars": 309
+          },
+          {
+            "name": "sprout_remote_process_signal",
+            "descriptionChars": 254,
+            "parameterDescriptionChars": 50,
+            "totalChars": 304
+          },
+          {
+            "name": "sprout_delegation_block",
+            "descriptionChars": 297,
+            "parameterDescriptionChars": 0,
+            "totalChars": 297
+          },
+          {
+            "name": "sprout_lease_escrow",
+            "descriptionChars": 296,
+            "parameterDescriptionChars": 0,
+            "totalChars": 296
+          },
+          {
+            "name": "sprout_remote_file_read",
+            "descriptionChars": 239,
+            "parameterDescriptionChars": 50,
+            "totalChars": 289
+          },
+          {
+            "name": "sprout_remote_process_list",
+            "descriptionChars": 232,
+            "parameterDescriptionChars": 50,
+            "totalChars": 282
+          },
+          {
+            "name": "ls",
+            "descriptionChars": 184,
+            "parameterDescriptionChars": 96,
+            "totalChars": 280
+          },
+          {
+            "name": "sprout_lease_wait",
+            "descriptionChars": 240,
+            "parameterDescriptionChars": 0,
+            "totalChars": 240
+          },
+          {
+            "name": "sprout_remote_execution_list",
+            "descriptionChars": 229,
+            "parameterDescriptionChars": 0,
+            "totalChars": 229
+          },
+          {
+            "name": "sprout_delegation_complete",
+            "descriptionChars": 211,
+            "parameterDescriptionChars": 0,
+            "totalChars": 211
+          },
+          {
+            "name": "sprout_remote_execution_get",
+            "descriptionChars": 184,
+            "parameterDescriptionChars": 0,
+            "totalChars": 184
+          },
+          {
+            "name": "sprout_lease_claim",
+            "descriptionChars": 154,
+            "parameterDescriptionChars": 0,
+            "totalChars": 154
+          },
+          {
+            "name": "sprout_lease_revoke_grant",
+            "descriptionChars": 152,
+            "parameterDescriptionChars": 0,
+            "totalChars": 152
+          },
+          {
+            "name": "sprout_lease_escrow_cancel",
+            "descriptionChars": 150,
+            "parameterDescriptionChars": 0,
+            "totalChars": 150
+          },
+          {
+            "name": "sprout_lease_grant",
+            "descriptionChars": 144,
+            "parameterDescriptionChars": 0,
+            "totalChars": 144
+          },
+          {
+            "name": "git_read",
+            "descriptionChars": 124,
+            "parameterDescriptionChars": 8,
+            "totalChars": 132
+          },
+          {
+            "name": "current_time",
+            "descriptionChars": 87,
+            "parameterDescriptionChars": 36,
+            "totalChars": 123
+          },
+          {
+            "name": "sprout_resource_takeover",
+            "descriptionChars": 120,
+            "parameterDescriptionChars": 0,
+            "totalChars": 120
+          },
+          {
+            "name": "sprout_lease_handoff",
+            "descriptionChars": 117,
+            "parameterDescriptionChars": 0,
+            "totalChars": 117
+          },
+          {
+            "name": "sprout_lease_acquire",
+            "descriptionChars": 107,
+            "parameterDescriptionChars": 0,
+            "totalChars": 107
+          },
+          {
+            "name": "sleep",
+            "descriptionChars": 96,
+            "parameterDescriptionChars": 0,
+            "totalChars": 96
+          },
+          {
+            "name": "sprout_lease_release",
+            "descriptionChars": 91,
+            "parameterDescriptionChars": 0,
+            "totalChars": 91
+          },
+          {
+            "name": "sprout_lease_get",
+            "descriptionChars": 86,
+            "parameterDescriptionChars": 0,
+            "totalChars": 86
+          },
+          {
+            "name": "sprout_status",
+            "descriptionChars": 75,
+            "parameterDescriptionChars": 0,
+            "totalChars": 75
+          },
+          {
+            "name": "sprout_task_complete",
+            "descriptionChars": 62,
+            "parameterDescriptionChars": 0,
+            "totalChars": 62
+          },
+          {
+            "name": "sprout_resource_approve",
+            "descriptionChars": 57,
+            "parameterDescriptionChars": 0,
+            "totalChars": 57
+          },
+          {
+            "name": "sprout_resource_request",
+            "descriptionChars": 57,
+            "parameterDescriptionChars": 0,
+            "totalChars": 57
+          },
+          {
+            "name": "sprout_task_checklist_remove",
+            "descriptionChars": 52,
+            "parameterDescriptionChars": 0,
+            "totalChars": 52
+          },
+          {
+            "name": "sprout_task_checklist_update",
+            "descriptionChars": 52,
+            "parameterDescriptionChars": 0,
+            "totalChars": 52
+          },
+          {
+            "name": "sprout_task_checklist_add",
+            "descriptionChars": 49,
+            "parameterDescriptionChars": 0,
+            "totalChars": 49
+          },
+          {
+            "name": "sprout_task_get",
+            "descriptionChars": 49,
+            "parameterDescriptionChars": 0,
+            "totalChars": 49
+          },
+          {
+            "name": "sprout_task_update",
+            "descriptionChars": 48,
+            "parameterDescriptionChars": 0,
+            "totalChars": 48
+          },
+          {
+            "name": "sprout_chat_continuation_get",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_task_cancel",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_task_record_append",
+            "descriptionChars": 45,
+            "parameterDescriptionChars": 0,
+            "totalChars": 45
+          },
+          {
+            "name": "sprout_chat_get",
+            "descriptionChars": 42,
+            "parameterDescriptionChars": 0,
+            "totalChars": 42
+          },
+          {
+            "name": "sprout_resource_revoke",
+            "descriptionChars": 41,
+            "parameterDescriptionChars": 0,
+            "totalChars": 41
+          },
+          {
+            "name": "sprout_task_list",
+            "descriptionChars": 38,
+            "parameterDescriptionChars": 0,
+            "totalChars": 38
+          },
+          {
+            "name": "sprout_resource_release",
+            "descriptionChars": 37,
+            "parameterDescriptionChars": 0,
+            "totalChars": 37
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,39 @@
+Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.
+Comparison refused: comparison requires two arms
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+inconclusive — no calibrated noise floor or causal speed claim.
+Only passed/failed completed items enter the success denominator. Aborted, interrupted, timeout, errored and not_run are excluded. Rates are suppressed when comparison is refused. Tokens are measured provider usage; clocks are milliseconds.
+Cost by task/repeat (paired arms): actual delegation records; probes = requests labelled probe/read-only/只读/侦察; artifacts = unique successful explicit write/edit paths absent from delegation request paths. Role clocks sum run durations in ms (overlap counts); sleep sums lead sleep.ms; missing or opaque evidence = null.
+┌─────────┐
+│ (index) │
+├─────────┤
+└─────────┘
+✔ sections retain separators and reconcile exactly, with absent crew sections at zero (0.44275ms)
+✔ tool sizes include nested parameter descriptions, but exclude schema syntax and examples (0.348917ms)
+✔ comparison computes compression against A for each role and handles a zero baseline (0.176417ms)
+✖ A/B summary includes the prompt-size comparison when both inventories are present (0.57925ms)
+✔ both real refs use their runner and role allowlist, with clean detached-worktree lifecycle (2840.518208ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 4
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2960.158583
+
+✖ failing tests:
+
+test at scripts/verify-live/crew-prompt-ab/prompt-inventory.test.mjs:42:1
+✖ A/B summary includes the prompt-size comparison when both inventories are present (0.57925ms)
+  TypeError [Error]: Cannot read properties of undefined (reading 'rows')
+      at TestContext.<anonymous> (file:///Users/snake/.t3/worktrees/sprout-mio/t3-5e1fb1b3-0c710a1ae2a2d28e/scripts/verify-live/crew-prompt-ab/prompt-inventory.test.mjs:46:45)
+      at Test.runInAsyncScope (node:async_hooks:226:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

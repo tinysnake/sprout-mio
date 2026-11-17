@@ -1,0 +1,222 @@
+import { runDurationMs, timestampMs, totalRunMs } from "./timing.mjs";
+
+export const taskset2Oracles = [
+  "worker_takes_minutes",
+  "route_by_description",
+  "clarify_before_guessing",
+  "resolve_from_context",
+  "budgeted_parallel_delivery",
+];
+
+export function maxActiveWorkers(runs = []) {
+  const edges = runs
+    .flatMap((run) => {
+      const start = timestampMs(run.startedAt);
+      const end = timestampMs(run.settledAt);
+      if (start === null || end === null || end <= start) return [];
+      return [
+        [start, 1],
+        [end, -1],
+      ];
+    })
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  let active = 0;
+  let peak = 0;
+  for (const [, delta] of edges) peak = Math.max(peak, (active += delta));
+  return peak;
+}
+
+export function taskset2Gates(name, facts, { corrected = false } = {}) {
+  const config = facts.oracleConfig ?? {};
+  const delegations = facts.delegationEvidence ?? [];
+  const workers = facts.workerRuns ?? [];
+  const leads = (facts.runs ?? []).filter((run) => run.role === "lead");
+  const tools = leads.flatMap((run) => run.tools ?? []);
+  const gates = {};
+  function gate(key, checks, actual) {
+    const values = Object.values(checks);
+    gates[key] = {
+      passed: values.includes(false) ? false : values.includes(null) ? null : true,
+      checks,
+      actual,
+    };
+  }
+  if (name === "clarify_before_guessing") {
+    const reply = facts.leadFinalReplyText ?? "";
+    gate(
+      "clarification",
+      {
+        noDelegation: facts.delegatedCount === 0,
+        oneQuestion: (reply.match(/[?？]/g) ?? []).length === 1,
+        asksMissingFact:
+          typeof config.questionPattern === "string" &&
+          new RegExp(config.questionPattern, "i").test(reply),
+      },
+      { reply, delegatedCount: facts.delegatedCount },
+    );
+    return gates;
+  }
+  const mapped = (delegation, file) => {
+    if (delegation.requestArtifacts.includes(file) && delegation.workerArtifacts.includes(file))
+      return true;
+    const command = facts.artifactCommands?.[file];
+    return (
+      typeof command === "string" &&
+      delegation.requestSummary?.includes(command) &&
+      workers.some(
+        (run) =>
+          run.chatId === delegation.childChatId &&
+          run.tools?.some(
+            (tool) => tool.isError === false && JSON.stringify(tool.arguments).includes(command),
+          ),
+      )
+    );
+  };
+  gate(
+    "delegatedDelivery",
+    {
+      count: Number.isInteger(config.minDelegationCount)
+        ? facts.delegatedCount >= config.minDelegationCount
+        : facts.delegatedCount === config.delegationCount,
+      mapped: delegations.length === facts.delegatedCount && delegations.length > 0,
+      completed: delegations.every((d) => d.status === "completed"),
+      workerRuns: workers.length >= facts.delegatedCount,
+      allWorkersCompleted: workers.every((run) => run.status === "completed"),
+      receipts:
+        facts.workerReportedComplete?.length === facts.delegatedCount &&
+        facts.workerReportedComplete.every(Boolean),
+      artifactsAttributed:
+        (facts.requiredDelegationArtifacts?.length ?? 0) > 0 &&
+        facts.requiredDelegationArtifacts.every((file) =>
+          delegations.some((d) => mapped(d, file)),
+        ) &&
+        delegations.every((d) => facts.requiredDelegationArtifacts.some((file) => mapped(d, file))),
+      finalAfterReceipts:
+        facts.completeEventTimes?.length === facts.delegatedCount &&
+        facts.completeEventTimes.every((time) => facts.leadFinalReplyAtMs > time),
+    },
+    {
+      delegations,
+      workerRuns: workers.map(({ runId, startedAt, settledAt }) => ({
+        runId,
+        startedAt,
+        settledAt,
+      })),
+    },
+  );
+  if (name === "worker_takes_minutes") {
+    const completeTimes = (facts.completeEventTimes ?? []).map(timestampMs);
+    const deadline =
+      completeTimes.length && completeTimes.every((ms) => ms !== null)
+        ? Math.min(...completeTimes)
+        : null;
+    const toolsKnown =
+      leads.length > 0 &&
+      leads.every((run) => Array.isArray(run.tools) && run.transcriptObserved !== false);
+    const dispatch = tools.find((tool) => tool.name === "sprout_delegation_start");
+    const dispatchAt = timestampMs(dispatch?.atMs);
+    const listCalls = tools.filter((tool) => tool.name === "sprout_delegation_list");
+    const queryTimesKnown = listCalls.every((tool) => timestampMs(tool.atMs) !== null);
+    const queries =
+      toolsKnown && deadline !== null && queryTimesKnown &&
+      (!corrected || !dispatch || dispatchAt !== null)
+        ? listCalls.filter((tool) => {
+            const atMs = timestampMs(tool.atMs);
+            return atMs < deadline && (!corrected || dispatchAt === null || atMs >= dispatchAt);
+          }).length
+        : null;
+    const leadMs = totalRunMs(leads);
+    const workerMs = workers.map(runDurationMs);
+    const sleepObserved = Number.isFinite(facts.sleepMsTotal)
+      ? facts.sleepMsTotal <= config.maxSleepMs
+      : null;
+    const noRepeatedQueries = queries === null ? null : queries <= 1;
+    const actionChecks = [sleepObserved, noRepeatedQueries];
+    const leadActionBudget = actionChecks.includes(false)
+      ? false
+      : actionChecks.includes(null) ? null : true;
+    gate(
+      "eventDrivenWait",
+      {
+        sleepObserved,
+        noRepeatedQueries,
+        ...(corrected
+          ? { leadActionBudget }
+          : {
+              timestampsPresent: leadMs === null ? null : true,
+              leadBudget: leadMs === null ? null : leadMs <= config.leadBudgetMs,
+            }),
+        genuinelyLongWorker: workerMs.some((ms) => ms !== null && ms >= config.minWorkerMs)
+          ? true
+          : workerMs.includes(null) ? null : false,
+      },
+      {
+        sleepMsTotal: facts.sleepMsTotal ?? null,
+        queries,
+        leadMs,
+        workerMs,
+        ...(corrected ? { leadActionBudget: { maxQueries: 1, maxSleepMs: config.maxSleepMs } } : {}),
+        ...(leadMs === null ? { leadMsReason: "no timing evidence" } : {}),
+        ...(sleepObserved === null ? { sleepMsTotalReason: "no complete lead sleep evidence" } : {}),
+        ...(queries === null ? { queriesReason: "no complete lead query timing evidence" } : {}),
+        ...(workerMs.includes(null)
+          ? { workerMsReason: "no timing evidence for some worker runs" }
+          : {}),
+      },
+    );
+  }
+  if (name === "route_by_description") {
+    gate(
+      "routing",
+      {
+        expectedProfilePresent: typeof facts.expectedWorkerProfileId === "string",
+        correctProfile:
+          delegations.length === 1 &&
+          delegations[0].workerProfileId === facts.expectedWorkerProfileId,
+        actualRunMatches:
+          workers.length > 0 &&
+          workers.every((run) => run.profileId === facts.expectedWorkerProfileId),
+      },
+      {
+        expected: facts.expectedWorkerProfileId,
+        profiles: delegations.map((d) => d.workerProfileId),
+      },
+    );
+  }
+  if (name === "resolve_from_context") {
+    gate(
+      "resolvedContext",
+      {
+        contextAvailable: Boolean(facts.projectContext),
+        didNotAsk: !/[?？]/.test(facts.leadFinalReplyText ?? ""),
+      },
+      { projectContext: facts.projectContext, reply: facts.leadFinalReplyText },
+    );
+  }
+  if (name === "budgeted_parallel_delivery") {
+    const peak = maxActiveWorkers(workers);
+    const started = facts.taskSentAtMs;
+    gate(
+      "parallelBudget",
+      {
+        simultaneousWorkers: peak >= 2,
+        differentProfiles: new Set(workers.map((run) => run.profileId).filter(Boolean)).size >= 2,
+        startKnown: Number.isFinite(started),
+        deliveryWithinBudget:
+          Number.isFinite(started) &&
+          Number.isFinite(facts.leadFinalReplyAtMs) &&
+          facts.leadFinalReplyAtMs >= started &&
+          facts.leadFinalReplyAtMs - started <= config.deliveryBudgetMs,
+      },
+      { peak, started, delivered: facts.leadFinalReplyAtMs, budgetMs: config.deliveryBudgetMs },
+    );
+  }
+  return gates;
+}
+
+export function successCohort(row) {
+  return row.category === "sanity" ? "SANITY" : "ALL";
+}
+
+export const successPopulation =
+  "Main success denominator: passed/failed primary items only; sanity is reported separately and excluded. Incomplete sanity still refuses batch comparison.";

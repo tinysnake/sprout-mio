@@ -178,6 +178,7 @@ function compatibleTool(tools, step) {
 export async function startModelFixture({
   privateDir,
   sourceAgentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
+  onRequest = () => {},
 }) {
   const sdk = installedSdk(sourceAgentDir);
   const agentDir = join(privateDir, "model-fixture-agent");
@@ -206,6 +207,7 @@ export async function startModelFixture({
       }
       const input = JSON.parse(body);
       receivedRequests.push(structuredClone(input));
+      onRequest(input);
       input.tools ??= [];
       const state = states.get(input.model);
       assert(state, "unexpected fixture model");
