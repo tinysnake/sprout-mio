@@ -311,7 +311,12 @@ async function open(config) {
                 registerTool(tool) {
                   const isCrew =
                     situation?.kind === "crew_lead" || situation?.kind === "delegation_worker";
-                  if (isCrew && tool.name.startsWith("sprout_lease_")) return;
+                  if (
+                    isCrew &&
+                    (tool.name.startsWith("sprout_lease_") ||
+                      ["sprout_chat_get", "sprout_chat_continuation_get"].includes(tool.name))
+                  )
+                    return;
                   if (
                     situation?.kind === "delegation_worker" &&
                     (tool.name.startsWith("sprout_task_") ||
@@ -400,7 +405,7 @@ async function open(config) {
               (name) =>
                 !(
                   (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
-                  name.startsWith("sprout_lease_")
+                  (name.startsWith("sprout_lease_") || name === "sprout_chat_continuation_get")
                 ) &&
                 !(
                   situation?.kind === "delegation_worker" &&
@@ -417,6 +422,10 @@ async function open(config) {
             ...Object.keys(taskToolInputSchemas).filter(
               (name) =>
                 name !== "sprout_chat_send" &&
+                !(
+                  (situation?.kind === "crew_lead" || situation?.kind === "delegation_worker") &&
+                  name === "sprout_chat_get"
+                ) &&
                 !(situation?.kind === "delegation_worker" && name.startsWith("sprout_task_")),
             ),
             ...Object.keys(infoHubToolInputSchemas),

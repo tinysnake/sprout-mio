@@ -193,7 +193,19 @@ async function request(
         .filter((name) => name.startsWith(prefix));
       assert.deepEqual(actual.sort(), [...expectedTools].sort(), `${label}: ${prefix} role surface`);
     }
-    for (const name of ["codemode", "sprout_chat_get", "sprout_chat_continuation_get"]) {
+    for (const name of ["sprout_chat_get", "sprout_chat_continuation_get"]) {
+      assert.equal(
+        input.tools.some((tool) => tool.function.name === name),
+        !isCrew,
+        `${label}: ${name} is only exposed outside crew roles`,
+      );
+      assert.equal(snapshot.registeredTools.includes(name), !isCrew, `${label}: ${name} registry`);
+    }
+    for (const name of [
+      "codemode", "sleep", "read", "ls", "grep", "find", "git_read", "current_time", "tool_search",
+      ...["wait", "get", "log", "list", "cancel"].map((suffix) => `sprout_remote_execution_${suffix}`),
+      "sprout_remote_process_signal", "sprout_remote_process_list",
+    ]) {
       assert(input.tools.some((tool) => tool.function.name === name), `${label}: ${name} remains`);
     }
     if (situation.kind === "crew_lead" || situation.kind === "delegation_worker") {
