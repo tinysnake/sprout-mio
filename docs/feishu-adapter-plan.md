@@ -30,9 +30,9 @@
 
 ## Ground 的因果链
 
-`src/domain/chat.ts` 的 `sendMessage(chatId, input, ctx, hooks)` 在 immediate transaction 中检查真实 Human / Agent 成员，写消息并接入 wake / run input；事务后发 schedule signal。外部身份必须先映射成受信 Human context，不能绕过或冒充 Agent 来源。
+`src/domain/chat.ts` 的 `sendMessage(chatId, input, ctx, hooks)` 在 immediate transaction 中检查真实 Human / Agent 成员，写消息并接入 run input。外部身份必须先映射成受信 Human context，不能绕过或冒充 Agent 来源。
 
-`src/domain/assistant.ts` 的 `confirmAssistantProposal` 在 immediate transaction 中重新检查 source / target，已 submitted 返回同一个 messageId；首次确认写 assistant_work、分配 continuation run 和 pending input。飞书需要调用同一领域入口，不能另建一次执行记录。
+`src/domain/assistant.ts` 的 `confirmAssistantProposal` 在 immediate transaction 中重新检查 source / target，已 submitted 返回同一个 messageId；首次确认写 assistant_work、分配 run 和 pending input。飞书需要调用同一领域入口，不能另建一次执行记录。
 
 `deliverAssistantEvents` 在权限、关注和总结 readiness 通过后写普通 assistant_event message。模型摘要与不可变事实分开保存。外部投递应消费可见内容投影，不把原始 facts、工具日志或 LLM context 直接当通知发送。
 
@@ -117,7 +117,7 @@ F3 实现为 `d0029f0`，父线程门禁修正为 `f602517`，已 fast-forward �
 
 状态机有五个分支：已绑定、未绑定、等待飞书确认、已过期、未配置。绑定视图对发起它的 Human 直接给出 `challenge.code` 与 `expiresAtMs`，所以刷新、换标签页或换设备都能继续看码并输入；确认码在十分钟后过期、成功确认即消费，过期或消费后视图不再返回它。换绑与解绑都要 Human 二次确认，解绑只是解除绑定，会话与历史保留。
 
-门禁在集成时拦下一处违规：`tests/tooling.test.ts` 禁止 `src/` 内直接调用 `Date.now()`，面板有 4 处。改为 `FeishuBindingPanel` 接受 `clock` prop（默认 `Date.now`），30 秒刷新一次倒计时，与既有 `src/components/continuation/wake-diagnostic.tsx` 的写法一致。
+门禁在集成时拦下一处违规：`tests/tooling.test.ts` 禁止 `src/` 内直接调用 `Date.now()`，面板有 4 处。改为 `FeishuBindingPanel` 接受 `clock` prop（默认 `Date.now`），30 秒刷新一次倒计时。
 
 父线程审查修掉一个会影响判断的缺陷：过期分支原本用 `selectedChatId || targets[0]?.chatId` 兜底，等于替 Human 默认选中第一个目标，而界面上并没有显示这次默认选择；现在只认 Human 显式选中的目标，并且本地挑战过期时也显示重新选择目标的控件，否则按钮会永久禁用。
 

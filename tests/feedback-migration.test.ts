@@ -38,6 +38,7 @@ it("0046 preserves rule receipts and Human watch consent, adopts legacy interval
     try {
       expect(sqlite.prepare("SELECT * FROM webhook_rule").get()).toEqual({
         ...(originalRule as object),
+        action: '{"kind":"crew","chatId":"target"}',
         recoverable_secret: null,
       });
       expect(sqlite.prepare("SELECT * FROM webhook_trigger").get()).toEqual(originalReceipt);

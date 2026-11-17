@@ -15,13 +15,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-import type { ProjectWakePolicy } from "../contracts/project-wake-policy";
-import type {
-  WakeEvaluationInput,
-  WakeEvaluationResult,
-  WakeUsage,
-} from "../contracts/wake-evaluation";
-import type { ContinuationInputEnvelope } from "../contracts/chat-continuation";
+import type { ProjectRuntimePolicy } from "../contracts/project-runtime-policy";
 import { TASK_STATUSES } from "../contracts/task";
 import { TASK_ACTIONS } from "../contracts/task-capabilities";
 import { user } from "./auth-schema";
@@ -54,7 +48,7 @@ export const project = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
-    wakePolicy: text("wake_policy", { mode: "json" }).$type<ProjectWakePolicy>(),
+    runtimePolicy: text("runtime_policy", { mode: "json" }).$type<ProjectRuntimePolicy>(),
     kind: text("kind", { enum: ["coding", "work", "custom"] })
       .notNull()
       .default("custom"),
@@ -331,9 +325,6 @@ export const chat = sqliteTable(
     archivedAt: integer("archived_at", { mode: "timestamp" }),
     ownerKind: text("owner_kind", { enum: ["human", "agent"] }).notNull(),
     ownerId: text("owner_id").notNull(),
-    wakePolicy: text("wake_policy", { enum: ["mention_only", "owner_led", "contextual"] })
-      .notNull()
-      .default("owner_led"),
     governanceRevision: integer("governance_revision").notNull().default(0),
     createdBy: text("created_by")
       .notNull()
@@ -354,10 +345,6 @@ export const chat = sqliteTable(
     check("chat_owner_kind_check", sql`${table.ownerKind} in ('human', 'agent')`),
     check("chat_owner_id_check", sql`length(trim(${table.ownerId})) > 0`),
     check(
-      "chat_wake_policy_check",
-      sql`${table.wakePolicy} in ('mention_only', 'owner_led', 'contextual')`,
-    ),
-    check(
       "chat_governance_revision_check",
       sql`typeof(${table.governanceRevision}) = 'integer' and ${table.governanceRevision} >= 0`,
     ),
@@ -377,11 +364,6 @@ export const chat = sqliteTable(
     check(
       "chat_crew_lead_check",
       sql`${table.kind} <> 'crew' or ${table.leadProfileId} is null or length(trim(${table.leadProfileId})) > 0`,
-    ),
-    // Crew 的消息路由是确定性的，不走判定器。
-    check(
-      "chat_crew_wake_check",
-      sql`${table.kind} <> 'crew' or ${table.wakePolicy} <> 'contextual'`,
     ),
     check(
       "chat_delegation_parent_check",
@@ -735,7 +717,7 @@ export const webhookRule = sqliteTable(
     check("automation_source_check", sql`${t.source} in ('webhook','cron')`),
     check(
       "webhook_rule_action_check",
-      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','group_agent','group_owner') and (json_type(${t.action}, '$.chatId')='text' or (json_extract(${t.action}, '$.kind')='dm_agent' and json_type(${t.action}, '$.chatId') is null)) and (json_extract(${t.action}, '$.kind')='group_owner' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
+      sql`json_valid(${t.action}) and coalesce(json_extract(${t.action}, '$.kind') in ('dm_agent','crew') and (json_type(${t.action}, '$.chatId')='text' or (json_extract(${t.action}, '$.kind')='dm_agent' and json_type(${t.action}, '$.chatId') is null)) and (json_extract(${t.action}, '$.kind')='dm_agent' or json_type(${t.action}, '$.chatId')='text') and (json_extract(${t.action}, '$.kind')='crew' or json_type(${t.action}, '$.agentProfileId')='text'),0)`,
     ),
   ],
 );
@@ -1350,318 +1332,6 @@ export const taskEvent = sqliteTable(
     ),
   ],
 );
-
-export const projectWakePolicyCommand = sqliteTable("project_wake_policy_command", {
-  requestId: text("request_id").primaryKey(),
-  projectId: text("project_id")
-    .notNull()
-    .references(() => project.id),
-  payload: text("payload").notNull(),
-  result: text("result").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
-
-export const chatContinuationControl = sqliteTable(
-  "chat_continuation_control",
-  {
-    chatId: text("chat_id")
-      .primaryKey()
-      .references(() => chat.id),
-    mode: text("mode", { enum: ["enabled", "off"] })
-      .notNull()
-      .default("enabled"),
-    epoch: integer("epoch").notNull().default(1),
-    revision: integer("revision").notNull().default(1),
-    changedBy: text("changed_by").references(() => user.id),
-    changedAt: integer("changed_at"),
-    reason: text("reason"),
-  },
-  (t) => [
-    check("continuation_mode_check", sql`${t.mode} in ('enabled','off')`),
-    check(
-      "continuation_revision_check",
-      sql`${t.epoch} between 1 and 9007199254740991 and ${t.revision} between 1 and 9007199254740991`,
-    ),
-    check("continuation_audit_check", sql`(${t.changedBy} is null) = (${t.changedAt} is null)`),
-  ],
-);
-
-export const chatSchedule = sqliteTable(
-  "chat_schedule",
-  {
-    chatId: text("chat_id").primaryKey(),
-    projectId: text("project_id").notNull(),
-    nextDueAt: integer("next_due_at"),
-    round: integer("round").notNull().default(0),
-    fingerprint: text("fingerprint").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (t) => [
-    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
-    index("chat_schedule_due_idx").on(t.nextDueAt),
-    check("chat_schedule_round_check", sql`${t.round} >= 0`),
-  ],
-);
-
-export const wakeEvaluation = sqliteTable(
-  "wake_evaluation",
-  {
-    id: text("id").primaryKey(),
-    projectId: text("project_id").notNull(),
-    chatId: text("chat_id").notNull(),
-    source: text("source").notNull().default("task_periodic"),
-    triggerMessageId: text("trigger_message_id").references(() => message.id),
-    round: integer("round").notNull(),
-    controlEpoch: integer("control_epoch").notNull(),
-    fingerprint: text("fingerprint").notNull(),
-    state: text("state").notNull(),
-    attempt: integer("attempt").notNull().default(0),
-    claimToken: text("claim_token"),
-    leaseUntil: integer("lease_until"),
-    nextAttemptAt: integer("next_attempt_at"),
-    input: text("input", { mode: "json" }).$type<WakeEvaluationInput>(),
-    result: text("result", { mode: "json" }).$type<WakeEvaluationResult>(),
-    errorCode: text("error_code"),
-    requestId: text("request_id").notNull(),
-    createdAt: integer("created_at").notNull(),
-    evaluatedAt: integer("evaluated_at"),
-  },
-  (t) => [
-    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
-    uniqueIndex("wake_evaluation_scope_unique").on(t.id, t.projectId, t.chatId),
-    uniqueIndex("wake_evaluation_project_unique").on(t.id, t.projectId),
-    uniqueIndex("wake_evaluation_round_unique").on(t.chatId, t.round),
-    uniqueIndex("wake_evaluation_active_unique")
-      .on(t.chatId)
-      .where(sql`${t.state} in ('pending','claimed','retry_wait')`),
-    check(
-      "wake_evaluation_state_check",
-      sql`${t.state} in ('pending','claimed','retry_wait','decided','attention','stale','canceled')`,
-    ),
-    check(
-      "wake_evaluation_source_check",
-      sql`(${t.source}='message') = (${t.triggerMessageId} is not null)`,
-    ),
-    check(
-      "wake_evaluation_attempt_check",
-      sql`${t.attempt} between 0 and 6 and ${t.round}>0 and ${t.controlEpoch}>0`,
-    ),
-    check(
-      "wake_evaluation_claim_check",
-      sql`(${t.state}='claimed' and ${t.claimToken} is not null and ${t.leaseUntil} is not null) or (${t.state}<>'claimed' and ${t.claimToken} is null and ${t.leaseUntil} is null)`,
-    ),
-  ],
-);
-
-export const wakeEvaluationTask = sqliteTable(
-  "wake_evaluation_task",
-  {
-    evaluationId: text("evaluation_id")
-      .notNull()
-      .references(() => wakeEvaluation.id),
-    taskId: text("task_id").notNull(),
-    projectId: text("project_id").notNull(),
-    revision: integer("revision").notNull(),
-    assignmentRevision: integer("assignment_revision").notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.evaluationId, t.taskId] }),
-    foreignKey({ columns: [t.taskId, t.projectId], foreignColumns: [task.id, task.projectId] }),
-    foreignKey({
-      columns: [t.evaluationId, t.projectId],
-      foreignColumns: [wakeEvaluation.id, wakeEvaluation.projectId],
-    }),
-    check(
-      "wake_evaluation_task_revision_check",
-      sql`${t.revision}>0 and ${t.assignmentRevision}>0`,
-    ),
-  ],
-);
-
-/**
- * 判定的一次尝试：何时发出、何时结束、花了多少。`wake_evaluation` 只存当前状态，
- * 过程留在这里，页面据此显示「正在检查 · 第 2 次」这类事实，而不是猜。
- */
-export const wakeEvaluationAttempt = sqliteTable(
-  "wake_evaluation_attempt",
-  {
-    evaluationId: text("evaluation_id")
-      .notNull()
-      .references(() => wakeEvaluation.id),
-    attempt: integer("attempt").notNull(),
-    startedAt: integer("started_at").notNull(),
-    finishedAt: integer("finished_at"),
-    outcome: text("outcome"),
-    errorCode: text("error_code"),
-    usage: text("usage", { mode: "json" }).$type<WakeUsage>(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.evaluationId, t.attempt] }),
-    check("wake_evaluation_attempt_number_check", sql`${t.attempt} between 1 and 6`),
-    check(
-      "wake_evaluation_attempt_outcome_check",
-      sql`${t.outcome} is null or ${t.outcome} in ('decided','retry_wait','attention','stale','canceled')`,
-    ),
-    check(
-      "wake_evaluation_attempt_finish_check",
-      sql`(${t.outcome} is null) = (${t.finishedAt} is null)`,
-    ),
-    check(
-      "wake_evaluation_attempt_error_check",
-      sql`${t.errorCode} is null or ${t.outcome} is not null`,
-    ),
-  ],
-);
-
-export const chatMessageWake = sqliteTable(
-  "chat_message_wake",
-  {
-    chatId: text("chat_id").primaryKey(),
-    projectId: text("project_id").notNull(),
-    triggerMessageId: text("trigger_message_id")
-      .notNull()
-      .references(() => message.id),
-    firstDueAt: integer("first_due_at").notNull(),
-    dueAt: integer("due_at").notNull(),
-    evaluationId: text("evaluation_id").references(() => wakeEvaluation.id),
-    createdAt: integer("created_at").notNull(),
-    updatedAt: integer("updated_at").notNull(),
-  },
-  (t) => [
-    foreignKey({ columns: [t.chatId, t.projectId], foreignColumns: [chat.id, chat.projectId] }),
-    foreignKey({
-      columns: [t.triggerMessageId, t.chatId],
-      foreignColumns: [message.id, message.chatId],
-    }),
-    index("chat_message_wake_due_idx").on(t.dueAt),
-    check("chat_message_wake_due_check", sql`${t.dueAt}>=${t.firstDueAt}`),
-  ],
-);
-
-export const continuationDelivery = sqliteTable(
-  "continuation_delivery",
-  {
-    id: text("id").primaryKey(),
-    evaluationId: text("evaluation_id").notNull(),
-    projectId: text("project_id").notNull(),
-    chatId: text("chat_id").notNull(),
-    recipientKind: text("recipient_kind").notNull(),
-    recipientId: text("recipient_id").notNull(),
-    instanceId: text("instance_id").references(() => agentInstance.id),
-    runId: text("run_id"),
-    controlEpoch: integer("control_epoch").notNull(),
-    snapshotHash: text("snapshot_hash").notNull(),
-    fingerprint: text("fingerprint").notNull(),
-    state: text("state").notNull(),
-    attempt: integer("attempt").notNull().default(0),
-    envelope: text("envelope", { mode: "json" }).$type<ContinuationInputEnvelope>(),
-    createdAt: integer("created_at").notNull(),
-    admittedAt: integer("admitted_at"),
-    deliveredAt: integer("delivered_at"),
-    presentedAt: integer("presented_at"),
-    nextAttemptAt: integer("next_attempt_at"),
-    cancelReason: text("cancel_reason"),
-    errorCode: text("error_code"),
-    supersedesDeliveryId: text("supersedes_delivery_id"),
-  },
-  (t) => [
-    foreignKey({
-      columns: [t.evaluationId, t.projectId, t.chatId],
-      foreignColumns: [wakeEvaluation.id, wakeEvaluation.projectId, wakeEvaluation.chatId],
-    }),
-    foreignKey({
-      columns: [t.runId, t.instanceId, t.projectId, t.chatId],
-      foreignColumns: [agentRun.id, agentRun.instanceId, agentRun.projectId, agentRun.chatId],
-    }),
-    uniqueIndex("continuation_scope_unique").on(t.id, t.projectId, t.chatId),
-    uniqueIndex("continuation_project_unique").on(t.id, t.projectId),
-    uniqueIndex("continuation_evaluation_recipient_unique").on(
-      t.evaluationId,
-      t.recipientKind,
-      t.recipientId,
-    ),
-    uniqueIndex("continuation_pending_recipient_unique")
-      .on(t.chatId, t.recipientKind, t.recipientId)
-      .where(sql`${t.state} in ('pending','bound')`),
-    check(
-      "continuation_supersedes_check",
-      sql`${t.supersedesDeliveryId} is null or ${t.supersedesDeliveryId}<>${t.id}`,
-    ),
-    check(
-      "continuation_state_check",
-      sql`${t.state} in ('pending','bound','admitted','delivered','attention','canceled','presented','stale')`,
-    ),
-    check("continuation_attempt_check", sql`${t.attempt} between 0 and 6 and ${t.controlEpoch}>0`),
-    check(
-      "continuation_recipient_check",
-      sql`(${t.recipientKind}='human' and ${t.instanceId} is null and ${t.runId} is null and ${t.admittedAt} is null and ${t.deliveredAt} is null and ${t.state} in ('presented','stale','canceled')) or (${t.recipientKind}='agent' and ${t.instanceId} is not null and ${t.presentedAt} is null and ${t.state}<>'presented')`,
-    ),
-    check(
-      "continuation_admission_check",
-      sql`(${t.state} not in ('bound','admitted','delivered') or ${t.runId} is not null) and (${t.admittedAt} is null or (${t.runId} is not null and ${t.attempt}>0 and ${t.state} in ('admitted','delivered','attention'))) and (${t.state} not in ('admitted','delivered') or ${t.admittedAt} is not null)`,
-    ),
-    check(
-      "continuation_ack_check",
-      sql`(${t.state}='delivered') = (${t.deliveredAt} is not null) and (${t.deliveredAt} is null or ${t.deliveredAt}>=${t.admittedAt})`,
-    ),
-    check(
-      "continuation_cancel_check",
-      sql`(${t.state}='canceled') = (${t.cancelReason} is not null)`,
-    ),
-    check(
-      "continuation_retry_check",
-      sql`${t.nextAttemptAt} is null or (${t.state}='pending' and ${t.admittedAt} is null and ${t.attempt}<6)`,
-    ),
-    check(
-      "continuation_unknown_check",
-      sql`${t.errorCode} is null or ${t.errorCode}<>'delivery_unknown' or (${t.state}='attention' and ${t.admittedAt} is not null and ${t.nextAttemptAt} is null and ${t.deliveredAt} is null)`,
-    ),
-    check(
-      "continuation_attention_check",
-      sql`${t.state}<>'attention' or ${t.errorCode} is not null`,
-    ),
-  ],
-);
-
-export const continuationDeliveryTask = sqliteTable(
-  "continuation_delivery_task",
-  {
-    deliveryId: text("delivery_id")
-      .notNull()
-      .references(() => continuationDelivery.id),
-    taskId: text("task_id").notNull(),
-    projectId: text("project_id").notNull(),
-  },
-  (t) => [
-    primaryKey({ columns: [t.deliveryId, t.taskId] }),
-    foreignKey({
-      columns: [t.deliveryId, t.projectId],
-      foreignColumns: [continuationDelivery.id, continuationDelivery.projectId],
-    }),
-    foreignKey({ columns: [t.taskId, t.projectId], foreignColumns: [task.id, task.projectId] }),
-  ],
-);
-
-export const chatContinuationCommand = sqliteTable("chat_continuation_command", {
-  requestId: text("request_id").primaryKey(),
-  chatId: text("chat_id")
-    .notNull()
-    .references(() => chat.id),
-  payload: text("payload").notNull(),
-  result: text("result").notNull(),
-  createdAt: integer("created_at").notNull(),
-});
-
-export const chatContinuationAbort = sqliteTable("chat_continuation_abort", {
-  runId: text("run_id")
-    .primaryKey()
-    .references(() => agentRun.id),
-  chatId: text("chat_id")
-    .notNull()
-    .references(() => chat.id),
-  requestedAt: integer("requested_at").notNull(),
-  signaledAt: integer("signaled_at"),
-});
 
 export const diagnosticEvent = sqliteTable(
   "diagnostic_event",

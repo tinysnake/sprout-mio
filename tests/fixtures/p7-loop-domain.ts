@@ -162,7 +162,6 @@ if (mode === "restart" && !phase) {
           projectId: project.id,
           title: "P7 group",
           initialOwner: { kind: "agent", id: profileA.id },
-          wakePolicy: "owner_led",
           members: [
             { kind: "human", id: userId },
             { kind: "agent", id: profileA.id },
@@ -783,182 +782,6 @@ if (mode === "restart" && !phase) {
               "no global Agent-count or fan-out cap exists in the product; the measured bound is one in-flight run per instance plus the message body limit enforced at the HTTP boundary (p7-loop-multiround)",
           });
 
-          // F4b: from idle the continuation itself opens a run; a human message then fills that run
-          // instead of a second one, and `off` stops new continuation runs.
-          const continuation = await import("../../src/domain/chat-continuation");
-          const schedule = await import("../../src/domain/chat-schedule");
-          const delivery = await import("../../src/domain/continuation-delivery");
-          const { createContinuationScheduler } =
-            await import("../../src/server/continuation-scheduler");
-          const task = await import("../../src/domain/task");
-          const dmAuto = chats.createDirectChat(project.id, profileC.id, ctx).chat;
-          schedule.controlFor(dmAuto.id);
-          const autoTask = task.createTask(
-            { projectId: project.id, title: "P7 autonomous continuation" },
-            ctx,
-          ).detail;
-          task.assignTask(
-            {
-              taskId: autoTask.task.id,
-              expectedRevision: autoTask.task.revision,
-              targetChatId: dmAuto.id,
-            },
-            ctx,
-          );
-          let clockNow = new Date(
-            row("SELECT next_due_at FROM chat_schedule WHERE chat_id=?", dmAuto.id).next_due_at,
-          );
-          const wake = async (input: any) => ({
-            result: {
-              decision: "continue" as const,
-              reason: "fixture: the owner has a next step",
-              reasonCode: "fixture_continue" as const,
-              recipients: input.candidates.map((candidate: any) => ({
-                recipient: candidate.recipient,
-                decision: "yes" as const,
-                reason: "current owner",
-                probability: null,
-              })),
-              selectedRecipients: input.candidates.map((candidate: any) => candidate.recipient),
-              probability: null,
-              provider: input.policy.provider,
-              model: input.policy.model,
-              version: input.policy.thresholdVersion,
-              snapshotHash: input.snapshotHash,
-              errorCode: null,
-            },
-            usage: {
-              inputTokens: 800,
-              outputTokens: 24,
-              inputCharacters: 3200,
-              durationMs: 3800,
-              resolvedModel: null,
-            },
-          });
-          const scheduler = createContinuationScheduler({
-            clock: { now: () => clockNow, setTimeout: () => 0, clearTimeout: () => {} },
-            evaluateWake: wake,
-          });
-          const runsBeforeAuto = row(
-            "SELECT COUNT(*) n FROM agent_run WHERE chat_id=?",
-            dmAuto.id,
-          ).n;
-          assert.equal(
-            runsBeforeAuto,
-            0,
-            "F4b the Chat starts idle: no run before the automatic check",
-          );
-          scheduler.start();
-          await scheduler.advance();
-          await scheduler.settled();
-          const autoRun = row(
-            "SELECT * FROM agent_run WHERE chat_id=? ORDER BY rowid DESC LIMIT 1",
-            dmAuto.id,
-          );
-          assert(autoRun, "F4b an idle Chat produces a new run from the automatic continuation");
-          assert.equal(
-            runsBeforeAuto + 1,
-            row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", dmAuto.id).n,
-            "F4b automatic continuation opens exactly one run",
-          );
-          assert.equal(
-            row("SELECT COUNT(*) n FROM agent_run_input WHERE run_id=?", autoRun.id).n,
-            0,
-            "F4b the automatic run exists before any human input",
-          );
-          const autoDelivery = row(
-            "SELECT * FROM continuation_delivery WHERE chat_id=? ORDER BY created_at DESC LIMIT 1",
-            dmAuto.id,
-          );
-          assert.equal(autoDelivery.state, "bound");
-          assert.equal(
-            autoDelivery.run_id,
-            autoRun.id,
-            "F4b the automatic delivery is bound to the run it opened",
-          );
-          const humanInAuto = send(dmAuto.id, "P7 human insert while idle continuation runs");
-          assert.equal(
-            row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", dmAuto.id).n,
-            runsBeforeAuto + 1,
-            "F4b a human message never duplicates the automatic run",
-          );
-          assert.equal(
-            row("SELECT run_id FROM agent_run_input WHERE message_id=?", humanInAuto.id).run_id,
-            autoRun.id,
-            "F4b the human message fills the automatic run instead of racing it",
-          );
-          const autoActor = running(dmAuto.id, profileC);
-          const pendingAuto = delivery.pendingContinuations(autoRun.id);
-          assert.equal(
-            pendingAuto.length,
-            1,
-            "F4b one bound continuation is pending for the running run",
-          );
-          const delivered: any[] = [];
-          const admittedAt = new Date();
-          delivery.admitContinuation(autoDelivery.id, autoRun.id, admittedAt, (envelope: any) =>
-            delivered.push(envelope),
-          );
-          assert.equal(delivered.length, 1, "F4b the automatic instruction is admitted once");
-          assert.equal(delivered[0].deliveryId, autoDelivery.id);
-          assert.equal(
-            delivery.admitContinuation(autoDelivery.id, autoRun.id, admittedAt, (envelope: any) =>
-              delivered.push(envelope),
-            ),
-            undefined,
-            "F4b admission is idempotent",
-          );
-          assert.equal(delivered.length, 1);
-          assert.equal(
-            row("SELECT state FROM continuation_delivery WHERE id=?", autoDelivery.id).state,
-            "admitted",
-          );
-          assert(autoActor.runId === autoRun.id);
-          // Human `off` removes the schedule: no further automatic run may appear.
-          const continuationView: any = continuation.getChatContinuation(
-            project.id,
-            dmAuto.id,
-            ctx,
-          );
-          continuation.applyChatContinuationCommand(
-            {
-              projectId: project.id,
-              chatId: dmAuto.id,
-              action: "disable",
-              expectedRevision: continuationView.view.revision,
-              requestId: req(),
-              reason: "P7 human pause",
-            },
-            ctx,
-            new Date(),
-          );
-          assert.equal(
-            row("SELECT COUNT(*) n FROM chat_schedule WHERE chat_id=?", dmAuto.id).n,
-            0,
-            "F4b human pause removes the automatic schedule",
-          );
-          const evaluationsBefore = row(
-            "SELECT COUNT(*) n FROM wake_evaluation WHERE chat_id=?",
-            dmAuto.id,
-          ).n;
-          const runsAfterAuto = row(
-            "SELECT COUNT(*) n FROM agent_run WHERE chat_id=?",
-            dmAuto.id,
-          ).n;
-          clockNow = new Date(clockNow.getTime() + schedule.INTERVAL_MS * 2);
-          await scheduler.advance();
-          await scheduler.settled();
-          scheduler.stop();
-          assert.equal(
-            row("SELECT COUNT(*) n FROM wake_evaluation WHERE chat_id=?", dmAuto.id).n,
-            evaluationsBefore,
-            "F4b a paused Chat is never checked again",
-          );
-          assert.equal(
-            row("SELECT COUNT(*) n FROM agent_run WHERE chat_id=?", dmAuto.id).n,
-            runsAfterAuto,
-            "F4b continuation never races a human pause",
-          );
           // F4c stop: a settled run cannot be stopped twice; the refusal is an explicit conflict
           // rather than a silent no-op that would look like a successful stop.
           const stopChat = chats.createDirectChat(project.id, profileB.id, ctx).chat;
@@ -982,13 +805,6 @@ if (mode === "restart" && !phase) {
           pass("F4c stop refusal on an already settled run", {
             runId: stopActor.runId,
             code: "conflict",
-          });
-          pass("F4b idle automatic continuation and human insertion", {
-            chatId: dmAuto.id,
-            automatedRun: autoRun.id,
-            delivery: autoDelivery.id,
-            humanInput: humanInAuto.id,
-            pause: "chat_schedule removed, zero further evaluations",
           });
         }
       }

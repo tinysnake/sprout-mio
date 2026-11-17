@@ -1,5 +1,7 @@
 # P5a 数据形状：多人对话、成员真值与唤醒路由
 
+> **历史记录：** Group 与公共频道已被 Crew 取代并从产品中移除；本文只用于追溯当时的事实。
+
 本章把 Chat 从「单分身 DM」扩成三种对话。迁移 `drizzle/0021_p5a_multichat_schema.sql` 到 `drizzle/0024_p5a_agent_run_message_chat_fk.sql`，其中 `0023` 只删一条早期触发器，`0024` 重建 `agent_run` 以加复合外键。既有 DM 行不改写，靠默认值与回填保持可读。
 
 ## 对话：`chat`

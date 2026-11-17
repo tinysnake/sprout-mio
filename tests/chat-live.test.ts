@@ -15,7 +15,6 @@ import { compareMessageCursor, laterMessageCursor } from "../src/contracts/chat"
 import type { ChatResult, Message, MessageWindow } from "../src/contracts/chat";
 import type { AppResult } from "../src/contracts/result";
 import type { CrewDelegationRail } from "../src/contracts/delegation";
-import type { ChatContinuationData } from "../src/domain/chat-continuation";
 import { latestActivityAt } from "../src/components/chat/chat-list";
 
 // Risk → evidence: 活跃 run 期间的请求数与后台流量、隐藏页面、轮询重叠、
@@ -55,68 +54,6 @@ const failedRunState = {
   requestId: "req_1",
 } as unknown as AgentRunResult<ChatRunState>;
 
-/** 判定读也是 tick 的一部分：判定不改消息也不改 run，缺这块页面就永远停在旧状态。 */
-const continuationView = {
-  projectId: "prj_00000001",
-  chatId: "cnv_00000001",
-  mode: "enabled",
-  epoch: 1,
-  revision: 1,
-  owner: { kind: "agent", id: "agp_00000001" },
-  changedBy: null,
-  changedAt: null,
-  reason: null,
-  assignedTaskIds: [],
-  nextDueAt: null,
-  activeRunIds: [],
-  remindedHuman: false,
-  latestEvaluation: null,
-  recentRounds: [],
-  deliveries: [],
-  attention: null,
-} as ChatContinuationData["view"];
-
-const continuationFacts = {
-  ok: true,
-  data: {
-    view: continuationView,
-    allowedActions: [],
-    denials: {},
-  },
-  requestId: "req_1",
-} as unknown as AppResult<ChatContinuationData>;
-const continuationRead = async () => continuationFacts;
-
-/** 只换判定状态，其余字段不动：用来验证「判定变了要不要重读整树」。 */
-function continuationWith(state: "claimed" | "attention"): AppResult<ChatContinuationData> {
-  const failed = state === "attention";
-  return {
-    ok: true,
-    data: {
-      view: {
-        ...continuationView,
-        latestEvaluation: {
-          evaluationId: "evaluation_0001",
-          source: "task_periodic",
-          state,
-          round: 1,
-          attempt: 1,
-          claimedAt: "2026-01-02T03:04:05.000Z",
-          finishedAt: failed ? "2026-01-02T03:09:05.000Z" : null,
-          evaluatedAt: failed ? "2026-01-02T03:09:05.000Z" : null,
-          nextAttemptAt: null,
-          result: null,
-          errorCode: failed ? "provider_timeout" : null,
-          usage: null,
-        },
-      },
-      allowedActions: [],
-      denials: {},
-    },
-    requestId: "req_1",
-  } as unknown as AppResult<ChatContinuationData>;
-}
-
 function environment(visible = true) {
   const document = Object.assign(new EventTarget(), {
     visibilityState: visible ? ("visible" as const) : ("hidden" as const),
@@ -132,98 +69,9 @@ afterEach(() => {
 });
 
 describe("Chat 活跃 run 的定点刷新", () => {
-  it("一个 tick 同时发起消息、run 状态与判定三个读，不等前一个回来", async () => {
-    const started: string[] = [];
-    const settle: (() => void)[] = [];
-    stops.push(
-      createChatLiveRefresh({
-        seed: emptySeed,
-        reads: {
-          messages: () => {
-            started.push("messages");
-            return new Promise((resolve) => settle.push(() => resolve(emptyWindow)));
-          },
-          runState: () => {
-            started.push("runState");
-            return new Promise((resolve) =>
-              settle.push(() => resolve(state(run("run_a", "running")))),
-            );
-          },
-          continuation: () => {
-            started.push("continuation");
-            return new Promise((resolve) => settle.push(() => resolve(continuationFacts)));
-          },
-        },
-        onFacts: vi.fn(),
-        onRunChanged: vi.fn(),
-        seedSignature: "run_a:running",
-        environment: environment(),
-      }),
-    );
-    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
-    // 三个读都已在途：串行等待会让数组只剩一个元素。
-    expect(started).toEqual(["messages", "runState", "continuation"]);
-    settle.forEach((resolve) => resolve());
-    await vi.advanceTimersByTimeAsync(0);
-    expect(started).toHaveLength(3);
-  });
-
-  it("判定状态每 tick 都回传页面，不必等 run 变化触发整树重读", async () => {
-    const facts: ChatLiveFacts[] = [];
-    const onRunChanged = vi.fn();
-    stops.push(
-      createChatLiveRefresh({
-        seed: emptySeed,
-        reads: {
-          messages: async () => emptyWindow,
-          runState: async () => state(run("run_a", "running")),
-          continuation: async () => continuationFacts,
-        },
-        onFacts: (next) => facts.push(next),
-        onRunChanged,
-        seedSignature: "run_a:running",
-        environment: environment(),
-      }),
-    );
-    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
-    await vi.advanceTimersByTimeAsync(0);
-    // 判定从 pending 走到 claimed 时 run 没有任何变化；页面仍拿到新的 continuation。
-    expect(facts.at(-1)?.continuation).toBe(continuationFacts);
-    expect(onRunChanged).not.toHaveBeenCalled();
-  });
-
-  it("判定从正在检查落到失败时回报一次整树重读", async () => {
-    const readings = [continuationWith("claimed"), continuationWith("attention")];
-    const onRunChanged = vi.fn();
-    stops.push(
-      createChatLiveRefresh({
-        seed: emptySeed,
-        reads: {
-          continuation: () => Promise.resolve(readings.shift() ?? continuationWith("attention")),
-          messages: vi.fn().mockResolvedValue(emptyWindow),
-          runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
-        },
-        onFacts: vi.fn(),
-        onRunChanged,
-        seedSignature: "run_a:running",
-        environment: environment(),
-      }),
-    );
-    // 首个 tick 只立基准：判定已经处于 claimed，也不为对齐它重读整树。
-    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
-    expect(onRunChanged).not.toHaveBeenCalled();
-    // 判定落到失败：run 没动、消息没动，只由 loader 读来的 Info Hub 读视图也必须跟上。
-    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
-    expect(onRunChanged).toHaveBeenCalledTimes(1);
-    // 同一份判定再读到时不重复重读，不制造来回 invalidate。
-    await vi.advanceTimersByTimeAsync(CHAT_LIVE_INTERVAL_MS);
-    expect(onRunChanged).toHaveBeenCalledTimes(1);
-  });
-
   it("页面隐藏时不发请求，切回可见立刻补一次", async () => {
     const env = environment(false);
     const refresh = {
-      continuation: vi.fn().mockResolvedValue(continuationFacts),
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
@@ -248,7 +96,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
   it("上一次读数还没回来就跳过这一轮，不叠请求", async () => {
     let pending: (() => void) | undefined;
     const reads = {
-      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi
         .fn()
@@ -287,7 +134,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState,
         },
@@ -316,7 +162,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState,
         },
@@ -342,7 +187,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue({
             ok: true,
             data: {
@@ -375,7 +219,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
         },
@@ -397,7 +240,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
       createChatLiveRefresh({
         seed: emptySeed,
         reads: {
-          continuation: continuationRead,
           messages: vi.fn().mockResolvedValue(emptyWindow),
           runState: vi.fn().mockResolvedValue(state(run("run_a", "queued"))),
         },
@@ -413,7 +255,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("loader 已知的空闲指纹不触发重读，也不继续轮询", async () => {
     const reads = {
-      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "completed"))),
     };
@@ -435,7 +276,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("一次读失败不回报、不停止，下一轮继续读", async () => {
     const reads = {
-      continuation: continuationRead,
       messages: vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"))),
     };
@@ -461,7 +301,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("停止后不再发请求，也不再报重读", async () => {
     const reads = {
-      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(state(run("run_a", "running"), run("run_b", "queued"))),
     };
@@ -484,7 +323,6 @@ describe("Chat 活跃 run 的定点刷新", () => {
 
   it("run 状态读不到时不改门禁，继续轮询", async () => {
     const reads = {
-      continuation: continuationRead,
       messages: vi.fn().mockResolvedValue(emptyWindow),
       runState: vi.fn().mockResolvedValue(failedRunState),
     };
@@ -566,7 +404,6 @@ describe("消息增量读的游标", () => {
       createChatLiveRefresh({
         seed: { messages: [message("msg_00000001")], cursor: "2026:4" },
         reads: {
-          continuation: continuationRead,
           messages: (after) => {
             asked.push(after);
             return Promise.resolve(replies.shift() ?? reply([], "2026:5"));
@@ -589,7 +426,6 @@ describe("消息增量读的游标", () => {
       createChatLiveRefresh({
         seed: { messages: [message("msg_00000001"), message("msg_00000002")], cursor: "2026:2" },
         reads: {
-          continuation: continuationRead,
           // loader 与 tick 的竞态：第二条两边都有，只追加后面那条。
           messages: () =>
             Promise.resolve(reply([message("msg_00000002"), message("msg_00000003")], "2026:3")),
@@ -612,7 +448,6 @@ describe("消息增量读的游标", () => {
     const refresh = createChatLiveRefresh({
       seed: { messages: [message("msg_00000001")], cursor: "2026:1" },
       reads: {
-        continuation: continuationRead,
         messages: (after) => {
           asked.push(after);
           if (settleFirst) return Promise.resolve(reply([message("msg_00000005")], "2026:8"));
@@ -682,7 +517,6 @@ describe("消息增量读的游标", () => {
         reads: {
           messages: async () => emptyWindow,
           runState: async () => state(),
-          continuation: continuationRead,
           crewDelegations: read,
         },
         onFacts: vi.fn(),

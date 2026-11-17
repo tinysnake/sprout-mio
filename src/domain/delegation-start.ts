@@ -21,7 +21,7 @@ function readStart(delegationId: string): DelegationStartOutcome {
         ...(row.workerInstanceId ? [eq(agentRun.instanceId, row.workerInstanceId)] : []),
       ),
     )
-    // Observe the dispatch's first run, not later input/continuation wakes.
+    // Observe the dispatch's first run, not runs started by later input.
     // queuedAt has second precision and IDs are random; rowid preserves insertion order.
     .orderBy(sql`${agentRun}.rowid asc`)
     .get();

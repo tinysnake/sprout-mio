@@ -306,7 +306,7 @@ await check("挂靠超时提醒在 Chat 里是一条消息，不像按钮（ligh
     assert.match(text, /已经超过 30 分钟/);
     // 「不触发唤醒」只来自域层正文（人类 owner 的那版），不是界面另加的声明。
     assert.match(text, /不触发唤醒/);
-    assert.match(text, /不触发自动接续/);
+    assert.doesNotMatch(text, /自动接续/);
     // T4：它是一条消息，不是「点了会发生什么」；也不该显示成没有运行关联的异常。
     assert.equal(await notice.locator("a").count(), 0);
     assert.equal(await notice.locator("button").count(), 0);

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { AppResult } from "./result";
 import { appIdPattern, ID_PREFIXES } from "./ids";
-import { projectWakePolicySchema, wakeProviderSchema } from "./project-wake-policy";
 
 export const projectKindSchema = z.enum(["coding", "work", "custom"]);
 export type ProjectKind = z.infer<typeof projectKindSchema>;
@@ -31,41 +30,11 @@ export const updateProjectInput = z
   });
 export type UpdateProjectInput = z.infer<typeof updateProjectInput>;
 
-/** Public provider readiness, without credentials or configuration secrets. */
-export const wakeProviderAvailabilitySchema = z
-  .strictObject({
-    provider: wakeProviderSchema,
-    configured: z.boolean(),
-    available: z.boolean(),
-    unavailableReason: z
-      .enum(["missing_credentials", "missing_model", "provider_unavailable"])
-      .nullable(),
-  })
-  .refine(
-    (value) =>
-      value.available
-        ? value.configured && value.unavailableReason === null
-        : value.unavailableReason !== null,
-    "Unavailable provider requires a reason; available provider must be configured",
-  );
-export type WakeProviderAvailability = z.infer<typeof wakeProviderAvailabilitySchema>;
-
-/** Model and credentials are server configuration; Human selects only the provider. */
-export const updateProjectWakePolicyInputSchema = z.strictObject({
-  projectId: projectIdSchema,
-  provider: wakeProviderSchema,
-  expectedConfigRevision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  requestId: z.string().regex(appIdPattern(ID_PREFIXES.request)),
-});
-export type UpdateProjectWakePolicyInput = z.infer<typeof updateProjectWakePolicyInputSchema>;
-
 /** Project 的 ID 和 ISO 时间在边界解析，缺失字段或非法日期不能通过。 */
 export const projectSchema = createProjectInput.extend({
   id: projectIdSchema,
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
-  wakePolicy: projectWakePolicySchema.optional(),
-  wakeProviderAvailability: z.array(wakeProviderAvailabilitySchema).optional(),
 });
 /** 字段形状由 schema 推导，文本与日期约束在解析时保证。 */
 export type Project = z.infer<typeof projectSchema>;

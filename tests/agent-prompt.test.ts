@@ -39,7 +39,8 @@ describe("crew lead 的 system prompt", () => {
       "按名字与工作描述挑人，勿凭职级或习惯",
       "结束这一轮就是等待，sleep 后查或循环调用 sprout_delegation_list 都是错的",
       "重试同次派发保持成员与 request 文本不变",
-    ]) expect(crewLeadPrompt).toContain(rule);
+    ])
+      expect(crewLeadPrompt).toContain(rule);
     expect(crewLeadPrompt).toContain("更多工具用tool_search找");
     expect(crewLeadPrompt).toContain("只承诺");
     expect(crewLeadPrompt).toContain(persona);

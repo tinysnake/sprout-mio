@@ -7,8 +7,7 @@ import type { AutomationSource } from "../../contracts/automation";
 import type { Chat, ChatKind, ChatResult, Message } from "../../contracts/chat";
 import type { FieldErrors } from "../../contracts/project";
 import type { InfoHubRunSummary } from "../../contracts/info-hub";
-import type { ChatContinuationData } from "../../domain/chat-continuation";
-import type { AppError, AppResult } from "../../contracts/result";
+import type { AppError } from "../../contracts/result";
 import { InspectorButtons } from "./inspector-buttons";
 import { ChatErrorNotice } from "./chat-error-notice";
 import { MessageComposer } from "./message-composer";
@@ -139,7 +138,6 @@ export function ChatThread({
   automationRuleLink,
   skills = { state: "unavailable", items: [] },
   onSkillsRefresh,
-  continuation,
   archived = false,
   history,
 }: {
@@ -200,7 +198,6 @@ export function ChatThread({
   runActivitiesError?: string;
   skills?: import("../../contracts/skill").ChatSkillChoices;
   onSkillsRefresh?: () => void;
-  continuation?: AppResult<ChatContinuationData>;
   archived?: boolean;
   /** 自动化消息的来源规则入口由容器注入，演示场景不传即不渲染。 */
   automationRuleLink?: (source: AutomationSource) => ReactNode;
@@ -504,7 +501,6 @@ export function ChatThread({
               agentNames={runAgentNames}
               onStopRun={onStopRun}
               stoppingRunId={stoppingRunId}
-              continuation={continuation}
             />
           </>
         )}

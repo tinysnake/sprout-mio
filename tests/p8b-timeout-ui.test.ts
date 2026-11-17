@@ -115,7 +115,8 @@ describe("挂靠超时提醒在界面上是一条消息", () => {
     // 域层只对**人类 owner** 的正文写「不触发唤醒」，对 agent owner 是直接唤醒：
     // 界面再加一条统一声明，就等于把 agent owner 那条说反了。
     const domain = readFileSync(new URL("../src/domain/lease-timeout.ts", import.meta.url), "utf8");
-    expect(domain).toContain("不触发唤醒、也不触发自动接续");
+    expect(domain).toContain("不触发唤醒");
+    expect(domain).not.toContain("自动接续");
     expect(domain).toContain('if (owner.kind !== "agent") return { ok: true };');
 
     // 界面自己只负责把这条消息渲染出来，名字里不许带唤醒口径。

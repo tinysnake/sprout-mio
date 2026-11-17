@@ -1,3 +1,5 @@
+> **历史记录：** 本章的「对话接续留给 P6」对应的 P6a 链路已随 Crew 迁移整体移除；正文只用于追溯当时的事实。
+
 # P5b 数据形状：Task 四态、记录与开始投递
 
 本章新增 Project 所有、Chat 承接的 Task，冻结契约见 `src/contracts/task.ts`、`src/contracts/task-capabilities.ts`；迁移为 `drizzle/0025_p5b_tasks.sql`，表定义为 `src/db/schema.ts`。本章同时收紧既有 Chat/run 的输入投递，并为 Agent 的显式点名开放一条接力例外；对话接续留给 P6。

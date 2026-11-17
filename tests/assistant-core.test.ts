@@ -551,10 +551,8 @@ describe("native assistant authority and durable work", () => {
       );
     expect(runs.previousSessionFile(source.run.id, ctx)).toBe("/tmp/assistant-history.jsonl");
   });
-  it("pins Group-owner proposals and permits an explicit Agent under a Human owner without fanout", () => {
+  it("pins a Crew proposal to its lead without fanout", () => {
     const source = activeHelper();
-    const other = createAgentProfile({ name: "Group second worker" }, ctx);
-    addProjectMember(project.id, other.id, ctx);
     const actor = { kind: "human" as const, userId: ctx.userId, ctx };
     let group = createCrewChat(
       project.id,
@@ -564,28 +562,19 @@ describe("native assistant authority and durable work", () => {
         members: [
           { kind: "human", id: ctx.userId },
           { kind: "agent", id: worker.id },
-          { kind: "agent", id: other.id },
         ],
         initialOwner: { kind: "agent", id: worker.id },
-        wakePolicy: "owner_led",
       },
       actor,
     );
     const pinned = proposalRecord(
       source,
-      { kind: "group_owner", projectId: project.id, chatId: group.id },
+      { kind: "crew", projectId: project.id, chatId: group.id },
       "Pinned concrete operation",
       instant,
     );
-    const pinnedReceipt = assistant.confirmAssistantProposal(pinned.id, dm.id, ctx, instant);
-    expect(pinnedReceipt.messageId).toBeTruthy();
-    const explicit = proposalRecord(
-      source,
-      { kind: "group_agent", projectId: project.id, chatId: group.id, agentProfileId: other.id },
-      "Only the explicit Agent",
-      instant,
-    );
-    const receipt = assistant.confirmAssistantProposal(explicit.id, dm.id, ctx, instant);
+    const receipt = assistant.confirmAssistantProposal(pinned.id, dm.id, ctx, instant);
+    expect(receipt.messageId).toBeTruthy();
     const input = sqlite
       .prepare(
         "SELECT i.*,r.instance_id FROM agent_run_input i JOIN agent_run r ON r.id=i.run_id WHERE i.message_id=?",
@@ -596,7 +585,7 @@ describe("native assistant authority and durable work", () => {
         .prepare("SELECT count(*) AS n FROM agent_run_input WHERE message_id=?")
         .get(receipt.messageId),
     ).toEqual({ n: 1 });
-    expect(input.instance_id).toBe(explicit.instanceId);
+    expect(input.instance_id).toBe(chats.ensureInstance(group.id, worker.id, ctx).id);
     expect(() =>
       setChatOwnerCompat(group.id, { kind: "agent", id: worker.id }, group.governanceRevision, {
         kind: "human",
@@ -613,11 +602,9 @@ describe("native assistant authority and durable work", () => {
       group.governanceRevision,
       actor,
     );
+    expect(() => assistant.confirmAssistantProposal(pinned.id, dm.id, ctx, instant)).not.toThrow();
     expect(() =>
-      assistant.confirmAssistantProposal(explicit.id, dm.id, ctx, instant),
-    ).not.toThrow();
-    expect(() =>
-      sqlite.prepare("UPDATE assistant_proposal SET body='forged' WHERE id=?").run(explicit.id),
+      sqlite.prepare("UPDATE assistant_proposal SET body='forged' WHERE id=?").run(pinned.id),
     ).toThrow("immutable");
     expect(() =>
       sqlite.prepare("UPDATE message SET body='forged' WHERE id=?").run(receipt.messageId),
@@ -789,19 +776,18 @@ describe("native assistant authority and durable work", () => {
           { kind: "agent", id: secondWorker.id },
         ],
         initialOwner: { kind: "human", id: ctx.userId },
-        wakePolicy: "owner_led",
       },
       { kind: "human", userId: ctx.userId, ctx },
     );
     const firstInstance = chats.ensureInstance(group.id, worker.id, ctx);
     const secondInstance = chats.ensureInstance(group.id, secondWorker.id, ctx);
-    const existing = runs.allocateContinuationRun(
+    const existing = runs.allocateRunFor(
       { projectId: project.id, chatId: group.id, instanceId: firstInstance.id },
       ctx.requestId,
       now,
     );
     const watch = observer.setAssistantWatch(dm.id, project.id, group.id, true, ctx, now, 60);
-    const short = runs.allocateContinuationRun(
+    const short = runs.allocateRunFor(
       { projectId: project.id, chatId: group.id, instanceId: secondInstance.id },
       ctx.requestId,
       new Date(now.getTime() + 1000),

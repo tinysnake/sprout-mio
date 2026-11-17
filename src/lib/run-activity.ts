@@ -192,8 +192,6 @@ function describeKnown(
       return describe(toolName, "task", "读取对话", hint(args));
     case "sprout_chat_send":
       return describe(toolName, "task", "发送消息", hint(args));
-    case "sprout_chat_continuation_get":
-      return describe(toolName, "task", "读取对话接续", hint(args));
     case "sleep":
       return describe(
         toolName,

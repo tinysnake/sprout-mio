@@ -4,9 +4,9 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # I-P8b 集成线验收：①「阻塞式申请遇阻等待」真的接到 Agent 工具链（extension 侧 lease_get 循环，
 # 不新造 remote call type）；②超时提醒 / 2 小时升级 / 到点自决走真实链路——真 SQLite、真 runtime、
 # 真 process-scoped grant、真 HTTP 网关（remoteAgentResponse）、真 PiSessionProcess、真
-# registerRemoteTools + createRemoteClient，并由生产驱动路径 createContinuationScheduler.advance()
+# registerRemoteTools + createRemoteClient，并由生产驱动路径 createScheduler.advance()
 # 触发 sweep，而不是直接调 sweepLeaseEscrowTimeouts。
-# 时限压缩：Project 级 wake_policy.leaseTimeouts 把默认 30 分钟 / 2 小时压到 4 秒 / 60 秒——
+# 时限压缩：Project 级 runtime_policy.leaseTimeouts 把默认 30 分钟 / 2 小时压到 4 秒 / 60 秒——
 # 改的是产品本来就支持的同一个配置、产品代码读的是同一常量（LEASE_TIMEOUT_DEFAULT_MS /
 # LEASE_ESCALATION_DEFAULT_MS 只在 Project 未覆盖时生效），不是测试替身。
 verification_dir="$(mktemp -d "${TMPDIR:-/tmp}/sprout-p8b-timeout-int.XXXXXX")"
@@ -22,8 +22,8 @@ export no_proxy="$NO_PROXY"
 pnpm exec vp test run tests/remote-tools.test.ts
 
 # 2) 真实链路：等待期间只发只读 lease_get、持有者完全不可见、不抢占不释放；Agent owner 超时
-#    真的造出 queued run 并在提醒里说明处理什么；人类 owner 只提醒一次、零唤醒、零自动接续；
-#    T10 关闭自动接续的 chat 照样提醒与升级；再过升级时限升级 Human 并暂停 owner 自动尝试；
+#    真的造出 queued run 并在提醒里说明处理什么；人类 owner 只提醒一次、零唤醒；
+#    提醒与升级不受运行时开关影响；再过升级时限升级 Human 并暂停 owner 自动尝试；
 #    超时绝不释放租约。
 DATABASE_URL="$verification_dir/integration.sqlite" \
   pnpm exec vp test run tests/p8b-timeout-integration.test.ts
@@ -31,5 +31,5 @@ DATABASE_URL="$verification_dir/integration.sqlite" \
 printf 'PASS P8b tool wiring + real-chain timeout acceptance: sprout_lease_wait over the existing\n'
 printf '     lease_get channel (failure with reason at deadline, never pending-as-failure), holder\n'
 printf '     invisible and lease untouched while waiting, agent-owner wake run vs human-owner\n'
-printf '     chat-only reminder, remind-once, T10 reminder/escalation with continuation off, 2h\n'
+printf '     chat-only reminder, remind-once, reminder/escalation, 2h\n'
 printf '     escalation with paused owner attempts, and lease never released by timeout\n'

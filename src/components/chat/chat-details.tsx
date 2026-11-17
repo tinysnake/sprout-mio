@@ -1,13 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { ContinuationPanel } from "../continuation/continuation-panel";
-import type { ContinuationPageData } from "../continuation/continuation-page-data";
 import type { FormEvent } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowLeft, ChevronRight, PanelRightClose, ShieldCheck } from "lucide-react";
 import { agentDetailFromChat } from "../agent/agent-detail-search";
 import { chatTimeLabel } from "./format";
 import type { AgentProfile, AgentResult, ProjectMember } from "../../contracts/agent";
-import type { ChatMember, ChatSession, ChatWakePolicy } from "../../contracts/chat";
+import type { ChatMember, ChatSession } from "../../contracts/chat";
 import { chatDisplayTitle } from "../../contracts/chat";
 import type { ChatInfoView, ChatRunAggregate, InfoHubResult } from "../../contracts/info-hub";
 import type { TurnContextReadResult } from "../../contracts/turn-context";
@@ -41,12 +39,6 @@ import { governanceNote } from "./chat-governance";
 import type { ChatMachineFacts } from "./chat-loader";
 import { LeaseOverview } from "../machine/lease-panel";
 
-const WAKE_POLICY_LABELS: Record<ChatWakePolicy, string> = {
-  owner_led: "lead 接收",
-  mention_only: "仅点名",
-  contextual: "自动判定",
-};
-
 function memberKey(member: Pick<ChatMember, "memberKind" | "memberId">) {
   return `${member.memberKind}:${member.memberId}`;
 }
@@ -70,7 +62,6 @@ export function ChatDetails({
   machineFacts = null,
   machineFactsError,
   onBrowseMachine,
-  continuation,
   tabs,
   onClose,
   crewRail,
@@ -92,7 +83,6 @@ export function ChatDetails({
   machineFactsError?: AppError;
   /** 租约那一行的「浏览文件」：换右栏的文件来源，与租约状态无关。 */
   onBrowseMachine?: (machineId: string) => void;
-  continuation?: ContinuationPageData;
   /** 右栏的页签：给了就顶掉「会话详情」标题，两个页签在两个视图里都在。 */
   tabs?: ReactNode;
   onClose: () => void;
@@ -125,7 +115,7 @@ export function ChatDetails({
   const currentMembers: ChatMember[] = members.ok ? members.data : [];
   const leadCandidates = currentMembers.filter((member) => member.memberKind === "agent");
   const governanceCopy = governanceNote(chat.kind, governance);
-  // 资料块跟着成员行的选中态；默认不选中，群组里因此没有「第一个 Agent」的猜测。
+  // 资料块跟着成员行的选中态；默认不选中，Crew 里因此没有「第一个 Agent」的猜测。
   // DM 只有一个 Agent 成员、没有歧义，沿用 P4b 的默认展示。
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
 
@@ -361,10 +351,6 @@ export function ChatDetails({
             </summary>
             <div className="space-y-3 pt-3">
               <dl className="grid grid-cols-[4rem_minmax(0,1fr)] gap-y-1.5 text-[11px]">
-                <dt className="text-muted-foreground">唤醒策略</dt>
-                <dd data-testid="chat-wake-policy" className="whitespace-nowrap">
-                  {WAKE_POLICY_LABELS[chat.wakePolicy]}
-                </dd>
                 <dt className="text-muted-foreground">治理版本</dt>
                 <dd data-testid="chat-governance-revision">{chat.governanceRevision}</dd>
                 <dt className="text-muted-foreground">标题</dt>
@@ -408,10 +394,6 @@ export function ChatDetails({
             </div>
           </details>
         )}
-        {/* 对话自动化与活动相邻，都在讲「运行」；它排在活动之上，会话事实排在最下面。 */}
-        <div data-testid="chat-details-continuation" className="border-b border-border py-4">
-          <ContinuationPanel data={continuation} chatKind={chat.kind} />
-        </div>
         {/* 当前运行状态在中栏展示；活动段按需展开诊断。 */}
         <details
           data-testid="chat-details-activity"

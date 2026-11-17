@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { Chat, ChatMemberInput, ChatWakePolicy } from "../../src/contracts/chat";
+import type { Chat, ChatMemberInput } from "../../src/contracts/chat";
 import { newId, ID_PREFIXES } from "../../src/contracts/ids";
 import { db } from "../../src/db";
 import { chat, chatMember, crewControl, project } from "../../src/db/schema";
@@ -11,7 +11,6 @@ type LegacyCrewInput = {
   title?: string | null;
   members: ChatMemberInput[];
   initialOwner?: { kind: "human" | "agent"; id: string };
-  wakePolicy?: ChatWakePolicy;
 };
 
 /**
@@ -36,8 +35,6 @@ export function createCrewChat(projectId: string, input: LegacyCrewInput, actor:
       title: input.title ?? null,
       ownerKind: "human",
       ownerId: owner.createdBy,
-      wakePolicy:
-        input.wakePolicy === "contextual" ? "owner_led" : (input.wakePolicy ?? "owner_led"),
       createdBy: actor.ctx.userId,
       createdAt: now,
       updatedAt: now,

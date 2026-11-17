@@ -82,7 +82,6 @@ function crew() {
     {
       projectId: project.id,
       title: "Start",
-      wakePolicy: "owner_led",
       initialOwner: { kind: "agent", id: lead.id },
       members: [
         { kind: "human", id: ctx.userId },

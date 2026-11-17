@@ -264,6 +264,8 @@ Human 返回后，提供待体验章节、可运行版本、体验步骤与已�
 
 ### I-P6a 集成对话接续与人类控制
 
+> **已移除：** 对话接续与唤醒判定已随 Crew 迁移整体删除（`drizzle/0069_remove_continuation.sql`）。本节保留作历史记录；下列条目因原证据脚本与产品能力一起删除而不再勾选，不能作为当前验收证据。
+
 P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按已裁定的 P6a/P6b/P6c 拆成三个完整集成单元。拆章不减少一期范围，不把未交付条目记作完成。
 
 对应 [P6a](development-plan-functional.md#p6a-完成对话接续与人类控制) 与 [UI-P6a](development-plan-ui.md#ui-p6a-完成对话接续与人类控制呈现)。依赖 P4、P5 全部集成单元技术验收通过及 P6a 契约就绪；先核对 P5b 的 Human 确认状态并独立保留。集成分支 `integration/p6a`，数据库迁移从 0026 申请。
@@ -273,10 +275,10 @@ P6 原先“暂按整章集成”是契约未冻结时的暂定安排；现按�
 - 异常与回归：无 assigned 不触发；判定失败不自动切换 provider；重复/撤权/改派/运行中补充；admitted 未确认不重投；暂停/停止后跨重启仍阻断对话接续。
 - 证据：固定中文 fixtures 与真实模型采用结论、调度/投递/退避恢复记录、Human 控制前后对照、页面证据；P3/P5 遗留输入处置按已冻结契约核对，不自行加产品状态。
 
-- [x] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6a 功能线证据](../../p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`；已知限制见 [P6a 已知限制](../../p6a/summary.md#已知限制)。
-- [x] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6a UI 线证据](../../p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；页面形状为 Human 选定的方案 A。
-- [x] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6a 集成线与技术验收证据](../../p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`；第二轮独立验收在 `303fbf5` 判「可以合入 main」（验收报告在编排目录，不进本仓库）。
-- [x] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [human-体验确认](../../p6a/summary.md#human-体验确认)，版本 `fef2612`；重跑 `bash scripts/verify/p6a-pages.sh`。
+- [ ] 功能线交付就绪，编排者已核对本单元范围、版本、验证证据与已知限制。证据 [P6a 功能线证据](../../p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`、`bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`；已知限制见 [P6a 已知限制](../../p6a/summary.md#已知限制)。
+- [ ] UI 线交付就绪，编排者已核对 Human 确定的设计、演示代码与自检证据。证据 [P6a UI 线证据](../../p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；页面形状为 Human 选定的方案 A。
+- [ ] 集成线完成接入与自检，独立技术验收通过，编排者已核对结论与可运行版本。证据 [P6a 集成线与技术验收证据](../../p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/bf-p6a-lifecycle.sh`；第二轮独立验收在 `303fbf5` 判「可以合入 main」（验收报告在编排目录，不进本仓库）。
+- [ ] Human 亲自体验并明确确认通过，编排者已记录确认版本。证据 [human-体验确认](../../p6a/summary.md#human-体验确认)，版本 `fef2612`；重跑 `bash scripts/verify/p6a-pages.sh`。
 
 本章技术交付基线为 `bde6383`，契约与总结见 [P6a 契约](../../p6a/contracts.md)和[P6a 章节结论](../../p6a/summary.md)。前三条按证据勾选；Human 体验确认尚未进行，尚无确认版本，第四条保持待办。本轮只改文档，`l-docs` 仍把本章钉成「必须留空」，失败原文与处置见 [计划状态与本轮门禁冲突](../../p6a/summary.md#计划状态与本轮门禁冲突)。
 

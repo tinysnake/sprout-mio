@@ -1,6 +1,4 @@
 import { z } from "zod";
-import { chatContinuationModeSchema } from "./chat-continuation";
-import { wakeEvaluationErrorCodeSchema } from "./wake-evaluation";
 import { leaseViewSchema } from "./lease";
 import { machineConnectionViewSchema, machineIdSchema } from "./machine";
 import { AGENT_RUN_STATUSES, runIdSchema } from "./agent-run";
@@ -257,22 +255,6 @@ export const projectTasksInfoHubViewSchema = chatTasksViewSchema.extend({
 });
 export type ProjectTasksInfoHubView = z.infer<typeof projectTasksInfoHubViewSchema>;
 
-/** P6a summary only; the full continuation read view is a separate authorized query. */
-export const chatContinuationSummarySchema = z
-  .strictObject({
-    mode: chatContinuationModeSchema,
-    epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-    nextDueAt: z.iso.datetime().nullable(),
-    lastDecision: z.enum(["continue", "do_not_continue", "indeterminate"]).nullable(),
-    attentionCode: wakeEvaluationErrorCodeSchema.nullable(),
-    remindedHuman: z.boolean(),
-  })
-  .refine(
-    (value) => value.mode === "enabled" || value.nextDueAt === null,
-    "Disabled continuation has no executable schedule",
-  );
-export type ChatContinuationSummary = z.infer<typeof chatContinuationSummarySchema>;
-
 /**
  * 会话聚合读模型：Info Hub 的 run 列表按会话聚合。
  *
@@ -282,7 +264,6 @@ export type ChatContinuationSummary = z.infer<typeof chatContinuationSummarySche
  * - 不做分页与缓存，也不在一次读里按会话二次查库（N+1 收敛与分页归 P6，followups 已记）。
  */
 export const chatRunAggregateSchema = z.object({
-  continuation: chatContinuationSummarySchema.optional(),
   taskCounts: taskCountsSchema,
   assignedTaskIds: infoHubUniqueArray(taskIdSchema, (id) => id),
   chatId,
@@ -337,7 +318,6 @@ export const chatInstanceViewSchema = z
 /** Chat → 自身与成员视角：归属、成员、分身、消息统计与真实 run 视角。 */
 export const chatInfoViewSchema = z
   .strictObject({
-    continuation: chatContinuationSummarySchema.optional(),
     chatId,
     projectId,
     kind: chatKindSchema,
@@ -447,7 +427,6 @@ export const turnStartContextSchema = z
     chatTitle: z.string(),
     chatKind: chatKindSchema,
     chatArchived: z.boolean(),
-    continuation: chatContinuationSummarySchema.optional(),
     owner: chatOwnerSchema.strict(),
     members: infoHubUniqueArray(
       chatMemberEntrySchema,

@@ -30,12 +30,7 @@ for other in "${INSTANCES[@]}"; do
   [[ "$other_repo" != "$SPROUT_REPO_DIR" ]] || fail "实例 $instance 与 $other 共用仓库目录"
 done
 
-if [[ "$instance" == "prod" ]]; then
-  [[ "${SPROUT_CONTINUATION_ENABLED:-true}" == "true" ]] || fail "prod 的对话接续被关掉了"
-else
-  if [[ "$instance" == "dev" ]]; then
-    [[ "${SPROUT_CONTINUATION_ENABLED:-}" == "false" ]] || fail "dev 必须关掉对话接续，否则会真的判定与投递"
-  fi
+if [[ "$instance" != "prod" ]]; then
   [[ -n "${SPROUT_DRILL_MACHINE_SECRET:-}" ]] || fail "实例 $instance 缺少 SPROUT_DRILL_MACHINE_SECRET"
   hash="$(credential_hash "$SPROUT_DRILL_MACHINE_SECRET")"
   bad="$(sqlite_scalar "$db" "select count(*) from machine_credential where secret_hash <> '$hash'")"
@@ -45,10 +40,6 @@ else
     [[ "$sessions" == "0" ]] || fail "实例 $instance 还留着 $sessions 条登录态"
   fi
 fi
-
-# 对话接续开关按实例 env 的声明值校验：env 里没有这一项时，运行时的默认值是 true。
-# 不再按实例名写死——drill 这类演练实例可以自己决定开关，写死就漏掉了它。
-expected_continuation="${SPROUT_CONTINUATION_ENABLED:-true}"
 
 # 探针会把 git-remote-https 这类子进程留在后面，按进程组收，不只杀直接子进程。
 run_bounded() {
@@ -118,9 +109,7 @@ fi
 port="$(port_for "$instance")"
 health="$(curl -fsS --max-time 2 "http://127.0.0.1:${port}/api/health" 2>/dev/null || true)"
 if [[ -n "$health" ]]; then
-  actual="$(printf '%s' "$health" | node -e 'let body = ""; process.stdin.on("data", (chunk) => { body += chunk; }).on("end", () => { process.stdout.write(String(JSON.parse(body).continuationEnabled)); });')"
-  [[ "$actual" == "$expected_continuation" ]] || fail "实例 $instance 的对话接续开关是 ${actual}，期望 $expected_continuation"
-  say "PASS 实例 $instance 在 ${port} 上健康，continuationEnabled=$actual"
+  say "PASS 实例 $instance 在 ${port} 上健康"
 else
   say "PASS 实例 $instance 静态检查通过（端口 ${port} 上没有服务在跑）"
 fi

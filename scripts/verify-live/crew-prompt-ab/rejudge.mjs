@@ -29,9 +29,14 @@ export function rejudgeRow(input) {
     }
   }
   const leadChatId = row.runs?.find((run) => run.role === "lead")?.chatId;
-  if (leadChatId && [evidence?.runs, evidence?.events, evidence?.delegations].every(Array.isArray)) {
+  if (
+    leadChatId &&
+    [evidence?.runs, evidence?.events, evidence?.delegations].every(Array.isArray)
+  ) {
     try {
-      for (const path of new Set(evidence.runs.map((run) => run.configSnapshot?.sessionFile).filter(Boolean))) {
+      for (const path of new Set(
+        evidence.runs.map((run) => run.configSnapshot?.sessionFile).filter(Boolean),
+      )) {
         audit.evidence.push({ path, sha256: hash(readFileSync(path)) });
       }
       const extracted = factsFrom(evidence, leadChatId);

@@ -118,7 +118,9 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
     const listCalls = tools.filter((tool) => tool.name === "sprout_delegation_list");
     const queryTimesKnown = listCalls.every((tool) => timestampMs(tool.atMs) !== null);
     const queries =
-      toolsKnown && deadline !== null && queryTimesKnown &&
+      toolsKnown &&
+      deadline !== null &&
+      queryTimesKnown &&
       (!corrected || !dispatch || dispatchAt !== null)
         ? listCalls.filter((tool) => {
             const atMs = timestampMs(tool.atMs);
@@ -134,7 +136,9 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
     const actionChecks = [sleepObserved, noRepeatedQueries];
     const leadActionBudget = actionChecks.includes(false)
       ? false
-      : actionChecks.includes(null) ? null : true;
+      : actionChecks.includes(null)
+        ? null
+        : true;
     gate(
       "eventDrivenWait",
       {
@@ -148,16 +152,22 @@ export function taskset2Gates(name, facts, { corrected = false } = {}) {
             }),
         genuinelyLongWorker: workerMs.some((ms) => ms !== null && ms >= config.minWorkerMs)
           ? true
-          : workerMs.includes(null) ? null : false,
+          : workerMs.includes(null)
+            ? null
+            : false,
       },
       {
         sleepMsTotal: facts.sleepMsTotal ?? null,
         queries,
         leadMs,
         workerMs,
-        ...(corrected ? { leadActionBudget: { maxQueries: 1, maxSleepMs: config.maxSleepMs } } : {}),
+        ...(corrected
+          ? { leadActionBudget: { maxQueries: 1, maxSleepMs: config.maxSleepMs } }
+          : {}),
         ...(leadMs === null ? { leadMsReason: "no timing evidence" } : {}),
-        ...(sleepObserved === null ? { sleepMsTotalReason: "no complete lead sleep evidence" } : {}),
+        ...(sleepObserved === null
+          ? { sleepMsTotalReason: "no complete lead sleep evidence" }
+          : {}),
         ...(queries === null ? { queriesReason: "no complete lead query timing evidence" } : {}),
         ...(workerMs.includes(null)
           ? { workerMsReason: "no timing evidence for some worker runs" }

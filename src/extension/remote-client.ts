@@ -28,7 +28,6 @@ import {
   mcpSessionOpenOutputSchema,
 } from "../contracts/mcp";
 import {
-  chatContinuationGetResponseSchema,
   executionCancellationViewSchema,
   executionLogReadViewSchema,
   executionViewSchema,
@@ -58,7 +57,6 @@ const leaseReadSchema = z.strictObject({
 type RemoteData =
   | AssistantResponse
   | z.infer<typeof infoHubViewSchema>
-  | z.infer<typeof chatContinuationGetResponseSchema>
   | z.infer<typeof taskGetResponseSchema>
   | z.infer<typeof taskListResponseSchema>
   | z.infer<typeof taskMutateResponseSchema>
@@ -129,15 +127,6 @@ function readResponse(
         reason: "invalid_response",
       }
     );
-  if (call.type === "chat_continuation_get") {
-    const parsed = chatContinuationGetResponseSchema.safeParse(envelope.data.data);
-    return parsed.success && parsed.data.projectId === call.input.projectId
-      ? {
-          outcome: "response",
-          result: { ok: true, data: parsed.data, requestId: envelope.data.requestId },
-        }
-      : { outcome: "unknown", reason: "invalid_response" };
-  }
   const taskResponse = readTaskChatResponse(envelope.data, request);
   if (taskResponse) return taskResponse;
   if (
@@ -185,7 +174,7 @@ function readResponse(
           value.target.projectId === target.projectId &&
           value.target.kind === target.kind &&
           (!target.chatId || value.target.chatId === target.chatId) &&
-          (target.kind === "group_owner" ||
+          (target.kind === "crew" ||
             ("agentProfileId" in value.target &&
               value.target.agentProfileId === target.agentProfileId &&
               value.agentProfileId === target.agentProfileId))

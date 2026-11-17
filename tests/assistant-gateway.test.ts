@@ -222,7 +222,6 @@ describe("assistant/worker gateway purpose and Human authority matrix", () => {
     const forbidden: Record<string, unknown> = {
       chat_get: projectScope,
       chat_send: { ...projectScope, body: "Forged" },
-      chat_continuation_get: projectScope,
       task_list: projectScope,
       task_get: { ...projectScope, taskId: "tsk_11111111" },
       task_mutate: {

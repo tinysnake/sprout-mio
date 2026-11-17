@@ -74,6 +74,7 @@ it("0041 preserves populated webhook rows/identities and enforces source/config/
       expect(rows(sqlite, "webhook_rule")).toEqual(
         old.webhook_rule.map((row) => ({
           ...(row as object),
+          action: '{"kind":"crew","chatId":"chat"}',
           source: "webhook",
           recoverable_secret: null,
           expression: null,
@@ -82,10 +83,17 @@ it("0041 preserves populated webhook rows/identities and enforces source/config/
         })),
       );
       expect(rows(sqlite, "webhook_trigger")).toEqual(
-        old.webhook_trigger.map((row) => ({ ...(row as object), source: "webhook" })),
+        old.webhook_trigger.map((row) => ({
+          ...(row as object),
+          snapshot: String((row as { snapshot: string }).snapshot).replace(
+            '"kind":"group_owner"',
+            '"kind":"crew"',
+          ),
+          source: "webhook",
+        })),
       );
       const insert = sqlite.prepare(
-        "INSERT INTO webhook_rule(id,project_id,created_by,name,enabled,revision,instruction,action,source,secret_digest,expression,timezone,next_at,created_at,updated_at) VALUES ('cron','project','human','Cron',?,0,'Instruction','{\"kind\":\"group_owner\",\"chatId\":\"chat\"}',?,?,?,?,?,1,1)",
+        "INSERT INTO webhook_rule(id,project_id,created_by,name,enabled,revision,instruction,action,source,secret_digest,expression,timezone,next_at,created_at,updated_at) VALUES ('cron','project','human','Cron',?,0,'Instruction','{\"kind\":\"crew\",\"chatId\":\"chat\"}',?,?,?,?,?,1,1)",
       );
       for (const args of [
         [1, "cron", null, null, "UTC", 1],

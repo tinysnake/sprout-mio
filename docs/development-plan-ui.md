@@ -38,7 +38,7 @@ P4–P7 的带版本 Human 确认保留在各章 summary。P7 已确认除 PWA �
 - <a id="ui-p4d-完成交接收回与移除交互"></a>[UI-P4d 完成交接收回与移除交互](archive/phase-one/development-plan-ui.md#ui-p4d-完成交接收回与移除交互)
 - <a id="ui-p5a-完成多人-chat"></a>[UI-P5a 完成多人 Chat](archive/phase-one/development-plan-ui.md#ui-p5a-完成多人-chat)
 - <a id="ui-p5b-完成-task-总览与生命周期"></a>[UI-P5b 完成 Task 总览与生命周期](archive/phase-one/development-plan-ui.md#ui-p5b-完成-task-总览与生命周期)
-- <a id="ui-p6a-完成对话接续与人类控制呈现"></a>[UI-P6a 完成对话接续与人类控制呈现](archive/phase-one/development-plan-ui.md#ui-p6a-完成对话接续与人类控制呈现)
+- <a id="ui-p6a-完成对话接续与人类控制呈现"></a>[UI-P6a 完成对话接续与人类控制呈现（已移除）](archive/phase-one/development-plan-ui.md#ui-p6a-完成对话接续与人类控制呈现)
 - <a id="ui-p6b-完成-info-hub-全部一期视角呈现"></a>[UI-P6b 完成 Info Hub 全部一期视角呈现](archive/phase-one/development-plan-ui.md#ui-p6b-完成-info-hub-全部一期视角呈现)
 - <a id="ui-p6c-完成成员治理与重新加入呈现"></a>[UI-P6c 完成成员治理与重新加入呈现](archive/phase-one/development-plan-ui.md#ui-p6c-完成成员治理与重新加入呈现)
 - <a id="ui-p7-完成客户端与一期体验验收"></a>[UI-P7 完成客户端与一期体验验收](archive/phase-one/development-plan-ui.md#ui-p7-完成客户端与一期体验验收)

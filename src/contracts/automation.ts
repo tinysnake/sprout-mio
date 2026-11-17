@@ -13,8 +13,7 @@ export const automationActionSchema = z.discriminatedUnion("kind", [
     chatId: chatId.optional(),
     agentProfileId: agentProfileIdSchema,
   }),
-  z.strictObject({ kind: z.literal("group_agent"), chatId, agentProfileId: agentProfileIdSchema }),
-  z.strictObject({ kind: z.literal("group_owner"), chatId }),
+  z.strictObject({ kind: z.literal("crew"), chatId }),
 ]);
 export type AutomationAction = z.infer<typeof automationActionSchema>;
 

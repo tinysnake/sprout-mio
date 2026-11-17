@@ -23,7 +23,7 @@
 
 - Webhook 与 cron 规则都配置在 Project 内，Project 是规则的上层结构。规则的归属与触发动作分开配置。
 - 由 Human 创建、修改和启停自动化配置。首期不开放 Agent 自行管理规则。
-- 触发动作可配置。首期主要向同一 Project 内的 DM 或 Group 发送系统来源消息，唤醒 Agent。内置系统动作留到后续。
+- 触发动作可配置。首期主要向同一 Project 内的 DM 或 Crew 发送系统来源消息，唤醒 Agent。内置系统动作留到后续。
 - 消息目标失效或目标不是可唤醒的 Agent 时，本次触发不执行并记录原因，不自动寻找其他 Agent 替代；后续触发仍按原规则重新检查目标。
 - 使用正常持续运行的服务环境。服务离线时不执行，不建设离线补偿队列。
 - 定时能力先做 cron。不做一次性倒计时，暂缓更丰富的日历交互。
@@ -38,9 +38,9 @@
 
 现有 Chat 是 Project 内的持久协作单元。Task 与 run 有各自的生命周期，不能把每次外部事件都直接等同为创建 Task 或立即启动 run。相关约束沿用[通信决策](communication-decisions.md)与[Tasks 决策](tasks-decisions.md)。
 
-现有 [`chat-schedule.ts`](../src/domain/chat-schedule.ts)处理消息及 `task_periodic` 评估、claim 和 lease。这不是面向 Human 配置的日历 cron。新增定时入口需要明确自己的规则与触发记录，再接入现有协作能力。
+现有 `scheduler.ts` 处理运行期扫描与租约超时，不承担消息唤醒或对话接续；那套能力已随 Crew 迁移移除。新增定时入口需要明确自己的规则与触发记录，再接入现有协作能力。
 
-当前[聊天消息合同](../src/contracts/chat.ts)包含 Human、Agent 和 automation 来源。Project webhook 与 cron 通过冻结的触发收据进入普通 Chat 历史和既有 run input；公开发消息 API 仍只接受 Human / Agent。系统来源不获得 Human、Agent 或 system prompt 的身份与权限。[通信决策](communication-decisions.md)的显式点名与 Group 唤醒边界保持不变。
+当前[聊天消息合同](../src/contracts/chat.ts)包含 Human、Agent 和 automation 来源。Project webhook 与 cron 通过冻结的触发收据进入普通 Chat 历史和既有 run input；公开发消息 API 仍只接受 Human / Agent。系统来源不获得 Human、Agent 或 system prompt 的身份与权限。[通信决策](communication-decisions.md)的 Crew lead 路由边界保持不变。
 
 外部触发不能绕过 Project 访问、Agent 成员资格、分身串行执行和 Machine 租约规则。Webhook 请求者不能通过 payload 临时指定任意执行身份或扩大工作范围。
 
@@ -52,8 +52,8 @@
 | --- | --- | --- |
 | 自动化规则 | 归属于一个 Project，由 Human 保存触发条件、触发动作及所需配置 | 首版已实现，字段见 Webhook / Cron 契约 |
 | 触发来源 | 首期为入站 webhook 或 cron；两者保留各自的认证、时间与事件语义 | 已确认 |
-| 触发动作 | 首期向所属 Project 内的 DM 或 Group 发送系统来源消息并唤醒 Agent，后续可扩展内置系统动作 | 首版消息动作已实现 |
-| 消息目标 | DM 的唯一 Agent，或 Group 中明确 @ 的 Agent、当前 Agent owner；目标属于规则所在 Project，失效时不自动替换 | 首版目标校验与发送前复核已实现 |
+| 触发动作 | 首期向所属 Project 内的 DM 或 Crew 发送系统来源消息并唤醒 Agent，后续可扩展内置系统动作 | 首版消息动作已实现 |
+| 消息目标 | DM 的唯一 Agent，或 Crew 的当前 lead；目标属于规则所在 Project，失效时不自动替换 | 首版目标校验与发送前复核已实现 |
 | 触发记录 | 说明哪条规则因何触发，以及输入是否被接纳、拒绝或跳过 | 建议 |
 | 工作关联 | 将已接纳的触发关联到消息及后续工作，保留与 Task、run 的区别 | 建议 |
 | 结果投递 | 将工作结果发送到已配置的接收位置，与工作执行结果分开记录 | 已确认方向，接收位置与首期范围待定 |
@@ -69,12 +69,11 @@
 | 目标 | 动作语义 |
 | --- | --- |
 | DM | 向该 DM 的唯一 Agent 发送配置的提示内容，唤醒对应分身 |
-| Group 中指定 Agent | 向 Group 发消息并明确 @ 接收 Agent，唤醒对应分身 |
-| Group owner | 向 Group 发消息，交由当前 Agent owner 接手并组织后续工作，不要求配置固定成员 |
+| Crew | 向 Crew 发消息，交给当前 lead 组织后续工作 |
 
-本文 DM 对应本轮讨论中所称的 DDM，沿用现有 Chat 术语，不新增对话类型。Group owner 可以是 Human 或 Agent，Human owner 不能作为可唤醒的 Agent。
+本文 DM 沿用现有 Chat 术语，不新增对话类型。Crew 没有 lead 时本次触发不执行。
 
-**已确认。** 触发时目标失效或目标不是可唤醒的 Agent，例如指定 Agent 已被移出 Group，或 Agent owner 已换为 Human，则本次触发不执行并记录原因，不自动寻找其他 Agent 替代。规则不因此自动停用或改写目标，后续触发仍按原规则重新检查，目标有效时正常执行。选择当前 owner 的动作始终按当前 owner 判断；显式指定的 Agent 不因成员变化而自动替换。
+**已确认。** 触发时目标失效或目标不是可唤醒的 Agent，例如 Crew 的 lead 已被移除，则本次触发不执行并记录原因，不自动寻找其他 Agent 替代。规则不因此自动停用或改写目标，后续触发仍按原规则重新检查，目标有效时正常执行。Crew 目标始终按触发时的当前 lead 判断。
 
 **已确认。** Agent 收到的消息必须明确标识为系统触发，不能伪装成 Human 手动发言。内容可包含 Human 在规则中配置的提示词、定时任务信息，以及 webhook 传入的数据。系统来源标识由程序产生，保留规则与触发来源，不由外部正文自行声明。
 
@@ -82,7 +81,7 @@
 
 **后续方向。** 触发动作可扩展为直接调用系统内置功能，例如重启。当前不实现这些动作，不开放任意系统命令。首期每条规则只配置一个消息动作；组合动作仍在后续范围。
 
-消息投递沿用既有分身串行与 Human 控制边界。唤醒不保证立即启动新的 run，也不要求每次触发创建 Task。Group 的显式 @ 与交由 owner 接手是需要表达的动作语义，已通过共享事务接纳接入现有消息路由，细节见 Webhook / Cron 契约。
+消息投递沿用既有分身串行与 Human 控制边界。唤醒不保证立即启动新的 run，也不要求每次触发创建 Task。Crew 目标通过共享事务接纳接入现有消息路由，细节见 Webhook / Cron 契约。
 
 ## Webhook 的首期方向
 
@@ -159,9 +158,9 @@ Webhook、cron 与飞书事件可以复用经过授权的工作提交和结果�
 6. 两条规则指向同一工作分身时，仍遵守现有的执行串行与资源约束。
 7. 同一 cron 规则每 5 分钟触发，首次工作运行 8 分钟。第 5 分钟的触发被跳过并记录原因，不排队或补跑；第 10 分钟按计划正常触发。
 8. Human 在一个 Project 内创建规则并配置 DM 消息动作。触发后，唯一 Agent 收到配置内容及明确的系统来源标识，能够与 Human 手动消息区分。
-9. Group 消息动作配置显式 @ 时，唤醒所指定的有效 Agent。配置由 owner 接手时，消息交给当前 Agent owner，由它组织后续工作。
+9. Crew 消息动作把消息交给当前 lead，由它组织后续工作。
 10. Webhook payload 尝试替换 Project、Chat、接收 Agent 或伪造 Human 身份时，不能覆盖规则中已授权的目标与真实来源。
-11. 指定 Agent 已被移出 Group，或规则要求唤醒的当前 owner 已变为 Human。本次触发不执行并记录原因，不寻找其他 Agent 替代，不自动停用规则；后续触发按原配置重新检查目标。
+11. Crew 已没有 lead。本次触发不执行并记录原因，不寻找其他 Agent 替代，不自动停用规则；后续触发按原配置重新检查目标。
 
 ## 首版默认行为
 
@@ -184,8 +183,8 @@ Webhook、cron 与飞书事件可以复用经过授权的工作提交和结果�
 
 优先完成 Project 内的自动化消息闭环，再接入[个人助理](personal-assistant-decisions.md)与飞书。Webhook 和 cron 不依赖助理 LLM，通知衔接遵循已确认的关注范围。
 
-Project 归属、可配置动作及首期 DM 和 Group 消息唤醒方向已确认。Cron 重叠处理已确认按同一规则跳过并记录，不排队或补跑。目标失效或所选 owner 目标为 Human 时，本次不执行并记录原因，不自动换 Agent，后续触发继续按原规则检查。首版默认行为见上节，不再逐项请求 Human 确认。
+Project 归属、可配置动作及首期 DM 和 Crew 消息唤醒方向已确认。Cron 重叠处理已确认按同一规则跳过并记录，不排队或补跑。目标失效或 Crew 没有 lead 时，本次不执行并记录原因，不自动换 Agent，后续触发继续按原规则检查。首版默认行为见上节，不再逐项请求 Human 确认。
 
-Project webhook 与 cron 的业务契约、功能、最小 UI 和专项技术验证已落实；cron 使用固定版本 cron-parser，工作结束按当前 input / run 状态判定，而非新增 Group 工作流。后续继续个人助理、channel、飞书与语音单元，不把首版技术验证当作这些能力或 Human UI 体验已完成。若出现必须改变已确认行为或需要昂贵迁移的取舍，再集中向 Human 说明。当前不预设完整群聊协作追踪或通用工作流系统。
+Project webhook 与 cron 的业务契约、功能、最小 UI 和专项技术验证已落实；cron 使用固定版本 cron-parser，工作结束按当前 input / run 状态判定，而非新增 Crew 工作流。后续继续个人助理、channel、飞书与语音单元，不把首版技术验证当作这些能力或 Human UI 体验已完成。若出现必须改变已确认行为或需要昂贵迁移的取舍，再集中向 Human 说明。当前不预设完整群聊协作追踪或通用工作流系统。
 
 本文不分配新阶段编号，不把默认选择当作已经实现或验收通过。

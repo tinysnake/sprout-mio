@@ -45,11 +45,6 @@ export function queryManagementSummary(actorId: string) {
       "SELECT count(*) AS pending FROM run_resource_notice n JOIN project p ON p.id=n.project_id WHERE p.created_by=? AND n.delivered_at IS NULL",
     )
     .get(actorId) as { pending: number };
-  const continuations = sqlite
-    .prepare(
-      "SELECT count(*) AS pending FROM continuation_delivery d JOIN project p ON p.id=d.project_id WHERE p.created_by=? AND d.state IN ('pending','bound')",
-    )
-    .get(actorId) as { pending: number };
   const frames = sqlite
     .prepare(
       "SELECT f.state, count(*) AS count, coalesce(sum(f.payload_bytes),0) AS bytes FROM mcp_frame f JOIN project p ON p.id=f.project_id WHERE p.created_by=? AND f.state IN ('queued','sent','unknown') GROUP BY f.state",
@@ -59,7 +54,6 @@ export function queryManagementSummary(actorId: string) {
     asOf: new Date().toISOString(),
     migration: migration ?? null,
     pendingResourceNotices: notices.pending,
-    pendingContinuations: continuations.pending,
     mcpFrames: frames,
   };
 }

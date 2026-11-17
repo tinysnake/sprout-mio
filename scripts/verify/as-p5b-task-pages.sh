@@ -278,7 +278,7 @@ try {
   // Real Agent scope feeds the same view; browser authentication remains Human-only in P5b.
   const worker = createAgentProfile({ name: 'Task UI Worker', persona: '普通 Crew 成员能力验收' }, ctx)
   addProjectMember(projectId, worker.id, ctx)
-  const groupChat = createCrewChat(projectId, { projectId, title: '非 owner 成员', members: [{ kind: 'human', id: ctx.userId }, { kind: 'agent', id: agent.id }, { kind: 'agent', id: worker.id }], initialOwner: { kind: 'agent', id: agent.id }, wakePolicy: 'owner_led' }, { kind: 'human', userId: ctx.userId, ctx })
+  const groupChat = createCrewChat(projectId, { projectId, title: '非 owner 成员', members: [{ kind: 'human', id: ctx.userId }, { kind: 'agent', id: agent.id }, { kind: 'agent', id: worker.id }], initialOwner: { kind: 'agent', id: agent.id } }, { kind: 'human', userId: ctx.userId, ctx })
   const instance = ensureInstance(groupChat.id, worker.id, ctx)
   const groupRunId = `run_${randomUUID().replaceAll("-", "").slice(0, 8)}`
   sqlite.prepare("insert into agent_run(id,instance_id,chat_id,project_id,request_id,status,session_id) values (?,?,?,?,?,'queued',?)").run(groupRunId, instance.id, groupChat.id, projectId, ctx.requestId, instance.id)

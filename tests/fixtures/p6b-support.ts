@@ -54,7 +54,6 @@ export async function p6bFixture(label: string) {
     {
       projectId: p.id,
       title: "Group",
-      wakePolicy: "owner_led",
       members: [
         { kind: "human", id: ctx.userId },
         { kind: "agent", id: a.id },

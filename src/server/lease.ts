@@ -1423,7 +1423,7 @@ export function listProjectLeases(input: { projectId: string }, ctx: MachineCont
 // I-P8a：挂靠（escrow）与领取（claim）
 // ---------------------------------------------------------------------------
 /**
- * 挂靠 = 把租约的操作权交给一个 Group（或 Group 内指定 Agent 的化身）里的分身领取。
+ * 挂靠 = 把租约的操作权交给一个 Crew（或 Crew 内指定 Agent 的化身）里的分身领取。
  * 它不改变 Machine 上的任何进程状态：不动 remote_execution、不动 Worker，只换授权。
  */
 function assertEscrowTarget(input: LeaseEscrowInput) {
@@ -1431,7 +1431,7 @@ function assertEscrowTarget(input: LeaseEscrowInput) {
   if (!target || target.archivedAt) throw new LeaseError("not_found");
   if (target.projectId !== input.projectId) throw new LeaseError("lease_escrow_cross_project");
   if (target.kind === "dm") throw new LeaseError("lease_escrow_dm_unsupported");
-  // Group / Public Channel 都可以；指定 Agent 时必须确实是该 Group 的成员。
+  // 只支持 Crew；指定 Agent 时必须确实是该 Crew 的成员。
   if (
     input.targetAgentProfileId &&
     !readChatEffectiveMembers(input.chatId, input.projectId).some(
@@ -1440,7 +1440,7 @@ function assertEscrowTarget(input: LeaseEscrowInput) {
   )
     throw new LeaseError("not_found");
 }
-/** 领取范围：领取者必须就是挂靠目标 Group 里的那个分身（指定了 Agent profile 时还必须是它）。 */
+/** 领取范围：领取者必须就是挂靠目标 Crew 里的那个分身（指定了 Agent profile 时还必须是它）。 */
 function assertClaimInScope(escrowRow: typeof leaseEscrow.$inferSelect, ctx: AgentRemoteContext) {
   if (escrowRow.chatId !== ctx.chatId) throw new LeaseError("lease_claim_out_of_scope");
   const instance = db

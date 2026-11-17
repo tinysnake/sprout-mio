@@ -1,7 +1,7 @@
 # Crew 功能开发计划
 
 把 Group 改为由一位 Crew lead 对 Human 负责的 Crew。委派有独立子对话、持久结果事件与受控资源授权。Human 在主对话里看结论，在需要时打开工作细节。
-本文件是待执行计划。当前产品起点为 `2008185bcdbfac40c1754da125ad424addfc4778`，本轮只做源码调查、一次丢弃式行为探针和文档检查，未实施产品变更。
+本文件是 Crew 迁移的执行计划与过程记录。Crew 已落地；Group、公共频道、对话接续与唤醒判定已删除（`drizzle/0069_remove_continuation.sql`）。未勾选项只作为历史跟踪，不再执行；现行契约见 [Crew 核心](../crew-core.md)。
 
 ## How to read this
 

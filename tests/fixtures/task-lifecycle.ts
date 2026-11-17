@@ -515,7 +515,6 @@ try {
         ...[lead, ...others].map((a) => ({ kind: "agent" as const, id: a.id })),
       ],
       initialOwner: { kind: "agent", id: lead.id },
-      wakePolicy: "owner_led",
     });
   }
   async function create(title: string, extra: Record<string, any> = {}) {

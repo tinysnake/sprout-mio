@@ -6,7 +6,7 @@
 
 Run 不再因整轮运行年龄或无 progress 而终止；初始化协议超时、协议故障、自然退出、显式取消及宿主退出仍处理。活动摘要是条件式业务进展，不是周期心跳，静默不等于故障。
 
-Project 的 `wakePolicy.runAttention` 使用严格结构 `{ timeoutMs, escalationMs }`，默认各 `1800000`，至少 1000ms，总和须在安全整数与 Date 范围内。进入 running 时固定策略快照，只从 `startedAt` 计时；旧活动 run 首扫补快照，queued 不计时。第 30 分钟其他 Agent owner 收一条系统消息和直接 owner input；self-owner（由 run.instanceId 的 Profile 与 owner 比较）或 human owner 只写人类关注事实。第 60 分钟写一条人类提醒并清 owner 重试；迟扫直接跨到人类提醒，终态不补通知，历史保留标记且不再待处理。
+Project 的 `runtimePolicy.runAttention` 使用严格结构 `{ timeoutMs, escalationMs }`，默认各 `1800000`，至少 1000ms，总和须在安全整数与 Date 范围内。进入 running 时固定策略快照，只从 `startedAt` 计时；旧活动 run 首扫补快照，queued 不计时。第 30 分钟其他 Agent owner 收一条系统消息和直接 owner input；self-owner（由 run.instanceId 的 Profile 与 owner 比较）或 human owner 只写人类关注事实。第 60 分钟写一条人类提醒并清 owner 重试；迟扫直接跨到人类提醒，终态不补通知，历史保留标记且不再待处理。
 
 首次目标与提醒 messageId 在同一事务固定；投递重试复用同条消息，每次重验当前 owner、成员及访问权，目标变更不改投新人。消息及事实回滚一致；重启后先按既有规则中断活动 run，不恢复已死进程继续计时。
 

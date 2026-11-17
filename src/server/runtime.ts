@@ -1,8 +1,7 @@
-import type { ContinuationScheduler } from "./continuation-scheduler";
+import type { Scheduler } from "./scheduler";
 import type { AssistantScheduler } from "./assistant-scheduler";
 import type { CronScheduler } from "./cron-scheduler";
 import { stopFeishuRuntimes } from "./feishu/registry";
-import type { WakeRuntimeOptions } from "./wake-runtime";
 import { Clock, Context, Effect, Layer, ManagedRuntime, Scope } from "effect";
 import { isMainThread, threadId } from "node:worker_threads";
 import { ID_PREFIXES, newId } from "../contracts/ids";
@@ -47,7 +46,7 @@ type RuntimeState = {
   connection: DatabaseConnection | null;
   managed: ManagedRuntime.ManagedRuntime<RuntimeDatabase | PiHost, never> | null;
   piHost: PiHostShape | null;
-  continuation: ContinuationScheduler | null;
+  scheduler: Scheduler | null;
   cron: CronScheduler | null;
   assistant: AssistantScheduler | null;
   piHostStop: Promise<void> | null;
@@ -78,7 +77,7 @@ function createState(): RuntimeState {
     connection: null,
     managed: null,
     piHost: null,
-    continuation: null,
+    scheduler: null,
     cron: null,
     assistant: null,
     piHostStop: null,
@@ -174,15 +173,13 @@ function failPhase(error: unknown) {
   console.error("[runtime] 失败", state.phase, error instanceof Error ? error.message : "未知错误");
 }
 
-export function startRuntime(
-  wakeOptions: Pick<WakeRuntimeOptions, "complete" | "fetch"> = {},
-): Promise<void> {
+export function startRuntime(): Promise<void> {
   if (state.startup) return state.startup;
-  state.startup = initializeRuntime(wakeOptions);
+  state.startup = initializeRuntime();
   return state.startup;
 }
 
-async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete" | "fetch">) {
+async function initializeRuntime() {
   transition("starting");
   try {
     state.databaseUrl = config.DATABASE_URL;
@@ -263,17 +260,9 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     sqlite.prepare("UPDATE runtime_boot SET phase = 'ready' WHERE id = ?").run(bootId);
     transition("ready");
     if (config.SPROUT_PI_ENABLED) await state.managed.runPromise(startPiHost);
-    const { createContinuationScheduler, installWakeEvaluator } =
-      await import("./continuation-scheduler");
-    if (config.SPROUT_CONTINUATION_ENABLED) {
-      const { createWakeEvaluator } = await import("./wake-runtime");
-      const clock = () => performance.now();
-      installWakeEvaluator(createWakeEvaluator({ clock, ...wakeOptions }));
-    } else {
-      console.log("[runtime] continuation disabled by SPROUT_CONTINUATION_ENABLED=false");
-    }
-    state.continuation = createContinuationScheduler({ abort: signalRunAbort });
-    state.continuation.start();
+    const { createScheduler } = await import("./scheduler");
+    state.scheduler = createScheduler();
+    state.scheduler.start();
     const { createCronScheduler } = await import("./cron-scheduler");
     state.cron = createCronScheduler();
     state.cron.start();
@@ -294,7 +283,7 @@ async function initializeRuntime(wakeOptions: Pick<WakeRuntimeOptions, "complete
     stopFeishu();
     state.cron?.stop();
     state.assistant?.stop();
-    state.continuation?.stop();
+    state.scheduler?.stop();
     failPhase(error);
     state.rejectReady(error);
     await state.managed?.dispose();
@@ -330,7 +319,7 @@ function stopPiHostOnce(): Promise<void> {
   stopFeishu();
   state.cron?.stop();
   state.assistant?.stop();
-  state.continuation?.stop();
+  state.scheduler?.stop();
   return (state.piHostStop ??= state.managed?.cachedContext
     ? state.managed.runPromise(stopPiHost)
     : Promise.resolve());

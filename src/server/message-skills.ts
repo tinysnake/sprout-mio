@@ -166,13 +166,7 @@ export async function preparePiMessage(
 
 export function prepareSyntheticPiMessage(
   input: Readonly<{
-    kind:
-      | "task_start"
-      | "continuation"
-      | "resource_notice"
-      | "assistant_work"
-      | "assistant_human"
-      | "delegation";
+    kind: "task_start" | "resource_notice" | "assistant_work" | "assistant_human" | "delegation";
     messageId: string;
     text: string;
     assistantContext?: AssistantInputContext;

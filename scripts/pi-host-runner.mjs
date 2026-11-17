@@ -260,14 +260,17 @@ async function open(config) {
           // `noExtensions: true` 会连内建扩展一起关掉；codemode 与 tool_search 必须显式加回。
           {
             name: "codemode",
-            factory: async (pi) => sdk.createCodemodeExtension()({
-              ...pi,
-              registerTool(tool) {
-                pi.registerTool(isCrewDeferredTool(situation, tool.name)
-                  ? { ...tool, exposure: "deferred" }
-                  : tool);
-              },
-            }),
+            factory: async (pi) =>
+              sdk.createCodemodeExtension()({
+                ...pi,
+                registerTool(tool) {
+                  pi.registerTool(
+                    isCrewDeferredTool(situation, tool.name)
+                      ? { ...tool, exposure: "deferred" }
+                      : tool,
+                  );
+                },
+              }),
           },
           { name: "tool-search", factory: sdk.createToolSearchExtension() },
           {
@@ -335,9 +338,11 @@ async function open(config) {
                       ].includes(tool.name))
                   )
                     return;
-                  pi.registerTool(isCrewDeferredTool(situation, tool.name)
-                    ? { ...tool, exposure: "deferred" }
-                    : tool);
+                  pi.registerTool(
+                    isCrewDeferredTool(situation, tool.name)
+                      ? { ...tool, exposure: "deferred" }
+                      : tool,
+                  );
                 },
               };
               registerRemoteTools(rolePi, remote);

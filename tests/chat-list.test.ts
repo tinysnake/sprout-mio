@@ -9,7 +9,6 @@ function chat(id: string, kind: ChatKind): Chat {
     kind,
     crewEpoch: 0,
     owner: { kind: "human", id: "usr_one" },
-    wakePolicy: "mention_only",
     governanceRevision: 0,
     createdBy: "usr_one",
     createdAt: "2026-11-15T00:00:00.000Z",

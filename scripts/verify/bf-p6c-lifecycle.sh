@@ -10,7 +10,7 @@ git rev-parse HEAD > "$P6C_EVIDENCE_DIR/base-commit"
   git ls-files -z src drizzle package.json pnpm-lock.yaml | xargs -0 shasum -a 256
   shasum -a 256 tests/fixtures/p6c-lifecycle.ts \
     tests/fixtures/p6c-lifecycle-worker.ts \
-    tests/fixtures/p6a-continuation-runner.mjs \
+    tests/fixtures/pi-session-runner.mjs \
     scripts/verify/bf-p6c-lifecycle.sh
 } > "$P6C_EVIDENCE_DIR/source-sha256.txt"
 export DATABASE_URL="$P6C_EVIDENCE_DIR/lifecycle.sqlite"

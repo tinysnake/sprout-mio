@@ -17,7 +17,7 @@ import {
   project,
 } from "../db/schema";
 import { appendEscrowTimeoutOwnerRunInput } from "./agent-run";
-import { retryDelay } from "./chat-schedule";
+import { retryDelay } from "./retry";
 import type { ProjectContext } from "./project";
 
 type LeaseEscrowRow = typeof leaseEscrow.$inferSelect;
@@ -27,7 +27,7 @@ type LeaseEscrowRow = typeof leaseEscrow.$inferSelect;
  *
  * `message.senderKind` 只有 human / agent（info-hub 明确不引入合成 system Agent），所以超时提醒
  * 以这个保留的 sender id 落在挂靠所在 Group 的 chat 里。它是**直接写库消息**、不走 `sendMessage`，
- * 因此既不会触发唤醒评估、也不会触发自动接续——这正是 T4 要求的「提醒消息不触发唤醒」。
+ * 因此不会触发唤醒——这正是 T4 要求的「提醒消息不触发唤醒」。
  * 它没有 mention span，也不进成员表，UI 会把它显示为未知发送者（见报告里的 UI 交接点）。
  */
 export const LEASE_TIMEOUT_SENDER_ID = "sprout.lease-timeout";
@@ -49,11 +49,11 @@ export function leaseTimeoutOwner(row: {
 /** 读默认值：项目行没配过（或写坏了）就用 `DEFAULT_LEASE_TIMEOUTS`。 */
 export function projectLeaseTimeouts(projectId: string): LeaseTimeouts {
   const row = db
-    .select({ wakePolicy: project.wakePolicy })
+    .select({ runtimePolicy: project.runtimePolicy })
     .from(project)
     .where(eq(project.id, projectId))
     .get();
-  return resolveLeaseTimeouts(row?.wakePolicy?.leaseTimeouts);
+  return resolveLeaseTimeouts(row?.runtimePolicy?.leaseTimeouts);
 }
 
 export function projectOwnerUserId(projectId: string): string | undefined {
@@ -135,8 +135,7 @@ export function leaseTimeoutStep(input: {
 }
 
 /**
- * T8：唤醒失败按 `src/domain/agent-run.ts` 既有的重试规则重试——这里只把
- * `chat-continuation` 的既有间隔表读出来算下一次时刻，不新造退避、次数或间隔参数。
+ * T8：投递失败按 `src/domain/retry.ts` 的既有间隔表重试，不新造退避、次数或间隔参数。
  * 既有间隔表用尽（返回 null）就停止重试；「超时待处理」状态仍然常驻。
  */
 export function leaseTimeoutRetryAt(attempt: number, now: Date): Date | null {
@@ -206,7 +205,7 @@ function reminderBody(
   const head = `【挂靠超时】${context.initiatorName} 要用 Machine「${context.machineName}」，它的租约挂在对话《${context.chatTitle}》（${row.id}）的挂靠里已经超过 ${waited}。`;
   const ask = `请处理：是让 ${context.initiatorName} 归还（撤销挂靠或强制收回），还是继续占用（领取这个挂靠）。在你处理之前，租约占用与权限保持不变。`;
   if (owner.kind === "human")
-    return `${head}\n${ask}\n（这是提醒消息，不触发唤醒、也不触发自动接续；这条挂靠不会再升级，请自行决定是否处理。）`;
+    return `${head}\n${ask}\n（这是提醒消息，不触发唤醒；这条挂靠不会再升级，请自行决定是否处理。）`;
   return `${head}\n${ask}`;
 }
 
@@ -220,12 +219,12 @@ function escalationBody(
   const who = owner.kind === "agent" ? `Agent owner ${owner.agentProfileId}` : "该 owner";
   return `【挂靠超时升级】${who} 超过 ${durationText(timeouts.timeoutMs)} 没有处理 Machine「${context.machineName}」的挂靠（发起者 ${context.initiatorName}，对话《${context.chatTitle}》，挂靠 ${row.id}），之后又过了 ${durationText(timeouts.escalationMs)} 仍未处理。
 系统已暂停该 owner 在这个挂靠上的自动尝试，等人类决定：归还还是继续占用。
-（升级只以这条 chat 消息告知，不触发唤醒、也不触发自动接续。${
+（升级只以这条 chat 消息告知，不触发唤醒。${
     recipient.kind === "human" ? `收件人 ${recipient.userId}。` : ""
   }）`;
 }
 
-/** 只写 chat 消息：不经 `sendMessage`，因此不触发唤醒与自动接续（T4）。 */
+/** 只写 chat 消息：不经 `sendMessage`，因此不触发唤醒（T4）。 */
 function writeReminderMessage(chatId: string, body: string, now: Date): string {
   const id = newId(ID_PREFIXES.message);
   db.insert(message)
@@ -250,8 +249,7 @@ export type LeaseTimeoutSweepResult = {
 /**
  * 推进所有活跃挂靠的超时提醒与升级（T1–T10）。
  *
- * **T10 是明确例外**：这里刻意**不读** `chat_continuation_control`（「人类暂停自动唤醒」）。
- * 超时提醒与升级不受它影响，照发——不要把它当 bug 修掉。
+ * T10：超时提醒与升级不受任何运行时开关影响，照发。
  *
  * T6：整个函数只写 message 与 lease_escrow 的四个超时列，绝不释放租约、绝不动
  * machine_lease / lease_authorization。超时不是「自动收回」。

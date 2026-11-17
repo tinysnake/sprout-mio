@@ -33,8 +33,7 @@ import type { ProjectContext } from "./access";
 import { getChat, ensureInstance, readCrewLeadId, sendMessage } from "./chat";
 import { cancelInvalidAutomationInputs } from "./automation-input";
 import { cancelInvalidTaskStartInputs } from "./task-input";
-import { controlFor, signalScheduleChange } from "./chat-schedule";
-import { settleContinuationRun } from "./continuation-delivery";
+import { signalSchedulerChange } from "./scheduler-signal";
 import { taskResponsibilityFacts, TaskError } from "./task-capabilities";
 import { clearRunActivity, settleRunActivity } from "../server/pi-host/run-activity";
 
@@ -288,15 +287,6 @@ function activeRunFor(
   return created;
 }
 
-/** Trusted internal allocator; callers revalidate control and responsibility under the writer lock. */
-export function allocateContinuationRun(
-  scope: { instanceId: string; chatId: string; projectId: string },
-  requestId: string,
-  now: Date,
-) {
-  return activeRunFor(scope, requestId, now);
-}
-
 /** 这条消息是否已经属于该 instance 的某条 run（任何状态）。 */
 function runIdOfMessage(messageId: string, instanceId: string): string | undefined {
   return db
@@ -458,7 +448,6 @@ export function appendEscrowTimeoutOwnerRunInput(
  * 这两类的处置语义归后续阶段，不在这里用猜测的理由取消。
  */
 function carryPendingInputsToNextRound(run: typeof agentRun.$inferSelect, requestId: string): void {
-  if (controlFor(run.chatId).mode !== "enabled") return;
   const pending = db
     .select({ messageId: agentRunInput.messageId })
     .from(agentRunInput)
@@ -632,7 +621,6 @@ export function transitionAgentRun(
       );
       if (status !== "queued" && status !== "running")
         freezeCrewResources({ runId: id }, "run_terminal");
-      settleContinuationRun(id, status, updated.settledAt ?? updated.startedAt!);
       return toRun(updated);
     })
     .immediate();
@@ -640,9 +628,18 @@ export function transitionAgentRun(
   // 由外层提交后的调用方清理；外层回滚时下一次收尾仍能取到历史。
   if (settledActivity && !sqlite.inTransaction) clearRunActivity(id);
   // Run 状态是页面最在意的那条变化：一次转移同时影响对话与 Project 的运行列表。
-  signalScheduleChange(run.chatId);
+  signalSchedulerChange();
   publishProjectChange(run.projectId, run.chatId);
   return run;
+}
+
+/** Trusted internal allocator; callers revalidate control and responsibility under the writer lock. */
+export function allocateRunFor(
+  scope: { instanceId: string; chatId: string; projectId: string },
+  requestId: string,
+  now: Date,
+) {
+  return activeRunFor(scope, requestId, now);
 }
 
 export function markRunInputDelivered(

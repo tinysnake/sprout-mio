@@ -206,7 +206,7 @@ try {
   chatA = directA.chat?.id ?? directA.id;
   const directQ = await call('createDirectChatFn', {projectId:projectB, agentProfileId:profileA.id});
   chatQ = directQ.chat?.id ?? directQ.id;
-  const group = await createCrewFixture(call, env.DATABASE_URL, {projectId, title:'挂靠目标 Crew', members:[{kind:'human',id:humanId},{kind:'agent',id:profileB.id}], initialOwner:{kind:'agent',id:profileB.id}, wakePolicy:'owner_led'});
+  const group = await createCrewFixture(call, env.DATABASE_URL, {projectId, title:'挂靠目标 Crew', members:[{kind:'human',id:humanId},{kind:'agent',id:profileB.id}], initialOwner:{kind:'agent',id:profileB.id}});
   chatG = group.chat?.id ?? group.id;
   const enrollment = await call('createMachineFn', {name:'Escrow Mac'});
   machineId = enrollment.detail.machine.id;

@@ -105,15 +105,15 @@ async function verifyRestartedSession() {
     );
   });
 
-  await check("restart_list_shows_dm_and_project_channel", async () => {
+  await check("restart_list_shows_dm_and_crew", async () => {
     await page.goto(`${BASE}${state.projectPath}/chats`, { waitUntil: "domcontentloaded" });
     await page.waitForSelector('[data-testid="dm-member-list"]', { timeout: 20000 });
     const items = await page.$$eval('[data-testid="chat-item"]', (nodes) =>
       nodes.map((node) => node.getAttribute("data-chat-id")),
     );
-    // Project 出生即带唯一的公共频道（I-P5a 频道单元），列表是「DM + 频道」两条；最新更新的 DM 在前。
+    // Project 出生即带唯一 Crew，列表是「DM + Crew」两条；最新更新的 DM 在前。
     record(
-      "restart_list_shows_dm_and_project_channel",
+      "restart_list_shows_dm_and_crew",
       items.length === 2 && items[0] === state.chatId,
       `重启后列表 ${JSON.stringify(items)}`,
     );

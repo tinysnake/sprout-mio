@@ -227,10 +227,12 @@ TUI 宿主的当前入口是 human-review skill 与 CLI，GUI 宿主用环境自
 
 ## UI-P6a 完成对话接续与人类控制呈现
 
+> **已移除：** 对话接续与唤醒判定已随 Crew 迁移整体删除（`drizzle/0069_remove_continuation.sql`）。本节保留作历史记录；下列条目因原证据脚本与产品能力一起删除而不再勾选，不能作为当前验收证据。
+
 范围对应[P6a](development-plan-functional.md#p6a-完成对话接续与人类控制)、[I-P6a](development-plan.md#i-p6a-集成对话接续与人类控制)。P6 原暂按整章交付，现按 a/b/c 三节交付。先比较 2–3 套原型并记录 Human 选定结论，原型按[宿主环境](../../project-conventions.md#宿主环境)呈现，GUI 宿主用环境自带的 browser / preview 工具，TUI 宿主用 Lavish，再实现页面。
 
-- [x] 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](../../p6a/summary.md#p3-2-disable-的页面文案)。
-- [x] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)与[集成线与技术验收证据](../../p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
+- [ ] 完成对话接续状态、人类暂停与停止、失败反馈及恢复控制的呈现，保持 Task、run 与自动检查语义独立。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`；文案遗留见 [P3-2 disable 的页面文案](../../p6a/summary.md#p3-2-disable-的页面文案)。
+- [ ] 核对普通信息可见性与聊天正文访问、对象操作权限的区别，完成全章演示和交付材料。证据 [UI 线证据](../../p6a/summary.md#ui-线证据)与[集成线与技术验收证据](../../p6a/summary.md#集成线与技术验收证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-pages.sh`。
 
 包含 Project 判定器选择与不可用原因、Human owner 提醒、判定不确定/退避/投递未知、无 assigned 不检查的表达；Info Hub 仅接入 P6a 必要摘要，P6b 会扩展。
 

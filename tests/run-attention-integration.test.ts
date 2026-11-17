@@ -4,7 +4,7 @@ let crewInput: typeof import("./fixtures/crew-chat").crewInput;
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 
 const scratch = mkdtempSync(join(tmpdir(), "sprout-run-attention-"));
 const startedAt = new Date("2026-11-11T00:00:00Z");
@@ -17,14 +17,13 @@ let runs: typeof import("../src/domain/agent-run");
 let projects: typeof import("../src/domain/project");
 let newId: typeof import("../src/contracts/ids").newId;
 let prefixes: typeof import("../src/contracts/ids").ID_PREFIXES;
-let createScheduler: typeof import("../src/server/continuation-scheduler").createContinuationScheduler;
+let createScheduler: typeof import("../src/server/scheduler").createScheduler;
 
 beforeAll(async () => {
   process.env.DATABASE_URL = join(scratch, "test.db");
   ({ createCrewChat, crewInput } = await import("./fixtures/crew-chat"));
   process.env.SPROUT_DATA_DIR = join(scratch, "data");
   process.env.SPROUT_PI_DATA_DIR = join(scratch, "pi");
-  process.env.SPROUT_CONTINUATION_ENABLED = "false";
   process.env.SPROUT_PI_ENABLED = "false";
   process.env.BETTER_AUTH_SECRET = randomBytes(32).toString("hex");
   const { migrateDatabase } = await import("../src/db/migrate");
@@ -36,12 +35,7 @@ beforeAll(async () => {
   chats = await import("../src/domain/chat");
   runs = await import("../src/domain/agent-run");
   attention = await import("../src/domain/run-attention");
-  ({ createContinuationScheduler: createScheduler } =
-    await import("../src/server/continuation-scheduler"));
-});
-afterEach(() => {
-  expect(sqlite.prepare("SELECT count(*) AS n FROM wake_evaluation").get()).toEqual({ n: 0 });
-  expect(sqlite.prepare("SELECT count(*) AS n FROM continuation_delivery").get()).toEqual({ n: 0 });
+  ({ createScheduler } = await import("../src/server/scheduler"));
 });
 afterAll(() => {
   sqlite?.close();
@@ -116,9 +110,6 @@ async function advance(ms: number) {
   const scheduler = createScheduler({
     clock: { now: () => now, setTimeout: () => 0, clearTimeout() {} },
     onError() {},
-    evaluateWake: async () => {
-      throw new Error("continuation must remain disabled");
-    },
   });
   scheduler.start();
   try {
@@ -133,7 +124,7 @@ function finish(id: string) {
     .run(now.getTime() / 1000, id);
 }
 
-describe("run attention through continuation scheduler", () => {
+describe("run attention through the runtime scheduler", () => {
   it("leaves a slow run alive after the old 600000ms deadline, wakes another owner once at 30m and escalates once at 60m", async () => {
     const f = seed("other-owner");
     await advance(600_001);
@@ -251,7 +242,7 @@ describe("run attention through continuation scheduler", () => {
     finish(f.run.id);
   });
 
-  it("arms exact attention and human deadlines while continuation is globally off", async () => {
+  it("arms exact attention and human deadlines", async () => {
     const f = seed("rearm", "human");
     now = startedAt;
     const timers = new Map<number, { fn: () => void; delay: number }>();

@@ -12,9 +12,11 @@
 | P3：真实 Pi 对话、持久 session 与仓库入口 | 已交付；原清单第 2 条按当时工具面记录为部分交付，保持未勾 | [P3 结论及未验证项](p3/summary.md) |
 | P4a–P4d：Machine、租约、远端操作、断连恢复、交接与移除 | 技术交付完成；各章均有带版本的 Human 确认 | [P4a](p4a/summary.md)、[P4b](p4b/summary.md)、[P4c](p4c/summary.md)、[P4d](p4d/summary.md) |
 | P5a–P5b：多人 Chat 与 Task 生命周期 | 技术交付完成；各章均有带版本的 Human 确认 | [P5a](p5a/summary.md)、[P5b](p5b/summary.md) |
-| P6a–P6c：对话接续、人类控制、Info Hub 与成员治理 | 技术交付完成；Human 确认版本 `fef2612` | [P6a](p6a/summary.md)、[P6b](p6b/summary.md)、[P6c](p6c/summary.md) |
+| P6a–P6c：对话接续、人类控制、Info Hub 与成员治理 | P6a 的对话接续与唤醒判定已于 Crew 迁移中整体移除；P6b/P6c 技术交付完成，Human 确认版本 `fef2612` | [P6a 历史记录（已移除）](p6a/summary.md)、[P6b](p6b/summary.md)、[P6c](p6c/summary.md) |
 | P7：客户端布局、路由、恢复、诊断与基础打包 | 技术交付完成；Human 已确认除 PWA 装机外的一期客户端体验 | [P7 结论与 Human 确认](p7/summary.md) |
 | R1：MCP 多 client、stream、取消、drain 与租约错误传播 | 第七轮独立技术验收通过；Human 已同意纳入一期，因无界面，Human 体验确认不适用 | [R1 结论与范围](r1/summary.md) |
+
+2026-11 起，Group、公共频道、对话接续与唤醒判定已由 Crew 取代并删除，历史章节里的相关名称只用于追溯；现行范围见 [核心范围](core-scope.md)。
 
 P3 之后又合入了宿主 skills 默认继承（`7416b1b`）及正文内联技能标记与候选插入（`1cfa15f`）。当前实现入口是 `src/server/pi-host/skills.ts` 和 `src/server/message-skills.ts`。这些增量不追改 P3 当时的验收，也没有在本次归档中重新验证。产品范围继续由 [核心范围](core-scope.md)维护。
 

@@ -152,7 +152,7 @@ describe("Chat watch digest windows", () => {
     const instance = sqlite
       .prepare("SELECT id FROM agent_instance WHERE chat_id=?")
       .get(f.target.id) as { id: string };
-    const run = runs.allocateContinuationRun(
+    const run = runs.allocateRunFor(
       { projectId: project.id, chatId: f.target.id, instanceId: instance.id },
       ctx.requestId,
       instant,
@@ -217,7 +217,7 @@ describe("Chat watch digest windows", () => {
     }
     const observedRuns = profiles.map((profile, index) => {
       const instance = chats.ensureInstance(target.id, profile.id, ctx);
-      const run = runs.allocateContinuationRun(
+      const run = runs.allocateRunFor(
         { projectId: project.id, chatId: target.id, instanceId: instance.id },
         ctx.requestId,
         at(2),
@@ -792,7 +792,6 @@ describe("Chat watch digest windows", () => {
             { kind: "agent", id: f.worker.id },
           ],
           initialOwner: { kind: "human", id: ctx.userId },
-          wakePolicy: "owner_led",
         },
         { kind: "human", userId: ctx.userId, ctx },
       );

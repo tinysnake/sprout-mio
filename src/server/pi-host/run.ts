@@ -4,12 +4,6 @@ import {
   releaseDelegationDelivery,
 } from "../../domain/delegation";
 import { admitAssistantInput, prepareAssistantSteerContext } from "../../domain/assistant";
-import {
-  admitContinuation,
-  pendingContinuations,
-  acknowledgeContinuation,
-  rejectContinuation,
-} from "../../domain/continuation-delivery";
 import { Effect } from "effect";
 import {
   MessageSkillError,
@@ -17,7 +11,6 @@ import {
   prepareSyntheticPiMessage,
   type PreparedPiMessage,
 } from "../message-skills";
-import { ID_PREFIXES } from "../../contracts/ids";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { and, asc, eq } from "drizzle-orm";
@@ -65,10 +58,8 @@ import { resolveMemoryRuntime } from "../memory-runtime";
 
 export type Work = ReturnType<typeof queuedRunWork>[number];
 export type PiHostSignals = { readonly isStopping: () => boolean };
-/** 投递确认与 run 输入确认共用同一个回调，靠前缀区分 continuation 投递 id。 */
-const DELIVERY_ID_PREFIX = `${ID_PREFIXES.continuationDelivery}_`;
 /**
- * 通知按 `notice:<id>` 记账，与消息、continuation 的两个前缀都不冲突。只有 runner 回
+ * 通知按 `notice:<id>` 记账，与消息 id 不冲突。只有 runner 回
  * `input_delivered` 才算送达：它回 `input_rejected` 时通知还在 outbox 里，保持
  * `delivered_at=NULL` 并按 `NOTICE_RETRY_MS` 退避重试（否则通知会被标成「已送达」，
  * 却从没进入这一轮的模型上下文）。
@@ -160,7 +151,7 @@ export function executeRun(
     const outcome = yield* Effect.exit(
       Effect.gen(function* () {
         const input = yield* Effect.sync(() => firstPendingRunInput(run.id, ctx));
-        if (!input && pendingContinuations(run.id).length === 0) {
+        if (!input) {
           yield* Effect.sync(() =>
             transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx),
           );
@@ -257,9 +248,7 @@ export function executeRun(
           process.onDelivered = (messageId, assistantContextHash) => {
             if (signals.isStopping()) return;
             try {
-              if (messageId.startsWith(DELIVERY_ID_PREFIX))
-                acknowledgeContinuation(messageId, run.id, new Date(now()));
-              else if (messageId.startsWith(NOTICE_ID_PREFIX)) {
+              if (messageId.startsWith(NOTICE_ID_PREFIX)) {
                 noticesSent.add(messageId);
                 markRunNoticeDelivered(messageId.slice(NOTICE_ID_PREFIX.length), new Date(now()));
               } else markRunInputDelivered(run.id, messageId, ctx, assistantContextHash);
@@ -270,8 +259,7 @@ export function executeRun(
           };
           process.onRejected = (messageId, reason) => {
             if (signals.isStopping()) return;
-            if (messageId.startsWith(DELIVERY_ID_PREFIX)) rejectContinuation(messageId, run.id);
-            else if (messageId.startsWith(NOTICE_ID_PREFIX))
+            if (messageId.startsWith(NOTICE_ID_PREFIX))
               noticesRetry.set(messageId, now() + NOTICE_RETRY_MS);
             else recordRunInputDeliveryFailure(run.id, messageId, reason, ctx);
           };
@@ -305,24 +293,6 @@ export function executeRun(
             for (;;) {
               const selected = firstPendingRunInput(run.id, ctx);
               if (!selected) {
-                const continuation = pendingContinuations(run.id)[0];
-                if (continuation) {
-                  const attempted = admitContinuation(
-                    continuation.deliveryId,
-                    run.id,
-                    new Date(now()),
-                    (envelope) =>
-                      process.prompt(
-                        prepareSyntheticPiMessage({
-                          kind: "continuation",
-                          messageId: envelope.deliveryId,
-                          text: JSON.stringify(envelope),
-                        }),
-                      ),
-                  );
-                  if (attempted) return { task: attempted };
-                  continue;
-                }
                 transitionAgentRun(run.id, "aborted", { stopReason: "input_invalid" }, ctx);
                 return undefined;
               }
@@ -511,23 +481,6 @@ export function executeRun(
                           );
                           return false;
                         }
-                      }
-                      for (const continuation of pendingContinuations(run.id)) {
-                        admitContinuation(
-                          continuation.deliveryId,
-                          run.id,
-                          new Date(now()),
-                          (envelope) => {
-                            process.steer(
-                              prepareSyntheticPiMessage({
-                                kind: "continuation",
-                                messageId: envelope.deliveryId,
-                                text: JSON.stringify(envelope),
-                              }),
-                            );
-                            return true;
-                          },
-                        );
                       }
                       try {
                         for (const notice of pendingRunNotices({ runId: run.id }, ctx)) {

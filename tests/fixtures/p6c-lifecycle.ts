@@ -288,7 +288,7 @@ const dmTaskB = createTask(dm.id, "DM 任务 B");
 const groupTask = createTask(group.id, "群任务");
 const runAGroup = seedRun(instanceAGroup.id, group.id);
 const runADm = seedRun(instanceADm.id, dm.id);
-const runnerPath = resolve("tests/fixtures/p6a-continuation-runner.mjs");
+const runnerPath = resolve("tests/fixtures/pi-session-runner.mjs");
 /** 拉起过的空转 runner 与子进程：任何失败路径都必须关掉，否则它们会拖住事件循环。 */
 const processes: PiSessionProcess[] = [];
 const children: ChildProcess[] = [];

@@ -11,9 +11,9 @@
 - `lease-generation` 旧代次操作被拒绝，远端执行遵守当前租约。
 - `crew-resource` worker 提交绑定 delegation/attempt/run 的资源需求，当前 lead 批准后按 Project × Machine FIFO 获配；Crew 为 owner，grant 绑定实际执行者及目录/操作范围，获配前 queued run 不 admission。stop/终态冻结与排空、孤立 held 恢复、Human force reclaim 的未确认排空均持久化，详见 [Crew 核心](../crew-core.md#执行资源)。CR3 通过 `sprout_resource_*` 工具与 gateway 使用，CR4 UI 尚未实现；单测入口为 `tests/crew-resource.test.ts`。
 - `lease-entry` Machine 管理页与 Info Hub 事实及管理链接一致。
-- `lease-escrow` 分身把租约原地挂靠到 Group、由 Group 内分身领取、发起者撤销；人类只有可见性与强制收回。
+- `lease-escrow` 分身把租约原地挂靠到 Crew、由 Crew 内分身领取、发起者撤销；人类只有可见性与强制收回。
 - `lease-wait` 分身申请租约遇阻时在工具里阻塞等待（`sprout_lease_wait`），到点拿到失败与原因自行决定是否结束当前 run。等待对持有者完全不可见，既不抢占也不释放。
-- `lease-timeout` 挂靠长时间没人处理时只提醒不释放：Agent owner 被直接唤醒去处理，人类 owner 只在 chat 里收到一条提醒且不产生自动接续；再过升级时限才升级 Human 并暂停该 owner 在这个挂靠上的自动尝试。
+- `lease-timeout` 挂靠长时间没人处理时只提醒不释放：Agent owner 被直接唤醒去处理，人类 owner 只在 chat 里收到一条提醒；再过升级时限才升级 Human 并暂停该 owner 在这个挂靠上的自动尝试。
 
 ## How to get to it (user POV)
 
@@ -26,18 +26,18 @@
 
 前置条件是专用数据库、空闲端口、一次性 worker state directory 和测试根目录。租约操作还需项目成员及对应 Chat / AgentInstance。真实移交验收另需模型凭据。禁止把验收 worker 接到日常使用的 Machine 或目录。
 
-| 路径                      | 命令或定位                                                                                                                 | 必须观察的结果                                                                                                                                                                            |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 真实 Machine UI 与 worker | `bash scripts/verify/u-machine-ui.sh`，driver 是 [p4a-machine-flow.mjs](../../scripts/browser/p4a-machine-flow.mjs)        | 待配对到已配对的过程、连接和能力事实、配置保存、绑定隔离、票据和访问边界                                                                                                                  |
-| Machine 操作定位          | `machine-name-input`、`machine-create-submit`、`machine-ticket-toggle`、`machine-renew`、`machine-refresh`                 | 新 Machine 身份保持；票据显隐与更新正确；实际 worker 连接后状态更新                                                                                                                       |
-| 根目录与绑定              | `machine-root-directory`，其余表单沿 driver 操作                                                                           | 保存及刷新后值保持，切换项目没有串用绑定                                                                                                                                                  |
-| Lease 界面与交互          | `bash scripts/verify/y-lease-ui.sh`；开发场景 driver 是 [p4b-lease-scenes.mjs](../../scripts/browser/p4b-lease-scenes.mjs) | 只读事实与强制收回；申请/释放/交接入口不存在；该路径使用 fixture，无远端执行                                                                                                              |
-| Lease 真实链路            | `bash scripts/verify/z-lease-integration.sh`                                                                               | 实际 worker / Agent 运行、租约代次、持有者与移交结果对应；不能以场景截图替代                                                                                                              |
-| Lease 挂靠与领取真实链路  | `bash scripts/verify/p8a-lease-integration.sh`                                                                             | 分身挂靠、旧持有者被拒、Group 成员领取、撤销回发起者；三者都经真实 Agent 工具与 worker                                                                                                    |
-| 挂靠超时与等待的契约域层  | `bash scripts/verify/p8b-timeout.sh`                                                                                       | 计时起点是挂靠被接受时刻、只提醒一次、agent / human owner 分流、升级后暂停 owner 自动尝试、默认 30 分钟 / 2 小时与 5 分钟等待上界（1 小时封顶）                                           |
-| 挂靠超时与等待的真实链路  | `bash scripts/verify/p8b-timeout-integration.sh`                                                                           | 分身经真实 `sprout_lease_wait` 阻塞等待（全程只发 `lease_get`）、到点返回失败与原因、持有者侧无任何消息或 run；提醒与升级由生产 scheduler 的 `advance()` 驱动，关闭自动接续的 chat 也照发 |
-| Windows 平台适配          | `bash scripts/verify/p8d-windows-worker.sh`（需 `P8D_WINDOWS_HOST`，默认 `e8`）                                            | 三种 shell 的路径、版本与自检；经 runner 执行的退出码透传；进程树 `taskkill /T /F`；runner 被杀后不伪造结果                                                                               |
-| Windows 集成端到端        | `bash scripts/verify/p8d-windows-integration.sh`（同一环境变量，`P8D_EXPECT_WINDOWS_SESSION` 默认 `0`）                    | 生产路径 `RemoteDispatcher` 下的能力诚实性、跨平台文件操作、进程枚举与树终止、Session 0 与桌面会话区分、取消只报 kill_delivered、重连去重、未观测退出不重跑                               |
+| 路径                      | 命令或定位                                                                                                                 | 必须观察的结果                                                                                                                                                |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 真实 Machine UI 与 worker | `bash scripts/verify/u-machine-ui.sh`，driver 是 [p4a-machine-flow.mjs](../../scripts/browser/p4a-machine-flow.mjs)        | 待配对到已配对的过程、连接和能力事实、配置保存、绑定隔离、票据和访问边界                                                                                      |
+| Machine 操作定位          | `machine-name-input`、`machine-create-submit`、`machine-ticket-toggle`、`machine-renew`、`machine-refresh`                 | 新 Machine 身份保持；票据显隐与更新正确；实际 worker 连接后状态更新                                                                                           |
+| 根目录与绑定              | `machine-root-directory`，其余表单沿 driver 操作                                                                           | 保存及刷新后值保持，切换项目没有串用绑定                                                                                                                      |
+| Lease 界面与交互          | `bash scripts/verify/y-lease-ui.sh`；开发场景 driver 是 [p4b-lease-scenes.mjs](../../scripts/browser/p4b-lease-scenes.mjs) | 只读事实与强制收回；申请/释放/交接入口不存在；该路径使用 fixture，无远端执行                                                                                  |
+| Lease 真实链路            | `bash scripts/verify/z-lease-integration.sh`                                                                               | 实际 worker / Agent 运行、租约代次、持有者与移交结果对应；不能以场景截图替代                                                                                  |
+| Lease 挂靠与领取真实链路  | `bash scripts/verify/p8a-lease-integration.sh`                                                                             | 分身挂靠、旧持有者被拒、Crew 成员领取、撤销回发起者；三者都经真实 Agent 工具与 worker                                                                         |
+| 挂靠超时与等待的契约域层  | `bash scripts/verify/p8b-timeout.sh`                                                                                       | 计时起点是挂靠被接受时刻、只提醒一次、agent / human owner 分流、升级后暂停 owner 自动尝试、默认 30 分钟 / 2 小时与 5 分钟等待上界（1 小时封顶）               |
+| 挂靠超时与等待的真实链路  | `bash scripts/verify/p8b-timeout-integration.sh`                                                                           | 分身经真实 `sprout_lease_wait` 阻塞等待（全程只发 `lease_get`）、到点返回失败与原因、持有者侧无任何消息或 run；提醒与升级由生产 scheduler 的 `advance()` 驱动 |
+| Windows 平台适配          | `bash scripts/verify/p8d-windows-worker.sh`（需 `P8D_WINDOWS_HOST`，默认 `e8`）                                            | 三种 shell 的路径、版本与自检；经 runner 执行的退出码透传；进程树 `taskkill /T /F`；runner 被杀后不伪造结果                                                   |
+| Windows 集成端到端        | `bash scripts/verify/p8d-windows-integration.sh`（同一环境变量，`P8D_EXPECT_WINDOWS_SESSION` 默认 `0`）                    | 生产路径 `RemoteDispatcher` 下的能力诚实性、跨平台文件操作、进程枚举与树终止、Session 0 与桌面会话区分、取消只报 kill_delivered、重连去重、未观测退出不重跑   |
 
 契约层改动先选 [s-machine-contracts.sh](../../scripts/verify/s-machine-contracts.sh) 或 [v-lease-contracts.sh](../../scripts/verify/v-lease-contracts.sh)；挂靠超时或申请等待改动先跑 [p8b-timeout.sh](../../scripts/verify/p8b-timeout.sh)，改到工具接线或提醒 / 升级驱动再加 [p8b-timeout-integration.sh](../../scripts/verify/p8b-timeout-integration.sh)。worker 协议变化再查 [t-machine-worker.sh](../../scripts/verify/t-machine-worker.sh) 与 [w-worker-remote.sh](../../scripts/verify/w-worker-remote.sh)。这些是按风险组合的入口，不需要因为同属 Machine 而全部运行。 Windows 侧的平台适配与集成验收固定用 [p8d-windows-worker.sh](../../scripts/verify/p8d-windows-worker.sh) 与 [p8d-windows-integration.sh](../../scripts/verify/p8d-windows-integration.sh)：两者都是 MANUAL 门禁，没有真实 Windows 主机时明确失败，不静默跳过。
 
@@ -54,9 +54,9 @@ Y 脚本自己启动 dev server，默认端口 3099，可用 `SPROUT_LEASE_SCENE
 - 仅截图持有者文本不能证明旧 generation 被拒绝。涉及代次、强制移交和执行中止时，要核对真实链路响应与副作用。
 - 挂靠、领取、撤销挂靠没有人类入口。三条命令只由分身通过 `sprout_lease_escrow`、`sprout_lease_claim`、`sprout_lease_escrow_cancel` 发起，人类只有可见性与强制收回；界面不需要为它们增加按钮。
 - 超时提醒、升级与等待都不改变占用事实：它们只加只读的超时标记，绝不释放租约，也绝不向持有者发送任何资源请求；系统里不存在「协调请求」这个实体或通道。
-- Run 注意力是独立于租约的 30 分钟 + 30 分钟阶梯，既不结束 run 也不释放资源。验证入口为 `bash scripts/verify/run-attention.sh`；测试必须经 `createContinuationScheduler().advance()`，不得直接调用 `sweepRunAttention`。全局 continuation 关闭仍执行 run 注意力，既有 lease 与续接任务保持关闭。
-- 验证挂靠超时不要直接调 `sweepLeaseEscrowTimeouts`：真实驱动路径是 `createContinuationScheduler` 的 `advance()`。时限用 Project 级 `wake_policy.leaseTimeouts` 压缩（默认 30 分钟 / 2 小时，最小 1 秒），产品代码读的是同一个配置，不是测试替身。
-- 挂靠超时的提醒与升级不受 chat 自动接续开关影响；推送只做 chat 消息加（Agent owner 的）直接唤醒，唤醒失败沿用既有 agent-run 重试规则，不新增退避参数。
+- Run 注意力是独立于租约的 30 分钟 + 30 分钟阶梯，既不结束 run 也不释放资源。验证入口为 `bash scripts/verify/run-attention.sh`；测试必须经 `createScheduler().advance()`，不得直接调用 `sweepRunAttention`。run 注意力与其他扫描一起常驻，不受已移除的对话接续影响。
+- 验证挂靠超时不要直接调 `sweepLeaseEscrowTimeouts`：真实驱动路径是 `createScheduler` 的 `advance()`。时限用 Project 级 `runtime_policy.leaseTimeouts` 压缩（默认 30 分钟 / 2 小时，最小 1 秒），产品代码读的是同一个配置，不是测试替身。
+- 挂靠超时的提醒与升级只写 chat 消息，不触发自动续行；消息投递失败沿用 `src/domain/retry.ts` 的重试间隔，不新增退避参数。
 - 等待期间在现场只应看到 `lease_get`：一旦出现写入类远端调用，说明等待路径被接错了。
 - 截图与日志里保留必要状态，配对票据和 worker 凭据按脚本的脱敏规则处理。
 - `p8d-windows-*` 通过 ssh 进入的机器落在 Session 0：`interactive_desktop` 的实机判定、桌面用户环境与两种会话的差异行为在这类机器上不可验。要按实际 Session 写明，并把桌面项记为未验证，不能用 Session 0 的结果冒充桌面结果。

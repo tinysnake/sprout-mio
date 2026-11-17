@@ -245,14 +245,6 @@ function ChatsLayout() {
                   machineFacts={machineFacts}
                   machineFactsError={machineFactsError}
                   onBrowseMachine={browseMachine}
-                  continuation={
-                    selected.continuation.ok
-                      ? {
-                          view: selected.continuation.data.view,
-                          denials: selected.continuation.data.denials,
-                        }
-                      : undefined
-                  }
                   crewRail={
                     crewDelegations?.ok ? (
                       <CrewRail

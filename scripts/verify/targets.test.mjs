@@ -60,16 +60,13 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "a-base",
     "b-tooling",
   ]);
-  assert.deepEqual(inventory.manual, [
-    "p6a-live-routing",
-    "p8d-windows-worker",
-    "p8d-windows-integration",
-  ]);
+  assert.deepEqual(inventory.manual, ["p8d-windows-worker", "p8d-windows-integration"]);
   for (const id of inventory.manual) {
     assert(!inventory.ci.includes(id));
     assert(!inventory.local.includes(id));
   }
   assert.deepEqual(validateUnitTargets(root).local, [
+    "tests/agent-prompt-runner.test.ts",
     "tests/memory-runner.test.ts",
     "tests/assistant-watch-summary-pi.test.ts",
     "tests/chat-skills-foundation.test.ts",
@@ -98,7 +95,7 @@ await test("unclassified gates and test files fail before any command executes",
 await test("a planned sandbox gate the sandbox whitelist omits fails before any command runs", (t) => {
   const directory = fixture(t);
   const file = join(directory, "scripts/verify/lib/sandbox.mjs");
-  writeFileSync(file, readFileSync(file, "utf8").replace(/\n  "p6a-pages",/, ""));
+  writeFileSync(file, readFileSync(file, "utf8").replace(/\n  "bf-p6b-pages",/, ""));
   assert.throws(() => validateGateTargets(directory), /does not whitelist it/);
   const result = call(directory, "targets.mjs", ["ci", "--group", "docs"]);
   assert.equal(result.status, 1, result.stderr);

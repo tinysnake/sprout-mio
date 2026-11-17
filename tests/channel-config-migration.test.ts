@@ -52,12 +52,16 @@ it("upgrades 0051 preserving bindings, history and durable delivery and dropping
         .all()
         .map((row) =>
           name === "chat"
-            ? {
-                ...(row as object),
-                parent_crew_chat_id: null,
-                lead_profile_id: null,
-                crew_epoch: 0,
-              }
+            ? (() => {
+                const copy = { ...(row as Record<string, unknown>) };
+                delete copy.wake_policy;
+                return {
+                  ...copy,
+                  parent_crew_chat_id: null,
+                  lead_profile_id: null,
+                  crew_epoch: 0,
+                };
+              })()
             : name === "message"
               ? {
                   ...(row as object),

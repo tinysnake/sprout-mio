@@ -23,7 +23,6 @@ import { agentRun, agentRunInput, chat, message, webhookRule, webhookTrigger } f
 import { assertProjectAccess, ProjectAccessError, type ProjectContext } from "./access";
 import { appendAutomationRunInput } from "./agent-run";
 import { resolveAutomationTarget, validateAutomationDmAgent } from "./automation-target";
-import { signalScheduleChange } from "./chat-schedule";
 import { publishProjectChange } from "./change-feed";
 
 export class AutomationError extends Error {
@@ -306,7 +305,6 @@ function admit(
 function afterAdmission(result: WebhookTrigger, projectId: string) {
   if (result.decision === "accepted") {
     const saved = db.select().from(message).where(eq(message.id, result.messageId)).get()!;
-    signalScheduleChange(saved.chatId);
     publishProjectChange(projectId, saved.chatId);
   }
 }

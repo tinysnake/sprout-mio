@@ -9,7 +9,7 @@ export async function verifyAutomationTargetPicker({ ui, page, project, beta, ca
     member: { kind: "agent", id: beta.id },
     expectedRevision: channel.governanceRevision,
   });
-  await ui.getByLabel("动作", { exact: true }).selectOption("group_agent");
+  await ui.getByLabel("动作", { exact: true }).selectOption("crew");
   const target = ui.getByLabel("目标 Chat", { exact: true });
   assert.equal(await target.locator(`option[value="${channel.id}"]`).count(), 1);
   await target.selectOption(channel.id);

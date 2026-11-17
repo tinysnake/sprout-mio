@@ -66,7 +66,7 @@ Chat 是 Project 内持久的沟通与协作单元，只有 DM 与 Crew 两种�
 | Machines | Worker 稳定连接；macOS 平台验收；shell、文件、进程操作；长命令持续执行、日志与结果查询、重连接续及请求去重；宿主 MCP 入口与 stdio/streamableHttp MCP server 的工具调用；Project × Machine 内分身独占、跨 run 持有、直接原子交接；人类强制收回 | 挂靠与领取、系统自动资源协调、Windows Worker（二期）；Machine 上安装 harness、自动能力匹配、租约动作自动清理进程、图形桌面工具 |
 | Project profiles | Agent 信息与上下文隔离；Agent 与 Machine 成员名单；受前置清理约束的 Agent 移除；一个主工作目录、最多一个仓库；宿主侧仓库访问；每台 Machine 的目录绑定；Git 配置与约定 | Agent 强制移除与自动善后（二期）；项目级 Agent 权限等级、多仓库配置体系、集中 Git 凭据、专门 Git 操作界面 |
 | Agent profiles | 人设与默认执行配置；profile × Chat 的持续分身；配置下一轮更新；Pi 配置与模型认证继承；简单的运行、待机与出错状态 | 多 harness 同时接入、原有工具自动转向远端、跨分身共享租约、成本统计 |
-| 沟通渠道 | Project 内 DM 与唯一 Crew；Human 消息、任务和自动化只到 lead；Crew 内成员显式加入；对话接续；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Crew 成员或 lead、Agent 级联唤醒、lead 对 worker 的显式委派（CR2） |
+| 沟通渠道 | Project 内 DM 与唯一 Crew；Human 消息、任务和自动化只到 lead；Crew 内成员显式加入；运行中接收消息 | 系统自动租约协调（二期）；固定轮数限制、项目外共享对话、Agent 自行变更 Crew 成员或 lead、Agent 级联唤醒、lead 对 worker 的显式委派（CR2）；Group/公共频道与对话接续（已移除） |
 | Tasks | Project 所有、Chat 承接；Crew lead 或 DM 唯一分身推进；四态；可选立即开始；checklist、施工记录及末条记录中的完成结果；人类纠正与重开 | 移除成员时自动转移责任或退回任务（二期）；固定 workflow、完整执行状态机、强制 completion claim 和验收阶段 |
 | Info Hub | 统一信息聚合与访问模块，供各界面及 Agents 按需获取 Project 内基本信息及关联；Project、Chat、Agent、Machine 多视角；Human 自动刷新；Agent 轮初快照、运行中简短变更提示与主动查询 | 挂靠、自动资源协调及强制移除善后信息（二期）；自动工作摘要、独立发布公告或笔记 |
 

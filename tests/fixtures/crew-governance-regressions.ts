@@ -244,9 +244,9 @@ describe("CR1 Crew governance regressions", () => {
     ).toBe(f.worker.id);
   });
 
-  it("resolves configured Crew workers to the lead and rejects an empty lead", () => {
+  it("resolves a Crew target to the lead and rejects an empty lead", () => {
     const f = fixture();
-    const action = { kind: "group_agent" as const, chatId: f.chatId, agentProfileId: f.worker.id };
+    const action = { kind: "crew" as const, chatId: f.chatId };
     expect(resolveAutomationTarget(f.project.id, action, ctx)).toEqual({
       chatId: f.chatId,
       agentProfileId: f.lead.id,
@@ -434,9 +434,9 @@ describe("CR1 Crew governance regressions", () => {
     expect(() => taskResponsibilityFacts(f.chatId, ctx)).toThrowError(
       expect.objectContaining({ code: "task_assignment_invalid" }),
     );
-    expect(
-      resolveAutomationTarget(f.project.id, { kind: "group_owner", chatId: f.chatId }, ctx),
-    ).toEqual({ reason: "chat_stopped" });
+    expect(resolveAutomationTarget(f.project.id, { kind: "crew", chatId: f.chatId }, ctx)).toEqual({
+      reason: "chat_stopped",
+    });
     expect(db.select().from(s.agentRun).where(eq(s.agentRun.id, runId)).get()?.status).toBe(
       "running",
     );

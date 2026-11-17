@@ -35,11 +35,7 @@ export const RETIRED_GATES = Object.freeze([
   "i4-agent-fanout",
 ]);
 
-export const MANUAL_GATES = Object.freeze([
-  "p6a-live-routing",
-  "p8d-windows-worker",
-  "p8d-windows-integration",
-]);
+export const MANUAL_GATES = Object.freeze(["p8d-windows-worker", "p8d-windows-integration"]);
 
 export const SUITE_PLAN = Object.freeze({
   "assistant-core": plan(8, { unit: 1 }),
@@ -49,19 +45,9 @@ export const SUITE_PLAN = Object.freeze({
   "webhook-core": plan(6, { unit: 1 }),
   "webhook-browser": plan(40, { browser: 1, sdk: 1 }, server),
   "chat-skills": plan(8, { unit: 1, sdk: 1 }),
-  "p6a-routing": plan(3, { unit: 1 }),
-  "p6a-live-routing": plan(400, { sdk: 1 }),
-  "deploy-continuation-off": plan(3, { unit: 1 }),
-  "p6a-scheduler": plan(1, { unit: 1 }),
-  "p6a-control": plan(0.8, { unit: 1 }),
-  "p6a-delivery": plan(0.9, { unit: 1 }),
-  "p6a-integration": plan(1.3, { unit: 1 }),
-  "bf-p6a-lifecycle": plan(5, { unit: 1 }),
-  "p6a-wiring": plan(1, { unit: 1 }),
   "p7-client-navigation": plan(35, { browser: 1, unit: 1 }, server),
   "p7-client-pwa": plan(20, { browser: 1 }, server),
   "p7-client-states": plan(20, { development: 1, browser: 1 }, privateTree, true),
-  "p6a-pages": plan(40, { development: 1, browser: 1 }, privateTree, true),
   "p7-loop-multiround": plan(80, { native: 1, sdk: 1, timing: 1 }, worker),
   "p7-loop-collaboration": plan(4, { unit: 1 }),
   "p7-loop-runtime": plan(6, { unit: 1 }),

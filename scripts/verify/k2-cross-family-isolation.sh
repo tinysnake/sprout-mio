@@ -442,9 +442,8 @@ try {
   await check('A_chats_unchanged_after_attacks', async () => {
     assert.deepEqual(aAfter.chats.filter((entry) => entry.kind === 'dm').map((entry) => entry.id), [aDm.data.chat.id])
     assert.equal(aAfter.chats.filter((entry) => entry.kind === 'crew').length, 1)
-    assert.equal(aAfter.chats.filter((entry) => entry.kind === 'public_channel').length, 0)
     assert.deepEqual(aAfter.chats.map((entry) => entry.id).sort(), aSnapshot.chats.map((entry) => entry.id).sort())
-    return { chats: aAfter.chats.length, dm: 1, crews: 1, channels: 0 }
+    return { chats: aAfter.chats.length, dm: 1, crews: 1 }
   })
 
   writeFileSync(join(directory, 'k2-state.json'), JSON.stringify({

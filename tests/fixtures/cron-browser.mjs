@@ -290,7 +290,7 @@ export async function verifyCronBrowser({
     enabled: true,
     expression: "0 0 29 2 *",
     timezone: "UTC",
-    action: { kind: "group_agent", chatId: group.id, agentProfileId: beta.id },
+    action: { kind: "crew", chatId: group.id },
   };
   const unauthenticated = await callResult("listCronRulesFn", { projectId: project.id }, "");
   assert.equal(unauthenticated.ok, false);
@@ -511,7 +511,7 @@ export async function verifyCronBrowser({
   const ownerRule = await call("createCronRuleFn", {
     ...apiDraft,
     name: "Owner cron",
-    action: { kind: "group_owner", chatId: group.id },
+    action: { kind: "crew", chatId: group.id },
   });
   const stopped = await call("setCrewModeFn", {
     chatId: group.id,

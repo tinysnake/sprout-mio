@@ -36,7 +36,7 @@ function ProjectChatDetailPage() {
   const live = useInfoHubLive();
   const watching = hasActiveRun(loader);
   // 活跃 run 期间只重读消息与 run 状态，不再重跑整棵路由的 loader；
-  // run 一推进或收尾，这里回报一次 invalidate，让会话、对话接续、关联 Task 与 inspector 快照跟上。
+  // run 一推进或收尾，这里回报一次 invalidate，让会话、关联 Task 与 inspector 快照跟上。
   const facts = useChatLive({
     chatId,
     projectId,
@@ -63,8 +63,6 @@ function ProjectChatDetailPage() {
     ? { ...loader.info, data: mergeChatRuns(loader.info.data, live?.view ?? null) }
     : loader.info;
   const runState = facts?.runState ?? loader.runState;
-  // 判定不改消息也不改 run：不盖住 loader 的 continuation，「正在检查」就只在整树重读时闪现。
-  const continuation = facts?.continuation ?? loader.continuation;
 
   return (
     <>
@@ -83,7 +81,6 @@ function ProjectChatDetailPage() {
         runState={runState}
         runActivities={loader.runActivities}
         skills={loader.skills.ok ? loader.skills.data : { state: "unavailable", items: [] }}
-        continuation={continuation}
         inspectorOpen={open}
         onToggleInspector={() => setOpen(!open)}
         filesOpen={filesOpen}

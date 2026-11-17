@@ -35,7 +35,7 @@
 
 日常使用 `pnpm verify:local` 运行必须依赖真实 macOS 或已安装 Pi 的部分；GitHub Actions 的 Ubuntu job 执行其余部分。`pnpm verify` 仍是单机全量入口，包含全部原始断言与全量单测，便于完整复现；它不因分工而静默缩减范围。分工入口先校验完整门禁与测试文件清单，新文件未分类时立即失败。归属清单见 `scripts/verify/lib/targets-plan.mjs` 与 `scripts/verify/lib/test-targets.mjs`。
 
-CI 分为 base、tooling、docs、contracts、api、tasks、turns、browser 八个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 87 个门禁，本机保留 30 个（`a-base` 与 `b-tooling` 两边都跑），另有 3 个 MANUAL 门禁只在真实环境手工运行（`p6a-live-routing` 需要真实付费模型，`p8d-windows-worker` 与 `p8d-windows-integration` 需要真实 Windows 主机）；去重后合计 118 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
+CI 分为 base、tooling、docs、contracts、api、tasks、turns、browser 八个独立 checkout 的 job，最多六个同时执行，每个 job 内串行运行自己的门禁，避免在 hosted runner 内再次过量并发。共接管 87 个门禁，本机保留 30 个（`a-base` 与 `b-tooling` 两边都跑），另有 2 个 MANUAL 门禁只在真实环境手工运行（`p8d-windows-worker` 与 `p8d-windows-integration` 需要真实 Windows 主机）；去重后合计 117 个。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
 170 个测试文件中，CI 执行 163 个，本机执行 7 个：`tests/assistant-watch-summary-pi.test.ts`（真实 Pi summary）、`tests/machine-worker.test.ts`（Darwin/sandbox-exec 分支）、`tests/extension-mcp.test.ts`（真实 Pi McpClient）、`tests/worker-report-budget.test.ts`（真实 runWorker 环境探测）和 `tests/chat-skills-*.test.ts`（真实已安装 Pi SDK 的 scoped skills）。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自测试集合；两边都保留文件隔离。CI 测试最多两个 file worker，使用空的临时 Pi agent 目录、清除 inherited Pi runner/module 设置并关闭 MCP_EVERYTHING，避免借用个人安装掩盖依赖。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
 
@@ -116,7 +116,7 @@ coordinator 在合并前独立核对 diff、证据，并复跑该单元所需范
 
 `bash scripts/verify/run-attention.sh` 登记为 CI turns 组中的 `run-attention` gate（unit=1，无 prep、server 或 SDK 槽）。四个测试文件在 `scripts/verify/lib/test-targets.mjs` 的 ci target 闭包内：run-attention-domain、run-attention-integration、pi-host-liveness、run-attention-ui。集成只经生产 scheduler 的 `advance()`，不直接调 sweep。协议桩使用虚拟时钟越过原 600000ms，取消则使用真实墙钟，分别记录 waiter、进程退出与下一轮启动时间；这些证据不代表付费模型或真实 60 分钟运行验收。
 
-共享 schema、runtime 开关和取消路径变化还需完整类型/单元检查及 `o-turn-semantics`、`p8b-timeout`、`p8b-timeout-integration`、`deploy-continuation-off` 受影响门禁。Human 页面体验单列，SSR 或协议桩通过不记为 Human 确认。
+共享 schema、runtime 开关和取消路径变化还需完整类型/单元检查及 `o-turn-semantics`、`p8b-timeout`、`p8b-timeout-integration` 受影响门禁。Human 页面体验单列，SSR 或协议桩通过不记为 Human 确认。
 
 ## 证据复用与失效
 

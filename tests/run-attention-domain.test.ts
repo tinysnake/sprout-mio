@@ -4,7 +4,7 @@ import {
   DEFAULT_RUN_ATTENTION_POLICY,
   resolveRunAttentionPolicy,
 } from "../src/contracts/run-attention";
-import { projectWakePolicySchema } from "../src/contracts/project-wake-policy";
+import { projectRuntimePolicySchema } from "../src/contracts/project-runtime-policy";
 import {
   runAttentionFacts,
   runAttentionStep,
@@ -41,13 +41,16 @@ describe("run attention boundaries", () => {
     ])
       expect(resolveRunAttentionPolicy(invalid)).toEqual(DEFAULT_RUN_ATTENTION_POLICY);
     expect(
-      projectWakePolicySchema.safeParse({
-        provider: "llm",
-        configRevision: 1,
-        thresholdVersion: "v1",
+      projectRuntimePolicySchema.safeParse({
         runAttention: { timeoutMs: 1000, escalationMs: 2000 },
       }).success,
     ).toBe(true);
+    expect(
+      projectRuntimePolicySchema.safeParse({
+        runAttention: { timeoutMs: 1000, escalationMs: 2000 },
+        unknown: true,
+      }).success,
+    ).toBe(false);
   });
   it("prioritizes terminal runs and absolute human deadline over a late owner retry", () => {
     expect(runAttentionStep({ ...input, now: at(1_799_999) })).toBe("pending");

@@ -89,7 +89,6 @@ describe("工具调用摘要", () => {
     expect(read).toMatchObject({ kind: "task", label: "读取对话", toolName: "sprout_chat_get" });
     expect(read.detail).toBeUndefined();
 
-    expect(describeToolCall("sprout_chat_continuation_get", {}).label).toBe("读取对话接续");
     expect(describeToolCall("sprout_chat_log", {}).label).toBe("对话协作");
 
     const send = describeToolCall("sprout_chat_send", { body: "排查结论" });

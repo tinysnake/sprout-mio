@@ -162,11 +162,13 @@ P2 交付后追加的范围。Agent profile 增加可空的职位字段，只是
 
 ## P6a 完成对话接续与人类控制
 
+> **已移除：** 对话接续与唤醒判定已随 Crew 迁移整体删除（`drizzle/0069_remove_continuation.sql`）。本节保留作历史记录；下列条目因原证据脚本与产品能力一起删除而不再勾选，不能作为当前验收证据。
+
 按总计划 I-P6a 分派；P6 由原暂按整章交付拆为 a/b/c，不减少原范围。契约与中文样本采用结论随本章交付归档，页面形状按项目约定确认。
 
-- [x] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。证据 [判定准确率只报不判](../../p6a/summary.md#判定准确率只报不判)：LLM 判定 5 次真实回放 8/8 至 7/8、JEV 校准 12/15 与留出 9/15 且概率反序、产品默认 LLM 判定、不部署 JEV、不自动回退；基线 `bde6383`，重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
-- [x] 对有 assigned Task 的 Chat 周期做 LLM 判定；没有 assigned Task 时停止检查。证据 [功能线证据](../../p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`。
-- [x] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。证据 [功能线证据](../../p6a/summary.md#功能线证据)与[控制面收敛到三个动作](../../p6a/summary.md#控制面收敛到三个动作)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`、`bash scripts/verify/bf-p6a-lifecycle.sh`。
+- [ ] 用中文协作样本验证聊天唤醒判定，确定 Jev 的采用方式和失败回退。证据 [判定准确率只报不判](../../p6a/summary.md#判定准确率只报不判)：LLM 判定 5 次真实回放 8/8 至 7/8、JEV 校准 12/15 与留出 9/15 且概率反序、产品默认 LLM 判定、不部署 JEV、不自动回退；基线 `bde6383`，重跑 `bash scripts/verify/p6a-live-routing.sh`（人工门禁，需真实凭据与 `SPROUT_VERIFY_PI_MODEL`）。
+- [ ] 对有 assigned Task 的 Chat 周期做 LLM 判定；没有 assigned Task 时停止检查。证据 [功能线证据](../../p6a/summary.md#功能线证据)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-scheduler.sh`。
+- [ ] 实现持久唤醒去重、运行中合并、重启恢复与失败退避。人类暂停和停止优先，自动检查不能立即重新启动已暂停的工作。证据 [功能线证据](../../p6a/summary.md#功能线证据)与[控制面收敛到三个动作](../../p6a/summary.md#控制面收敛到三个动作)，基线 `bde6383`，重跑 `bash scripts/verify/p6a-delivery.sh`、`bash scripts/verify/p6a-control.sh`、`bash scripts/verify/bf-p6a-lifecycle.sh`。
 
 上述“LLM 判定”描述按已冻结的 Project 所选 LLM/JEV 判定路径实施；同一次判定只走一路，不自动级联回退。Task 保留四态，调度、控制和提醒使用独立事实；Human owner 只提醒，不虚构 Agent run。
 

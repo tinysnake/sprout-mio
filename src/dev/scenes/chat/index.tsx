@@ -44,7 +44,6 @@ function chat(id: string, title: string, updatedAt: string): Chat {
     crewEpoch: 0,
     title,
     owner: { kind: "human", id: "usr_demo" },
-    wakePolicy: "owner_led",
     governanceRevision: 0,
     createdBy: "usr_demo",
     createdAt: "2026-06-18T02:00:00.000Z",
@@ -200,14 +199,14 @@ const messages: Message[] = [
     mentions: [],
   },
   {
-    // I-P8b 挂靠超时提醒：直接写库（不触发唤醒、不触发自动接续），落在挂靠所在的 Group chat。
+    // I-P8b 挂靠超时提醒：直接写库（不触发唤醒），落在挂靠所在的 Group chat。
     id: "msg_bbbbbbbb",
     attachments: [],
     attachmentSpans: [],
     chatId: chats[1]!.id,
     senderKind: "agent",
     senderId: LEASE_TIMEOUT_SENDER_ID,
-    body: "【挂靠超时】重构搭档 要用 Machine「工作室 Mac mini」，它的租约挂在对话《发布协作组》（les_44444444）的挂靠里已经超过 30 分钟。\n请处理：是让 重构搭档 归还（撤销挂靠或强制收回），还是继续占用（领取这个挂靠）。在你处理之前，租约占用与权限保持不变。\n（这是提醒消息，不触发唤醒、也不触发自动接续；这条挂靠不会再升级，请自行决定是否处理。）",
+    body: "【挂靠超时】重构搭档 要用 Machine「工作室 Mac mini」，它的租约挂在对话《发布协作组》（les_44444444）的挂靠里已经超过 30 分钟。\n请处理：是让 重构搭档 归还（撤销挂靠或强制收回），还是继续占用（领取这个挂靠）。在你处理之前，租约占用与权限保持不变。\n（这是提醒消息，不触发唤醒；这条挂靠不会再升级，请自行决定是否处理。）",
     createdAt: "2026-06-18T02:32:00.000Z",
     skills: [],
     mentions: [],

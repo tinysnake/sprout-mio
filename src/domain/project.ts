@@ -1,10 +1,3 @@
-import {
-  updateProjectWakePolicyInputSchema,
-  type UpdateProjectWakePolicyInput,
-} from "../contracts/project";
-import { projectWakePolicySchema, type ProjectWakePolicy } from "../contracts/project-wake-policy";
-import { ChatContinuationError } from "./chat-continuation";
-import { reconcileChatSchedule, signalScheduleChange, all, one, write } from "./chat-schedule";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { ID_PREFIXES, newId } from "../contracts/ids";
 import type { CreateProjectInput, Project, UpdateProjectInput } from "../contracts/project";
@@ -59,7 +52,6 @@ function toProject(row: ProjectRow): Project {
     kind: row.kind,
     agentPrompt: row.agentPrompt,
     ...(row.description === null ? {} : { description: row.description }),
-    ...(row.wakePolicy ? { wakePolicy: projectWakePolicySchema.parse(row.wakePolicy) } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -183,62 +175,4 @@ export function listProjects(ctx: ProjectContext): Project[] {
 export function getProject(id: string, ctx: ProjectContext): Project {
   assertProjectAccess(ctx, id);
   return toProject(db.select().from(project).where(eq(project.id, id)).get()!);
-}
-
-/** Provider model/threshold are trusted server configuration; credentials are never an argument. */
-export function updateProjectWakePolicy(
-  raw: UpdateProjectWakePolicyInput,
-  ctx: ProjectContext,
-  configured: Omit<ProjectWakePolicy, "provider" | "configRevision">,
-  now: Date,
-): Project {
-  const input = updateProjectWakePolicyInputSchema.parse(raw);
-  return sqlite
-    .transaction(() => {
-      getProject(input.projectId, ctx);
-      if (ctx.agent)
-        throw new ChatContinuationError("forbidden", "只有 Project Human 可以修改判定器。");
-      const payload = JSON.stringify({ actor: ctx.userId, input });
-      const previous = one<{ payload: string; result: string }>(
-        "SELECT payload,result FROM project_wake_policy_command WHERE request_id=?",
-        input.requestId,
-      );
-      if (previous) {
-        if (previous.payload !== payload)
-          throw new ChatContinuationError("conflict", "请求标识已用于其他配置操作。");
-        return JSON.parse(previous.result) as Project;
-      }
-      const row = db.select().from(project).where(eq(project.id, input.projectId)).get()!;
-      const revision = row.wakePolicy?.configRevision ?? 1;
-      if (revision !== input.expectedConfigRevision)
-        throw new ChatContinuationError("conflict", "判定器配置版本已变化。");
-      const policy = projectWakePolicySchema.parse({
-        ...configured,
-        provider: input.provider,
-        configRevision: revision + 1,
-      });
-      db.update(project)
-        .set({ wakePolicy: policy, updatedAt: now })
-        .where(eq(project.id, input.projectId))
-        .run();
-      for (const c of all<{ id: string }>(
-        "SELECT id FROM chat WHERE project_id=?",
-        input.projectId,
-      )) {
-        reconcileChatSchedule(c.id, now);
-        signalScheduleChange(c.id);
-      }
-      const result = getProject(input.projectId, ctx);
-      write(
-        "INSERT INTO project_wake_policy_command VALUES(?,?,?,?,?)",
-        input.requestId,
-        input.projectId,
-        payload,
-        JSON.stringify(result),
-        now.getTime(),
-      );
-      publishProjectChange(input.projectId);
-      return result;
-    })
-    .immediate();
 }

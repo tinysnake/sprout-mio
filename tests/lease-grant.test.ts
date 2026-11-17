@@ -34,7 +34,7 @@ const crewId = newId(ID_PREFIXES.chat);
 const now = new Date();
 sqlite
   .prepare(
-    "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by,wake_policy) VALUES (?,?,'crew','human','owner','owner','owner_led')",
+    "INSERT INTO chat(id,project_id,kind,owner_kind,owner_id,created_by) VALUES (?,?,'crew','human','owner','owner')",
   )
   .run(crewId, projectId);
 function actor(name: string, chatId: string): AgentRemoteContext {

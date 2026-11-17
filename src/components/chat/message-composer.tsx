@@ -84,7 +84,7 @@ export function MessageComposer({
   runStatusLabel: string;
   stopping: boolean;
   stopError: AppError | null;
-  /** 群组里停止下沉到每个 Agent 的行内按钮，输入区不再提供总停止。 */
+  /** Crew 里停止下沉到每个 Agent 的行内按钮，输入区不再提供总停止。 */
   onStop?: () => void;
   /** 未投递输入恢复到输入框后需要把焦点放回这里。 */
   inputRef?: Ref<ComposerEditorHandle>;

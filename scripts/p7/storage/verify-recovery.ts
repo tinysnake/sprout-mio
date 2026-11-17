@@ -376,12 +376,12 @@ try {
       ).count,
       1,
     );
-    const wakePolicyColumn = historyAfter
+    const runtimePolicyColumn = historyAfter
       .prepare(
-        "SELECT count(*) AS count FROM pragma_table_info('project') WHERE name = 'wake_policy'",
+        "SELECT count(*) AS count FROM pragma_table_info('project') WHERE name = 'runtime_policy'",
       )
       .get() as { count: number };
-    assert.equal(wakePolicyColumn.count, 1, "0026 的新列必须已应用");
+    assert.equal(runtimePolicyColumn.count, 1, "0068 的列改名必须已应用");
   } finally {
     historyAfter.close();
   }

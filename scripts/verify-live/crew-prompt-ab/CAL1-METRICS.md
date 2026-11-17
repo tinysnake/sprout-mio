@@ -37,13 +37,13 @@ and the registered definitions in `docs/plans/crew-prompt-ab.md` were not edited
 
 ## Risk -> regression
 
-| Risk | Protection in metrics-regression.test.mjs |
-| --- | --- |
+| Risk                                                                                         | Protection in metrics-regression.test.mjs                                                                                             |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Rejected unknown-tool attempt invalidates all metrics, or a shared session is double counted | Bound multi-run session includes unrelated history, failed tool and explicit sleeps; assert calls, sleep, write mapping and wall sums |
-| ISO spans become NaN, or wall waiting rejects efficient lead behavior | 263000/224000/234000ms worker cases, original wall budget vs corrected action budget |
-| Missing evidence becomes a measured failure | Null checks, reasons, unmeasured outcome/comparison refusal, known violation dominates unknown |
-| Queries outside the waiting interval count, or missing query timing fabricates zero | Before-dispatch and after-receipt calls excluded in corrected view; unknown timestamps/transcript remain null |
-| Offline rejudge trusts stale ledger metrics | Rebuild from real temporary JSONL/domain files, audit shared transcript once, input unchanged |
+| ISO spans become NaN, or wall waiting rejects efficient lead behavior                        | 263000/224000/234000ms worker cases, original wall budget vs corrected action budget                                                  |
+| Missing evidence becomes a measured failure                                                  | Null checks, reasons, unmeasured outcome/comparison refusal, known violation dominates unknown                                        |
+| Queries outside the waiting interval count, or missing query timing fabricates zero          | Before-dispatch and after-receipt calls excluded in corrected view; unknown timestamps/transcript remain null                         |
+| Offline rejudge trusts stale ledger metrics                                                  | Rebuild from real temporary JSONL/domain files, audit shared transcript once, input unchanged                                         |
 
 The old test expecting missing sleep evidence to fail was removed; the missing
 measurement regression above replaces it with the required unknown semantics.
@@ -53,20 +53,20 @@ measurement regression above replaces it with the required unknown semantics.
 Output: `/tmp/crew-ab-cal1/diagnosed-metrics.jsonl`.
 Summary: `/tmp/crew-ab-cal1/diagnosed-metrics-summary.json`.
 
-| Reading | A | B |
-| --- | ---: | ---: |
-| leadMs / leadWallMs | 349000ms | 38000ms |
-| lead tool calls | 57 | 8 |
-| worker tool calls | 42 | 11 |
-| sleepMsTotal | 230000ms | 0ms |
-| explicit waiting queries | 2 | 0 |
-| unmappedArtifacts | 0 | 0 |
-| individual worker spans, chronological | 263000ms, 224000ms | 234000ms |
-| workerWallMs (sum) | 487000ms | 234000ms |
-| genuinelyLongWorker | true | true |
-| corrected leadActionBudget | false | true |
-| delegatedDelivery count (expected 1) | false (2) | true (1) |
-| verdict / verdictCorrected | false / false | true / true |
+| Reading                                |                  A |           B |
+| -------------------------------------- | -----------------: | ----------: |
+| leadMs / leadWallMs                    |           349000ms |     38000ms |
+| lead tool calls                        |                 57 |           8 |
+| worker tool calls                      |                 42 |          11 |
+| sleepMsTotal                           |           230000ms |         0ms |
+| explicit waiting queries               |                  2 |           0 |
+| unmappedArtifacts                      |                  0 |           0 |
+| individual worker spans, chronological | 263000ms, 224000ms |    234000ms |
+| workerWallMs (sum)                     |           487000ms |    234000ms |
+| genuinelyLongWorker                    |               true |        true |
+| corrected leadActionBudget             |              false |        true |
+| delegatedDelivery count (expected 1)   |          false (2) |    true (1) |
+| verdict / verdictCorrected             |      false / false | true / true |
 
 `comparisonReasons` verbatim: `[]`. Evidence warnings: `[]` for both rows.
 A fails `delegatedDelivery` and `eventDrivenWait`; B fails no gates.
