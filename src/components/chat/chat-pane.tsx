@@ -20,6 +20,7 @@ import type { ChatLiveFacts } from "./use-chat-live";
 import type { MentionMember } from "./mention-picker";
 import { ChatTitleEditor } from "./chat-title-editor";
 import { useChatDraft } from "./chat-drafts";
+import { useChatUnread } from "./chat-notifications";
 import {
   sessionDisplayTitle,
   sessionSenderNames,
@@ -71,6 +72,20 @@ export function ChatPane({
 }) {
   const chat = session.chat;
   const room = useChatWindow({ chatId: chat.id, page, live });
+  // 打开中且标签页可见的对话自动算已读：角标与后续提醒都该随之清掉。
+  // 依赖整个 unread 上下文：服务端刷新出新未读时也要把游标再推一位。
+  const unread = useChatUnread();
+  useEffect(() => {
+    if (!unread) return;
+    const mark = () => {
+      if (document.visibilityState !== "visible") return;
+      const latest = room.messages.at(-1)?.id;
+      if (latest) unread.markRead(chat.id, latest);
+    };
+    mark();
+    document.addEventListener("visibilitychange", mark);
+    return () => document.removeEventListener("visibilitychange", mark);
+  }, [unread, chat.id, room.messages]);
   // 分页窗口只改"渲染哪些消息"，错误仍按 loader 的结果原样呈现。
   const messages: ChatResult<Message[]> = page.ok ? { ...page, data: room.messages } : page;
   const history: ChatHistory = {

@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { PageFrame } from "@/components/layout/page-frame";
-import { ChatEmptyState, ChatListPanel } from "@/components/chat/chat-list";
+import { ChatEmptyState, ChatListPanel, chatListName } from "@/components/chat/chat-list";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatTitleEditor } from "@/components/chat/chat-title-editor";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
@@ -16,6 +16,10 @@ import { isRunActive, runStatusLabel, RunStatusPanel } from "@/components/chat/r
 import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
+import { createChatUnreadTracker } from "@/components/chat/chat-unread-tracker";
+import { ToastHost, useToast } from "@/components/ui/toast";
+import { showChatNotification } from "@/lib/browser-notifications";
+import type { ChatUnreadItem } from "../../../contracts/chat-read";
 import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
 import { demoMachineDetails } from "../machine/fixtures";
 import {
@@ -70,6 +74,20 @@ const chatAgents: ChatAgent[] = chats.map((item, index) => ({
   chatId: item.id,
   agentProfileId: profiles[index]!.id,
 }));
+
+/** dev scene 的未读 fixture：列表一进来就有可见角标，不必真的等服务端有未读。 */
+const demoUnread: ChatUnreadItem[] = [
+  {
+    chatId: chats[1]!.id,
+    unreadCount: 2,
+    lastMessage: {
+      id: "msg_demo_unread_1",
+      senderLabel: profiles[1]!.name,
+      preview: "评审意见已经整理好了，方便的时候看一下。",
+      createdAt: "2026-06-18T02:30:00.000Z",
+    },
+  },
+];
 
 const demoInstances: AgentInstance[] = [
   {
@@ -870,6 +888,47 @@ function WorkspaceScene() {
       updatedAt: localMessages[item.id]?.at(-1)?.createdAt ?? item.updatedAt,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const toast = useToast();
+  const [unread, setUnread] = useState<ChatUnreadItem[]>(demoUnread);
+  // 基线在挂载时建好：demoUnread 是「本来就在那里的未读」，进场景不该立刻弹提醒。
+  const tracker = useMemo(() => {
+    const instance = createChatUnreadTracker();
+    instance.seed(demoUnread);
+    return instance;
+  }, []);
+  const names = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile.name])), []);
+  const nameFor = (targetChatId: string) => {
+    const chat = chats.find((item) => item.id === targetChatId);
+    return chat ? chatListName(chat, chatAgents, names) : "新消息";
+  };
+  // 走与真实 Provider 同一条 tracker → toast / 浏览器通知路径，方便验证提醒链路。
+  const simulateMessage = () => {
+    const target = viewChats.find((item) => item.id !== chatId) ?? viewChats[0]!;
+    const next: ChatUnreadItem[] = [
+      {
+        chatId: target.id,
+        unreadCount: (unread.find((item) => item.chatId === target.id)?.unreadCount ?? 0) + 1,
+        lastMessage: {
+          id: newId(ID_PREFIXES.message),
+          senderLabel: "Agent",
+          preview: "这是一条模拟的新消息，用于验证提醒链路。",
+          createdAt: new Date().toISOString(),
+        },
+      },
+      ...unread.filter((item) => item.chatId !== target.id),
+    ];
+    setUnread(next);
+    for (const fresh of tracker.next(next, { activeChatId: chatId })) {
+      const title = nameFor(fresh.chatId);
+      const body = fresh.lastMessage?.preview ?? "有新消息";
+      toast.show({ title, description: body });
+      showChatNotification({ title, body, tag: fresh.chatId });
+    }
+  };
+  const unreadCounts = useMemo(
+    () => new Map(unread.map((item) => [item.chatId, item.unreadCount])),
+    [unread],
+  );
   const openInspector = (next: boolean) => {
     if (!projectId || !chatId) return;
     void navigate({
@@ -888,13 +947,28 @@ function WorkspaceScene() {
       <ChatWorkspace
         selected={Boolean(selectedChat)}
         list={
-          <ChatListPanel
-            projectId={projectId ?? PROJECT_ID}
-            chats={viewChats}
-            chatAgents={chatAgents}
-            profiles={profiles}
-            selectedChatId={selectedChat?.id}
-          />
+          <>
+            {/* dev-only 入口：把未读提醒的真实路径做成可点的按钮，便于浏览器验证。 */}
+            <div className="shrink-0 border-b border-border px-3 py-2">
+              <Button
+                data-testid="dev-simulate-message"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={simulateMessage}
+              >
+                模拟新消息
+              </Button>
+            </div>
+            <ChatListPanel
+              projectId={projectId ?? PROJECT_ID}
+              chats={viewChats}
+              chatAgents={chatAgents}
+              profiles={profiles}
+              selectedChatId={selectedChat?.id}
+              unreadCounts={unreadCounts}
+            />
+          </>
         }
         chat={
           selectedChat && fixture ? (
@@ -1027,5 +1101,10 @@ const SCENES: Record<string, () => ReactNode> = {
  */
 export function ChatScenes({ scene }: { scene?: string }) {
   const Scene = SCENES[scene ?? "workspace"] ?? WorkspaceScene;
-  return <Scene />;
+  // Toast 容器挂在场景入口：列表角标与右下角 toast 要同时可见。
+  return (
+    <ToastHost>
+      <Scene />
+    </ToastHost>
+  );
 }

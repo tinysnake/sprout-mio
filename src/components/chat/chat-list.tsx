@@ -96,6 +96,8 @@ export function ChatListPanel({
   profiles,
   selectedChatId,
   newChatAction,
+  notificationAction,
+  unreadCounts,
   aggregates,
 }: {
   projectId: string;
@@ -107,6 +109,10 @@ export function ChatListPanel({
   aggregates?: readonly ChatRunAggregate[];
   /** 新建 DM 的触发入口由容器提供，列表本身不调用服务。 */
   newChatAction?: ReactNode;
+  /** 浏览器提醒开关等与搜索同排的入口，同样由容器提供。 */
+  notificationAction?: ReactNode;
+  /** 未读角标数据；没有 Provider 时不传，列表不显示角标。 */
+  unreadCounts?: ReadonlyMap<string, number>;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ChatFilter>("all");
@@ -145,6 +151,7 @@ export function ChatListPanel({
             placeholder="搜索 Chat…"
             className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-[11px] text-foreground outline-none placeholder:text-muted-foreground max-desktop:min-h-11"
           />
+          {notificationAction}
           {newChatAction}
         </div>
         <div
@@ -214,6 +221,7 @@ export function ChatListPanel({
               const agentName = chatAgentName(chat.id, chatAgents, names);
               const name = chatListName(chat, chatAgents, names, aggregateMap);
               const aggregate = aggregateMap.get(chat.id);
+              const unreadCount = unreadCounts?.get(chat.id) ?? 0;
               // 最近活动取 Chat 更新与最新 run 时间的较晚者，不等于右栏的最后消息时间。
               const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
               const kindLabel = chat.kind === "crew" ? "Crew" : chatSubtitleLabel(chat, agentName);
@@ -245,6 +253,18 @@ export function ChatListPanel({
                       >
                         {name}
                       </span>
+                      {/* 未读角标只在真的未读时占位，读完后行不跳动。 */}
+                      {unreadCount > 0 && (
+                        <span
+                          data-testid="chat-unread-badge"
+                          data-unread-count={unreadCount}
+                          title={`${unreadCount} 条未读`}
+                          aria-label={`${unreadCount} 条未读`}
+                          className="shrink-0 rounded-full bg-primary px-1.5 text-[9px] leading-4 font-medium text-primary-foreground"
+                        >
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
                       <time
                         dateTime={shownAt}
                         title={`最近活动 ${chatTimeLabel(shownAt)}`}
