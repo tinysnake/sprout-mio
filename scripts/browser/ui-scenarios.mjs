@@ -179,6 +179,29 @@ try {
       }
     }
   });
+  await check("chat_unread_badge_and_new_message_toast_can_be_dismissed", async () => {
+    // 上一条 check 会把视口留在 390px；窄屏下选中对话时列表是隐藏的，先回到桌面宽度。
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open("chat");
+    await test("chat-list").waitFor({ state: "visible" });
+    const badge = test("chat-unread-badge");
+    await badge.first().waitFor({ state: "visible" });
+    assert.equal(await badge.first().getAttribute("data-unread-count"), "2");
+
+    await test("dev-simulate-message").click();
+    const toast = test("chat-toast");
+    await toast.first().waitFor({ state: "visible" });
+    assert.match((await toast.first().textContent()) ?? "", /模拟的新消息/);
+    await page.screenshot({ path: join(evidence, "chat-unread-toast.png") });
+
+    const counts = await badge.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-unread-count")),
+    );
+    assert.ok(counts.includes("3"), `expected an unread count of 3, got ${counts.join(",")}`);
+
+    await test("chat-toast-close").first().click();
+    await toast.first().waitFor({ state: "detached" });
+  });
   await check("fixtures_make_no_application_requests_and_have_no_console_errors", async () => {
     assert.deepEqual(applicationRequests, []);
     assert.deepEqual(errors, []);
