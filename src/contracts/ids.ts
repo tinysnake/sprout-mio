@@ -54,6 +54,19 @@ export function appIdSource(prefix: IdPrefix): string {
 export function appIdPattern(prefix: IdPrefix): RegExp {
   return new RegExp(`^${appIdSource(prefix)}$`);
 }
+/**
+ * 全文随机 id。安全上下文（HTTPS、localhost）直接用 randomUUID；局域网 HTTP 这类不安全上下文里
+ * 浏览器不提供 randomUUID，用 getRandomValues 自己拼一个 v4，避免整条 UI 路径直接抛错。
+ */
+export function randomUuid(): string {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = Array.from(crypto.getRandomValues(new Uint8Array(16)));
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 export function newId<P extends IdPrefix>(prefix: P): AppId<P> {
-  return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, SHORT_ID_HEX)}`;
+  return `${prefix}_${randomUuid().replaceAll("-", "").slice(0, SHORT_ID_HEX)}`;
 }
