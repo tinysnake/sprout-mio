@@ -4,7 +4,11 @@ import { lastVisibleMessageId } from "../src/components/chat/chat-thread";
 const rect = (top: number, bottom: number) => ({ top, bottom }) as DOMRect;
 
 /** 只需要可见框与子节点，用普通对象假装 HTMLElement，避免测试依赖真实 DOM。 */
-const container = (top: number, bottom: number, items: ReadonlyArray<readonly [string, number, number]>) =>
+const container = (
+  top: number,
+  bottom: number,
+  items: ReadonlyArray<readonly [string, number, number]>,
+) =>
   ({
     getBoundingClientRect: () => rect(top, bottom),
     querySelectorAll: () =>
