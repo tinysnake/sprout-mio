@@ -113,7 +113,8 @@ export function mostRecentOutOfViewUnread(
 
 /**
  * 总体未读提示：只在有未读项完全落在列表可见框外时出现，文案只说有新消息、不带数量。
- * 宽布局挂在类型筛选行右端（用户选的 B 位）；窄布局类型行隐藏，父级把它镜像到搜索行。
+ * 宽布局挂在类型筛选行右端（用户选的 B 位）；窄布局类型行隐藏，父级让它单独占那一档并居中
+ * （窄列搜索行放不下：铃铛与新建各 24px，加间距之后再塞提示就会溢出）。
  */
 function ChatListUnreadHint({ className, onJump }: { className?: string; onJump: () => void }) {
   return (
