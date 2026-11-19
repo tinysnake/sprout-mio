@@ -22,11 +22,22 @@ import { createChatUnreadTracker } from "./chat-unread-tracker";
 type ChatUnreadContextValue = {
   /** 列表角标数据：只含未读 > 0 的对话。 */
   counts: ReadonlyMap<string, number>;
-  /** 打开中的对话把游标推进到这条消息；本地先降为已读，服务端失败则下次刷新回到事实。 */
+  /** 打开中的对话把游标推进到这条消息；只有推进到最新一条未读时才本地清角标，否则以服务端返回的剩余未读数为准。 */
   markRead: (chatId: string, messageId: string) => void;
 };
 
 const ChatUnreadContext = React.createContext<ChatUnreadContextValue | null>(null);
+
+/** 清掉一条对话的角标；本来就没角标时返回原 Map，不空转重渲染。 */
+function dropChat(
+  items: ReadonlyMap<string, ChatUnreadItem>,
+  chatId: string,
+): ReadonlyMap<string, ChatUnreadItem> {
+  if (!items.has(chatId)) return items;
+  const next = new Map(items);
+  next.delete(chatId);
+  return next;
+}
 
 /** 没有 Provider 的场景（dev scene、单测）拿到 null，调用方必须安全跳过。 */
 export function useChatUnread(): ChatUnreadContextValue | null {
@@ -146,14 +157,20 @@ function ChatNotifications({
       if (lastMarked.current.get(chatId) === messageId) return;
       lastMarked.current.set(chatId, messageId);
       setItems((previous) => {
-        if (!previous.has(chatId)) return previous;
-        const next = new Map(previous);
-        next.delete(chatId);
-        return next;
+        // 游标推到该对话最新一条他人消息才算看完：只推到视野底边时，下面还有没看到的未读，
+        // 角标与「有新消息」不该因为滚动条动了一下就一起消失。
+        const item = previous.get(chatId);
+        return item?.lastMessage?.id === messageId ? dropChat(previous, chatId) : previous;
       });
       void markChatReadFn({ data: { chatId, messageId } }).then((result) => {
-        // 写失败时本地乐观值不可信：重读服务端事实，宁可让角标回来。
-        if (!result.ok) void refresh();
+        if (!result.ok) {
+          void refresh();
+          return;
+        }
+        // 服务端才是权威：推进后没剩未读就本地清掉（例如游标跳过了自己刚发的消息），
+        // 还剩未读说明只看到了一部分，重读一次拿回真实条数与最新一条。
+        if (result.data.unreadCount === 0) setItems((previous) => dropChat(previous, chatId));
+        else void refresh();
       });
     },
     [refresh],

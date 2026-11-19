@@ -303,6 +303,14 @@ try {
     assert.equal(await test("chat-toast").count(), 0);
     assert.equal(await page.evaluate(() => window.__chatNotifications.length), 0);
     await page.screenshot({ path: join(evidence, "chat-unread-scrolled-up.png") });
+    // 只往下滚一点、最新消息仍在视野外：提示与角标必须留着。
+    // 回归：曾经只要滚动条动一下就把整条对话当成已读，提示和角标一起消失。
+    await test("message-history").hover();
+    await page.mouse.wheel(0, 240);
+    await settleFrames();
+    await page.waitForTimeout(400);
+    assert.equal(await jump.isVisible(), true);
+    assert.equal(await activeBadge().isVisible(), true);
     // 点提示回到底部：角标清零、提示消失。
     await jump.click();
     await waitForThreadAtBottom();

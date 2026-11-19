@@ -999,11 +999,12 @@ function WorkspaceScene() {
       }),
     ]);
   };
-  // 已读游标推进到当前视口就清掉这条对话的角标；没未读时返回原数组，不空转重渲染。
-  const markActiveRead = () => {
+  // 已读游标推进到当前视口；只有推到该对话最新一条未读时才清掉角标，
+  // 只滚到中部时下面还有没看到的未读，不该因为滚动条动了一下就消失。
+  const markActiveRead = (messageId: string) => {
     if (!selectedChat) return;
     setUnread((previous) =>
-      previous.some((item) => item.chatId === selectedChat.id)
+      previous.some((item) => item.chatId === selectedChat.id && item.lastMessage?.id === messageId)
         ? previous.filter((item) => item.chatId !== selectedChat.id)
         : previous,
     );
