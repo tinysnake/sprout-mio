@@ -786,6 +786,8 @@ function DemoThread({
   onToggleInspector,
   onSend,
   onRename,
+  unreadCount,
+  onReadThrough,
 }: {
   chat: Chat;
   fixture: ReturnType<typeof workspaceFixture>;
@@ -794,6 +796,8 @@ function DemoThread({
   onSend: (body: string) => void;
   /** 演示用重命名：只改本地 fixture，写库走的仍是同一条正式 server function。 */
   onRename: (title: string | undefined) => void;
+  unreadCount: number;
+  onReadThrough: (messageId: string) => void;
 }) {
   const [draft, setDraft] = useChatDraft(chat.id);
   return (
@@ -836,6 +840,8 @@ function DemoThread({
       stopPending={false}
       stopError={null}
       onRestoreDraft={setDraft}
+      unreadCount={unreadCount}
+      onReadThrough={onReadThrough}
       titleEditor={
         <ChatTitleEditor
           chat={chat}
@@ -901,29 +907,89 @@ function WorkspaceScene() {
     const chat = chats.find((item) => item.id === targetChatId);
     return chat ? chatListName(chat, chatAgents, names) : "新消息";
   };
-  // 走与真实 Provider 同一条 tracker → toast / 浏览器通知路径，方便验证提醒链路。
-  const simulateMessage = () => {
-    const target = viewChats.find((item) => item.id !== chatId) ?? viewChats[0]!;
+  // 追加一条模拟消息：appendToThread 为真时同步进线程（当前打开的对话要走这条路，
+  // 真实场景里它的新消息本来就该出现在消息列表里）。
+  const deliverMessage = (targetChatId: string, appendToThread: boolean) => {
+    const message: Message = {
+      id: newId(ID_PREFIXES.message),
+      attachments: [],
+      attachmentSpans: [],
+      chatId: targetChatId,
+      senderKind: "agent",
+      senderId: profiles[0]!.id,
+      body: "这是一条模拟的新消息，用于验证提醒链路。",
+      createdAt: new Date().toISOString(),
+      skills: [],
+      mentions: [],
+    };
+    if (appendToThread) {
+      setLocalMessages((previous) => ({
+        ...previous,
+        [targetChatId]: [...(previous[targetChatId] ?? []), message],
+      }));
+    }
     const next: ChatUnreadItem[] = [
       {
-        chatId: target.id,
-        unreadCount: (unread.find((item) => item.chatId === target.id)?.unreadCount ?? 0) + 1,
+        chatId: targetChatId,
+        unreadCount: (unread.find((item) => item.chatId === targetChatId)?.unreadCount ?? 0) + 1,
         lastMessage: {
-          id: newId(ID_PREFIXES.message),
+          id: message.id,
           senderLabel: "Agent",
-          preview: "这是一条模拟的新消息，用于验证提醒链路。",
-          createdAt: new Date().toISOString(),
+          preview: message.body,
+          createdAt: message.createdAt,
         },
       },
-      ...unread.filter((item) => item.chatId !== target.id),
+      ...unread.filter((item) => item.chatId !== targetChatId),
     ];
     setUnread(next);
-    for (const fresh of tracker.next(next, { activeChatId: chatId })) {
+    // 走与真实 Provider 同一条 tracker → toast / 浏览器通知路径。
+    // activeChatId 命中的对话只走页面内提示与角标，不弹提醒。
+    for (const fresh of tracker.next(next, { activeChatId: selectedChat?.id })) {
       const title = nameFor(fresh.chatId);
       const body = fresh.lastMessage?.preview ?? "有新消息";
       toast.show({ title, description: body });
       showChatNotification({ title, body, tag: fresh.chatId });
     }
+  };
+  const simulateOtherMessage = () => {
+    const target = viewChats.find((item) => item.id !== selectedChat?.id) ?? viewChats[0]!;
+    deliverMessage(target.id, false);
+  };
+  const simulateActiveMessage = () => {
+    if (selectedChat) deliverMessage(selectedChat.id, true);
+  };
+  // 默认线程太短，滚不到中间；追加一屏填充消息，让「离开底部」在场景里可测。
+  const fillThread = () => {
+    if (!selectedChat) return;
+    const chatId = selectedChat.id;
+    const now = new Date().toISOString();
+    setLocalMessages((previous) => ({
+      ...previous,
+      [chatId]: [
+        ...(previous[chatId] ?? []),
+        ...Array.from({ length: 20 }, (_, index) => ({
+          id: newId(ID_PREFIXES.message),
+          attachments: [],
+          attachmentSpans: [],
+          chatId,
+          senderKind: "human" as const,
+          senderId: "usr_demo",
+          body: `填充消息 ${index + 1}：用来把线程撑长，方便验证滚动与未读。`,
+          createdAt: new Date(Date.parse(now) - (20 - index) * 1000).toISOString(),
+          skills: [],
+          mentions: [],
+        })),
+      ],
+    }));
+  };
+  // 已读游标推进到当前视口就清掉这条对话的角标；没未读时返回原数组，不空转重渲染。
+  const markActiveRead = () => {
+    if (!selectedChat) return;
+    setUnread((previous) =>
+      previous.some((item) => item.chatId === selectedChat.id)
+        ? previous.filter((item) => item.chatId !== selectedChat.id)
+        : previous,
+    );
   };
   const unreadCounts = useMemo(
     () => new Map(unread.map((item) => [item.chatId, item.unreadCount])),
@@ -949,15 +1015,33 @@ function WorkspaceScene() {
         list={
           <>
             {/* dev-only 入口：把未读提醒的真实路径做成可点的按钮，便于浏览器验证。 */}
-            <div className="shrink-0 border-b border-border px-3 py-2">
+            <div className="shrink-0 space-y-2 border-b border-border px-3 py-2">
               <Button
                 data-testid="dev-simulate-message"
                 variant="outline"
                 size="sm"
                 className="w-full"
-                onClick={simulateMessage}
+                onClick={simulateOtherMessage}
               >
-                模拟新消息
+                模拟其他对话的新消息
+              </Button>
+              <Button
+                data-testid="dev-simulate-active-message"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={simulateActiveMessage}
+              >
+                模拟当前对话的新消息
+              </Button>
+              <Button
+                data-testid="dev-fill-thread"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={fillThread}
+              >
+                撑长当前对话
               </Button>
             </div>
             <ChatListPanel
@@ -996,6 +1080,8 @@ function WorkspaceScene() {
               }}
               inspectorOpen={inspector}
               onToggleInspector={() => openInspector(!inspector)}
+              unreadCount={unreadCounts.get(selectedChat.id) ?? 0}
+              onReadThrough={markActiveRead}
               onRename={(title) =>
                 setLocalTitles((previous) => ({ ...previous, [selectedChat.id]: title }))
               }
