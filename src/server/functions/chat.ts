@@ -23,6 +23,8 @@ import type {
   Message,
   MessageWindow,
 } from "../../contracts/chat";
+import { listChatUnreadInput, markChatReadInput } from "../../contracts/chat-read";
+import type { ChatUnreadItem, MarkChatReadResult } from "../../contracts/chat-read";
 import { fieldErrorsFrom, projectIdInput } from "../../contracts/project";
 import { fail, ok, toAppError } from "../../contracts/result";
 import type { ProjectContext } from "../../domain/access";
@@ -38,13 +40,20 @@ const sendMessageRequest = z.object({
 
 /** 认证与领域模块只在服务端加载，客户端经 RPC 存根调用，不把 SQLite 带进浏览器。 */
 async function serverDeps() {
-  const [session, chat, chatSession, skills] = await Promise.all([
+  const [session, chat, chatRead, chatSession, skills] = await Promise.all([
     import("../session"),
     import("../../domain/chat"),
+    import("../../domain/chat-read"),
     import("../../domain/chat-session"),
     import("../pi-host/skills"),
   ]);
-  return { requireSession: session.requireSession, ...chat, ...chatSession, ...skills };
+  return {
+    requireSession: session.requireSession,
+    ...chat,
+    ...chatRead,
+    ...chatSession,
+    ...skills,
+  };
 }
 type ServerDeps = Awaited<ReturnType<typeof serverDeps>>;
 type DiagnosticRecorder = (input: DiagnosticInput) => boolean;
@@ -179,6 +188,30 @@ export async function listMessagesBoundary(
   });
 }
 
+export async function listChatUnreadBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<ChatUnreadItem[]>> {
+  return chatBoundary<ChatUnreadItem[]>(headers, requestId, (deps, context) => {
+    const parsed = listChatUnreadInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.listChatUnread(parsed.data.projectId, context), requestId);
+  });
+}
+
+export async function markChatReadBoundary(
+  raw: unknown,
+  headers: Headers,
+  requestId: string,
+): Promise<ChatResult<MarkChatReadResult>> {
+  return chatBoundary<MarkChatReadResult>(headers, requestId, (deps, context) => {
+    const parsed = markChatReadInput.safeParse(raw);
+    if (!parsed.success) return invalidInput(parsed.error, requestId);
+    return ok(deps.markChatRead(parsed.data.chatId, parsed.data.messageId, context), requestId);
+  });
+}
+
 /** 页面只发送 human 消息，sender 从认证会话构造，不接受浏览器传入的身份。 */ export async function sendMessageBoundary(
   raw: unknown,
   headers: Headers,
@@ -287,6 +320,18 @@ export const listMessagesFn = createServerFn({ method: "POST" })
   .validator((input: unknown) => input)
   .handler(async ({ data }) =>
     listMessagesBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const listChatUnreadFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    listChatUnreadBoundary(data, getRequestHeaders(), getRequestContext().requestId),
+  );
+
+export const markChatReadFn = createServerFn({ method: "POST" })
+  .validator((input: unknown) => input)
+  .handler(async ({ data }) =>
+    markChatReadBoundary(data, getRequestHeaders(), getRequestContext().requestId),
   );
 
 export const listChatSkillsFn = createServerFn({ method: "GET" })
