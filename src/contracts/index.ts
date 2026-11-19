@@ -8,6 +8,7 @@ export * from "./agent";
 export * from "./project-member-removal";
 export * from "./project-config";
 export * from "./chat";
+export * from "./chat-read";
 export * from "./task";
 export * from "./task-capabilities";
 export * from "./info-hub";

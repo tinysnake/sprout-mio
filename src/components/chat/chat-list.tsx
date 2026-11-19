@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { MessageSquare, Search } from "lucide-react";
@@ -85,6 +85,53 @@ export function chatListChats(chats: Chat[]): Chat[] {
   return chats.filter((chat) => chat.kind !== "delegation");
 }
 
+/** 列表项相对可见框的纵向位置；调用方按列表显示顺序（按最近活动排序）传入。 */
+export type ChatListVisibilityItem = {
+  chatId: string;
+  top: number;
+  bottom: number;
+  unread: boolean;
+};
+
+/**
+ * 总体未读提示的目标：显示顺序里第一条「完全落在可见框外」的未读项。
+ * 列表按最近活动排序，所以这条就是最近活动的不可见未读；用户点提示想看的是新消息本身，
+ * 而不是离视口最近的那条（那个可能只是个更早的未读）。
+ * 部分露出（`top < viewport.bottom` 且 `bottom > viewport.top`）算在区域内，
+ * `block: "nearest"` 也能把它带进可见框，不值得为它弹提示。
+ */
+export function mostRecentOutOfViewUnread(
+  items: readonly ChatListVisibilityItem[],
+  viewport: { top: number; bottom: number },
+): string | null {
+  for (const item of items) {
+    if (!item.unread) continue;
+    if (item.bottom <= viewport.top || item.top >= viewport.bottom) return item.chatId;
+  }
+  return null;
+}
+
+/**
+ * 总体未读提示：只在有未读项完全落在列表可见框外时出现，文案只说有新消息、不带数量。
+ * 宽布局挂在类型筛选行右端（用户选的 B 位）；窄布局类型行隐藏，父级让它单独占那一档并居中
+ * （窄列搜索行放不下：铃铛与新建各 24px，加间距之后再塞提示就会溢出）。
+ */
+function ChatListUnreadHint({ className, onJump }: { className?: string; onJump: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="chat-list-unread-hint"
+      onClick={onJump}
+      className={cn(
+        "shrink-0 rounded-full bg-primary px-2 text-[10px] leading-5 font-medium text-primary-foreground",
+        className,
+      )}
+    >
+      有新消息
+    </button>
+  );
+}
+
 /**
  * Chat 列表：搜索、新建入口与类型呈现。类型没有可选项时不做任何过滤，
  * 因此窄列表隐藏类型行不会留下用户无法解除的隐形筛选。
@@ -96,6 +143,8 @@ export function ChatListPanel({
   profiles,
   selectedChatId,
   newChatAction,
+  notificationAction,
+  unreadCounts,
   aggregates,
 }: {
   projectId: string;
@@ -107,12 +156,66 @@ export function ChatListPanel({
   aggregates?: readonly ChatRunAggregate[];
   /** 新建 DM 的触发入口由容器提供，列表本身不调用服务。 */
   newChatAction?: ReactNode;
+  /** 浏览器提醒开关等与搜索同排的入口，同样由容器提供。 */
+  notificationAction?: ReactNode;
+  /** 未读角标数据；没有 Provider 时不传，列表不显示角标。 */
+  unreadCounts?: ReadonlyMap<string, number>;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<ChatFilter>("all");
   const [pendingOnly, setPendingOnly] = useState(false);
   const { listWidth } = useChatWorkspace();
   const narrow = isNarrowList(listWidth);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [outOfViewUnreadId, setOutOfViewUnreadId] = useState<string | null>(null);
+  // 每次渲染后重算：筛选、搜索、未读集合或列表顺序变了，框外的未读也就变了。
+  const refreshOutOfViewUnread = useCallback(() => {
+    const container = scrollRef.current;
+    if (!container || !unreadCounts) {
+      setOutOfViewUnreadId(null);
+      return;
+    }
+    const viewport = container.getBoundingClientRect();
+    const items: ChatListVisibilityItem[] = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-testid="chat-item"][data-chat-id]'),
+    ).map((element) => {
+      const rect = element.getBoundingClientRect();
+      const chatId = element.dataset.chatId ?? "";
+      return {
+        chatId,
+        top: rect.top,
+        bottom: rect.bottom,
+        unread: (unreadCounts.get(chatId) ?? 0) > 0,
+      };
+    });
+    setOutOfViewUnreadId(
+      mostRecentOutOfViewUnread(items, { top: viewport.top, bottom: viewport.bottom }),
+    );
+  }, [unreadCounts]);
+  useEffect(refreshOutOfViewUnread);
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const onViewportChange = () => refreshOutOfViewUnread();
+    container.addEventListener("scroll", onViewportChange, { passive: true });
+    // 列表宽度或窗口尺寸变化都会换掉可见框；容器自身尺寸由 ResizeObserver 覆盖。
+    const observer = new ResizeObserver(onViewportChange);
+    observer.observe(container);
+    window.addEventListener("resize", onViewportChange);
+    return () => {
+      container.removeEventListener("scroll", onViewportChange);
+      observer.disconnect();
+      window.removeEventListener("resize", onViewportChange);
+    };
+  }, [refreshOutOfViewUnread]);
+  const jumpToOutOfViewUnread = () => {
+    if (!outOfViewUnreadId) return;
+    scrollRef.current
+      ?.querySelector<HTMLElement>(
+        `[data-testid="chat-item"][data-chat-id="${CSS.escape(outOfViewUnreadId)}"]`,
+      )
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
   const names = useMemo(
     () => new Map(profiles.map((profile) => [profile.id, profile.name])),
     [profiles],
@@ -145,6 +248,7 @@ export function ChatListPanel({
             placeholder="搜索 Chat…"
             className="h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-[11px] text-foreground outline-none placeholder:text-muted-foreground max-desktop:min-h-11"
           />
+          {notificationAction}
           {newChatAction}
         </div>
         <div
@@ -171,9 +275,27 @@ export function ChatListPanel({
               {type.label}
             </button>
           ))}
+          {!narrow && outOfViewUnreadId && (
+            <ChatListUnreadHint className="ml-auto self-center" onJump={jumpToOutOfViewUnread} />
+          )}
         </div>
+        {/*
+          窄列表列宽只有 160–199px，搜索行要同时放搜索框、提醒铃铛与新建入口；再塞一个
+          提示就会溢出（铃铛与新建各 24px 加间距 8px，提示本身 64px）。所以窄布局让提示
+          占类型行空出来的那一档并居中。
+        */}
+        {narrow && outOfViewUnreadId && (
+          <div className="mt-3 flex">
+            <ChatListUnreadHint className="mx-auto" onJump={jumpToOutOfViewUnread} />
+          </div>
+        )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2.25">
+      {/* 浏览器验收脚本按这个 testid 定位列表滚动容器。 */}
+      <div
+        ref={scrollRef}
+        data-testid="chat-list-scroll"
+        className="min-h-0 flex-1 overflow-y-auto px-2.25"
+      >
         <p className="flex items-center justify-between gap-2 px-2 pt-3 pb-2.25 text-[10px] text-muted-foreground">
           {/* 行尾时间是最近活动，不是最后消息时间：排序口径写在这里，免得两处时间看起来矛盾。 */}
           <span>按最近活动排序</span>
@@ -214,6 +336,7 @@ export function ChatListPanel({
               const agentName = chatAgentName(chat.id, chatAgents, names);
               const name = chatListName(chat, chatAgents, names, aggregateMap);
               const aggregate = aggregateMap.get(chat.id);
+              const unreadCount = unreadCounts?.get(chat.id) ?? 0;
               // 最近活动取 Chat 更新与最新 run 时间的较晚者，不等于右栏的最后消息时间。
               const shownAt = latestActivityAt(chat.updatedAt, aggregate?.latestRunAt);
               const kindLabel = chat.kind === "crew" ? "Crew" : chatSubtitleLabel(chat, agentName);
@@ -245,6 +368,18 @@ export function ChatListPanel({
                       >
                         {name}
                       </span>
+                      {/* 未读角标只在真的未读时占位，读完后行不跳动。 */}
+                      {unreadCount > 0 && (
+                        <span
+                          data-testid="chat-unread-badge"
+                          data-unread-count={unreadCount}
+                          title={`${unreadCount} 条未读`}
+                          aria-label={`${unreadCount} 条未读`}
+                          className="shrink-0 rounded-full bg-primary px-1.5 text-[9px] leading-4 font-medium text-primary-foreground"
+                        >
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
                       <time
                         dateTime={shownAt}
                         title={`最近活动 ${chatTimeLabel(shownAt)}`}

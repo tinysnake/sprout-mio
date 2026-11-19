@@ -11,6 +11,7 @@ import type {
   WebhookRule,
 } from "../../contracts/automation";
 import type { Chat } from "../../contracts/chat";
+import { randomUuid } from "../../contracts/ids";
 import {
   formatUtcOffset,
   MAX_UTC_OFFSET,
@@ -456,9 +457,9 @@ function Editor({
     try {
       const result =
         kind === "cron"
-          ? await trialCronFn({ data: { ruleId: selected.id, eventId: crypto.randomUUID() } })
+          ? await trialCronFn({ data: { ruleId: selected.id, eventId: randomUuid() } })
           : await trialWebhookFn({
-              data: { ruleId: selected.id, eventId: crypto.randomUUID(), payload: json },
+              data: { ruleId: selected.id, eventId: randomUuid(), payload: json },
             });
       if (!alive.current) return;
       if (!result.ok) setError(result.error.message);

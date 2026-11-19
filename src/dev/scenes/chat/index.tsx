@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { PageFrame } from "@/components/layout/page-frame";
-import { ChatEmptyState, ChatListPanel } from "@/components/chat/chat-list";
+import { ChatEmptyState, ChatListPanel, chatListName } from "@/components/chat/chat-list";
 import { ChatThread } from "@/components/chat/chat-thread";
 import { ChatTitleEditor } from "@/components/chat/chat-title-editor";
 import { ChatDraftProvider, useChatDraft } from "@/components/chat/chat-drafts";
@@ -16,6 +16,10 @@ import { isRunActive, runStatusLabel, RunStatusPanel } from "@/components/chat/r
 import { ChatInspector } from "@/components/info-hub/chat-inspector";
 import { ChatWorkspace } from "@/components/layout/chat-workspace";
 import type { ChatAgent } from "@/components/chat/chat-loader";
+import { createChatUnreadTracker } from "@/components/chat/chat-unread-tracker";
+import { ToastHost, useToast } from "@/components/ui/toast";
+import { showChatNotification } from "@/lib/browser-notifications";
+import type { ChatUnreadItem } from "../../../contracts/chat-read";
 import { demoProfiles as profiles, demoHumanName as HUMAN } from "../management/fixtures";
 import { demoMachineDetails } from "../machine/fixtures";
 import {
@@ -70,6 +74,20 @@ const chatAgents: ChatAgent[] = chats.map((item, index) => ({
   chatId: item.id,
   agentProfileId: profiles[index]!.id,
 }));
+
+/** dev scene 的未读 fixture：列表一进来就有可见角标，不必真的等服务端有未读。 */
+const demoUnread: ChatUnreadItem[] = [
+  {
+    chatId: chats[1]!.id,
+    unreadCount: 2,
+    lastMessage: {
+      id: "msg_demo_unread_1",
+      senderLabel: profiles[1]!.name,
+      preview: "评审意见已经整理好了，方便的时候看一下。",
+      createdAt: "2026-06-18T02:30:00.000Z",
+    },
+  },
+];
 
 const demoInstances: AgentInstance[] = [
   {
@@ -768,6 +786,8 @@ function DemoThread({
   onToggleInspector,
   onSend,
   onRename,
+  unreadCount,
+  onReadThrough,
 }: {
   chat: Chat;
   fixture: ReturnType<typeof workspaceFixture>;
@@ -776,6 +796,8 @@ function DemoThread({
   onSend: (body: string) => void;
   /** 演示用重命名：只改本地 fixture，写库走的仍是同一条正式 server function。 */
   onRename: (title: string | undefined) => void;
+  unreadCount: number;
+  onReadThrough: (messageId: string) => void;
 }) {
   const [draft, setDraft] = useChatDraft(chat.id);
   return (
@@ -818,6 +840,8 @@ function DemoThread({
       stopPending={false}
       stopError={null}
       onRestoreDraft={setDraft}
+      unreadCount={unreadCount}
+      onReadThrough={onReadThrough}
       titleEditor={
         <ChatTitleEditor
           chat={chat}
@@ -855,11 +879,14 @@ function WorkspaceScene() {
     [chats[0]!.id]: messages,
   });
   const [localTitles, setLocalTitles] = useState<Record<string, string | undefined>>({});
-  const selectedChat = chats.find((item) => item.id === chatId);
+  // 列表默认只有两条对话，撑不满滚动区；这批更早的对话让「未读在可见框外」在场景里可造。
+  const [extraChats, setExtraChats] = useState<Chat[]>([]);
+  const allChats = [...chats, ...extraChats];
+  const selectedChat = allChats.find((item) => item.id === chatId);
   const fixture = selectedChat
     ? workspaceFixture(selectedChat, localMessages[selectedChat.id] ?? [])
     : null;
-  const viewChats = chats
+  const viewChats = allChats
     .map((item) => ({
       ...item,
       ...(item.id in localTitles
@@ -870,6 +897,122 @@ function WorkspaceScene() {
       updatedAt: localMessages[item.id]?.at(-1)?.createdAt ?? item.updatedAt,
     }))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const toast = useToast();
+  const [unread, setUnread] = useState<ChatUnreadItem[]>(demoUnread);
+  // 基线在挂载时建好：demoUnread 是「本来就在那里的未读」，进场景不该立刻弹提醒。
+  const tracker = useMemo(() => {
+    const instance = createChatUnreadTracker();
+    instance.seed(demoUnread);
+    return instance;
+  }, []);
+  const names = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile.name])), []);
+  const nameFor = (targetChatId: string) => {
+    const chat = allChats.find((item) => item.id === targetChatId);
+    return chat ? chatListName(chat, chatAgents, names) : "新消息";
+  };
+  // 追加一条模拟消息：appendToThread 为真时同步进线程（当前打开的对话要走这条路，
+  // 真实场景里它的新消息本来就该出现在消息列表里）。
+  const deliverMessage = (targetChatId: string, appendToThread: boolean) => {
+    const message: Message = {
+      id: newId(ID_PREFIXES.message),
+      attachments: [],
+      attachmentSpans: [],
+      chatId: targetChatId,
+      senderKind: "agent",
+      senderId: profiles[0]!.id,
+      body: "这是一条模拟的新消息，用于验证提醒链路。",
+      createdAt: new Date().toISOString(),
+      skills: [],
+      mentions: [],
+    };
+    if (appendToThread) {
+      setLocalMessages((previous) => ({
+        ...previous,
+        [targetChatId]: [...(previous[targetChatId] ?? []), message],
+      }));
+    }
+    const next: ChatUnreadItem[] = [
+      {
+        chatId: targetChatId,
+        unreadCount: (unread.find((item) => item.chatId === targetChatId)?.unreadCount ?? 0) + 1,
+        lastMessage: {
+          id: message.id,
+          senderLabel: "Agent",
+          preview: message.body,
+          createdAt: message.createdAt,
+        },
+      },
+      ...unread.filter((item) => item.chatId !== targetChatId),
+    ];
+    setUnread(next);
+    // 走与真实 Provider 同一条 tracker → toast / 浏览器通知路径。
+    // activeChatId 命中的对话只走页面内提示与角标，不弹提醒。
+    for (const fresh of tracker.next(next, { activeChatId: selectedChat?.id })) {
+      const title = nameFor(fresh.chatId);
+      const body = fresh.lastMessage?.preview ?? "有新消息";
+      toast.show({ title, description: body });
+      showChatNotification({ title, body, tag: fresh.chatId });
+    }
+  };
+  const simulateOtherMessage = () => {
+    const target = viewChats.find((item) => item.id !== selectedChat?.id) ?? viewChats[0]!;
+    deliverMessage(target.id, false);
+  };
+  const simulateActiveMessage = () => {
+    if (selectedChat) deliverMessage(selectedChat.id, true);
+  };
+  // 默认线程太短，滚不到中间；追加一屏填充消息，让「离开底部」在场景里可测。
+  const fillThread = () => {
+    if (!selectedChat) return;
+    const chatId = selectedChat.id;
+    const now = new Date().toISOString();
+    setLocalMessages((previous) => ({
+      ...previous,
+      [chatId]: [
+        ...(previous[chatId] ?? []),
+        ...Array.from({ length: 20 }, (_, index) => ({
+          id: newId(ID_PREFIXES.message),
+          attachments: [],
+          attachmentSpans: [],
+          chatId,
+          senderKind: "human" as const,
+          senderId: "usr_demo",
+          body: `填充消息 ${index + 1}：用来把线程撑长，方便验证滚动与未读。`,
+          createdAt: new Date(Date.parse(now) - (20 - index) * 1000).toISOString(),
+          skills: [],
+          mentions: [],
+        })),
+      ],
+    }));
+  };
+  // 默认两条对话不够长；追加一批更早的对话，才能验证「滚到列表中部/底部」后的未读提示。
+  const fillChatList = () => {
+    setExtraChats((previous) => [
+      ...previous,
+      ...Array.from({ length: 20 }, (_, index) => {
+        const order = previous.length + index + 1;
+        return chat(
+          `cnv_fill_${String(order).padStart(8, "0")}`,
+          `更早的对话 ${order}：用来把列表撑到可滚动`,
+          new Date(Date.parse("2026-06-16T00:00:00.000Z") - order * 3_600_000).toISOString(),
+        );
+      }),
+    ]);
+  };
+  // 已读游标推进到当前视口；只有推到该对话最新一条未读时才清掉角标，
+  // 只滚到中部时下面还有没看到的未读，不该因为滚动条动了一下就消失。
+  const markActiveRead = (messageId: string) => {
+    if (!selectedChat) return;
+    setUnread((previous) =>
+      previous.some((item) => item.chatId === selectedChat.id && item.lastMessage?.id === messageId)
+        ? previous.filter((item) => item.chatId !== selectedChat.id)
+        : previous,
+    );
+  };
+  const unreadCounts = useMemo(
+    () => new Map(unread.map((item) => [item.chatId, item.unreadCount])),
+    [unread],
+  );
   const openInspector = (next: boolean) => {
     if (!projectId || !chatId) return;
     void navigate({
@@ -888,13 +1031,55 @@ function WorkspaceScene() {
       <ChatWorkspace
         selected={Boolean(selectedChat)}
         list={
-          <ChatListPanel
-            projectId={projectId ?? PROJECT_ID}
-            chats={viewChats}
-            chatAgents={chatAgents}
-            profiles={profiles}
-            selectedChatId={selectedChat?.id}
-          />
+          <>
+            {/* dev-only 入口：把未读提醒的真实路径做成可点的按钮，便于浏览器验证。 */}
+            <div className="shrink-0 space-y-2 border-b border-border px-3 py-2">
+              <Button
+                data-testid="dev-simulate-message"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={simulateOtherMessage}
+              >
+                模拟其他对话的新消息
+              </Button>
+              <Button
+                data-testid="dev-simulate-active-message"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={simulateActiveMessage}
+              >
+                模拟当前对话的新消息
+              </Button>
+              <Button
+                data-testid="dev-fill-thread"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={fillThread}
+              >
+                撑长当前对话
+              </Button>
+              <Button
+                data-testid="dev-fill-chat-list"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={fillChatList}
+              >
+                撑长对话列表
+              </Button>
+            </div>
+            <ChatListPanel
+              projectId={projectId ?? PROJECT_ID}
+              chats={viewChats}
+              chatAgents={chatAgents}
+              profiles={profiles}
+              selectedChatId={selectedChat?.id}
+              unreadCounts={unreadCounts}
+            />
+          </>
         }
         chat={
           selectedChat && fixture ? (
@@ -922,6 +1107,8 @@ function WorkspaceScene() {
               }}
               inspectorOpen={inspector}
               onToggleInspector={() => openInspector(!inspector)}
+              unreadCount={unreadCounts.get(selectedChat.id) ?? 0}
+              onReadThrough={markActiveRead}
               onRename={(title) =>
                 setLocalTitles((previous) => ({ ...previous, [selectedChat.id]: title }))
               }
@@ -1027,5 +1214,10 @@ const SCENES: Record<string, () => ReactNode> = {
  */
 export function ChatScenes({ scene }: { scene?: string }) {
   const Scene = SCENES[scene ?? "workspace"] ?? WorkspaceScene;
-  return <Scene />;
+  // Toast 容器挂在场景入口：列表角标与右下角 toast 要同时可见。
+  return (
+    <ToastHost>
+      <Scene />
+    </ToastHost>
+  );
 }

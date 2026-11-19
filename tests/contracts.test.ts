@@ -12,6 +12,7 @@ import {
   newId,
   ok,
   projectSchema,
+  randomUuid,
   toAppError,
 } from "../src/contracts";
 import { parseConfig } from "../src/lib/config";
@@ -27,6 +28,22 @@ describe("共享契约", () => {
       }),
     );
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("不安全上下文里没有 crypto.randomUUID 也能生成 id", () => {
+    const original = crypto.randomUUID;
+    // 局域网 HTTP 打开时 isSecureContext 为 false，浏览器不给 randomUUID。
+    Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true });
+    try {
+      expect(randomUuid()).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      const id = newId(ID_PREFIXES.message);
+      expect(id).toMatch(appIdPattern(ID_PREFIXES.message));
+      expect(newId(ID_PREFIXES.message)).not.toBe(id);
+    } finally {
+      Object.defineProperty(crypto, "randomUUID", { value: original, configurable: true });
+    }
   });
 
   it("成功与失败载荷保留同一个 requestId", () => {

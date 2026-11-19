@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import { CrewRailFactsContext, type CrewRailFacts } from "../../components/chat/crew-rail-live";
+import {
+  BrowserNotificationToggle,
+  ChatNotificationsProvider,
+  useChatUnread,
+} from "../../components/chat/chat-notifications";
 import { getProjectInfoHubFn, refreshInfoHubFn } from "../../server/functions/info-hub";
 import { listProjectExecutionsFn } from "../../server/functions/remote";
 import { listMachinesFn } from "../../server/functions/machine";
@@ -156,113 +161,121 @@ function ChatsLayout() {
     >
       <CrewRailFactsContext.Provider value={setCrewFacts}>
         <ChatDraftProvider>
-          <ChatWorkspace
-            selected={Boolean(chatId)}
-            inspectorOpen={!diagnostic && open}
-            inspectorPersistent
-            list={
-              <>
-                {!loader.chats.ok && (
-                  <div className="shrink-0 p-3">
-                    <ResultError error={loader.chats.error} testId="chats-error" />
+          <ChatNotificationsProvider
+            projectId={projectId}
+            activeChatId={chatId}
+            chats={loader.chats.ok ? loader.chats.data : []}
+            chatAgents={loader.chatAgents}
+            profiles={profiles}
+          >
+            <ChatWorkspace
+              selected={Boolean(chatId)}
+              inspectorOpen={!diagnostic && open}
+              inspectorPersistent
+              list={
+                <>
+                  {!loader.chats.ok && (
+                    <div className="shrink-0 p-3">
+                      <ResultError error={loader.chats.error} testId="chats-error" />
+                    </div>
+                  )}
+                  {!loader.members.ok && (
+                    <div className="shrink-0 p-3">
+                      <ResultError error={loader.members.error} testId="members-load-error" />
+                    </div>
+                  )}
+                  {!loader.profiles.ok && (
+                    <div className="shrink-0 p-3">
+                      <ResultError error={loader.profiles.error} testId="profiles-error" />
+                    </div>
+                  )}
+                  {!loader.infoHub.ok && (
+                    <div className="shrink-0 p-3">
+                      <ResultError error={loader.infoHub.error} testId="chat-activity-error" />
+                    </div>
+                  )}
+                  {loader.chats.ok && (
+                    <ChatListLive
+                      projectId={projectId}
+                      chats={loader.chats.data}
+                      chatAgents={loader.chatAgents}
+                      profiles={profiles}
+                      selectedChatId={chatId}
+                      newChatAction={newChat}
+                      infoHub={loader.infoHub}
+                    />
+                  )}
+                  {/* 轮询提示固定在列表底部并常驻一行高度：网络波动时列表内容不抖动。 */}
+                  <div
+                    data-testid="chat-list-polling-footer"
+                    className="flex h-7 shrink-0 items-center overflow-hidden px-4 [&:not(:empty)]:border-t [&:not(:empty)]:border-border"
+                  >
+                    <InfoHubPollingStatus />
                   </div>
-                )}
-                {!loader.members.ok && (
-                  <div className="shrink-0 p-3">
-                    <ResultError error={loader.members.error} testId="members-load-error" />
-                  </div>
-                )}
-                {!loader.profiles.ok && (
-                  <div className="shrink-0 p-3">
-                    <ResultError error={loader.profiles.error} testId="profiles-error" />
-                  </div>
-                )}
-                {!loader.infoHub.ok && (
-                  <div className="shrink-0 p-3">
-                    <ResultError error={loader.infoHub.error} testId="chat-activity-error" />
-                  </div>
-                )}
-                {loader.chats.ok && (
-                  <ChatListLive
+                </>
+              }
+              chat={
+                chatId && (search.file || search.files) ? (
+                  <WorkspacePreviewPane
                     projectId={projectId}
-                    chats={loader.chats.data}
-                    chatAgents={loader.chatAgents}
-                    profiles={profiles}
-                    selectedChatId={chatId}
-                    newChatAction={newChat}
-                    infoHub={loader.infoHub}
-                  />
-                )}
-                {/* 轮询提示固定在列表底部并常驻一行高度：网络波动时列表内容不抖动。 */}
-                <div
-                  data-testid="chat-list-polling-footer"
-                  className="flex h-7 shrink-0 items-center overflow-hidden px-4 [&:not(:empty)]:border-t [&:not(:empty)]:border-border"
-                >
-                  <InfoHubPollingStatus />
-                </div>
-              </>
-            }
-            chat={
-              chatId && (search.file || search.files) ? (
-                <WorkspacePreviewPane
-                  projectId={projectId}
-                  chatId={chatId}
-                  machineId={search.machine}
-                  inspectorOpen={open}
-                  filesOpen={filesOpen}
-                  onToggleInspector={() => setOpen(!open)}
-                  onToggleFiles={toggleFiles}
-                >
+                    chatId={chatId}
+                    machineId={search.machine}
+                    inspectorOpen={open}
+                    filesOpen={filesOpen}
+                    onToggleInspector={() => setOpen(!open)}
+                    onToggleFiles={toggleFiles}
+                  >
+                    <Outlet />
+                  </WorkspacePreviewPane>
+                ) : (
                   <Outlet />
-                </WorkspacePreviewPane>
-              ) : (
-                <Outlet />
-              )
-            }
-            inspector={
-              selected && !diagnostic && chatId && search.pane === "files" ? (
-                <WorkspaceSidePanel
-                  projectId={projectId}
-                  chatId={chatId}
-                  machineId={search.machine}
-                  machineNames={machineNames}
-                  onClose={() => setOpen(false)}
-                />
-              ) : selected && !diagnostic ? (
-                <ChatDetailsLive
-                  projectId={projectId}
-                  session={selected.session}
-                  humanUserId={human?.userId ?? ""}
-                  humanName={human?.name ?? ""}
-                  members={selected.members}
-                  profile={selected.profile}
-                  tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
-                  info={selected.info}
-                  turnContext={selected.turnContext}
-                  activity={activity}
-                  projectMembers={members}
-                  projectProfiles={profiles}
-                  machineFacts={machineFacts}
-                  machineFactsError={machineFactsError}
-                  onBrowseMachine={browseMachine}
-                  crewRail={
-                    crewDelegations?.ok ? (
-                      <CrewRail
-                        key={projectId}
-                        projectId={projectId}
-                        session={selected.session}
-                        data={crewDelegations.data}
-                      />
-                    ) : crewDelegations ? (
-                      <ResultError error={crewDelegations.error} testId="crew-rail-error" />
-                    ) : undefined
-                  }
-                  onClose={() => setOpen(false)}
-                  onChanged={() => void router.invalidate()}
-                />
-              ) : undefined
-            }
-          />
+                )
+              }
+              inspector={
+                selected && !diagnostic && chatId && search.pane === "files" ? (
+                  <WorkspaceSidePanel
+                    projectId={projectId}
+                    chatId={chatId}
+                    machineId={search.machine}
+                    machineNames={machineNames}
+                    onClose={() => setOpen(false)}
+                  />
+                ) : selected && !diagnostic ? (
+                  <ChatDetailsLive
+                    projectId={projectId}
+                    session={selected.session}
+                    humanUserId={human?.userId ?? ""}
+                    humanName={human?.name ?? ""}
+                    members={selected.members}
+                    profile={selected.profile}
+                    tabs={<SidePaneTabs pane={pane} onChange={setPane} />}
+                    info={selected.info}
+                    turnContext={selected.turnContext}
+                    activity={activity}
+                    projectMembers={members}
+                    projectProfiles={profiles}
+                    machineFacts={machineFacts}
+                    machineFactsError={machineFactsError}
+                    onBrowseMachine={browseMachine}
+                    crewRail={
+                      crewDelegations?.ok ? (
+                        <CrewRail
+                          key={projectId}
+                          projectId={projectId}
+                          session={selected.session}
+                          data={crewDelegations.data}
+                        />
+                      ) : crewDelegations ? (
+                        <ResultError error={crewDelegations.error} testId="crew-rail-error" />
+                      ) : undefined
+                    }
+                    onClose={() => setOpen(false)}
+                    onChanged={() => void router.invalidate()}
+                  />
+                ) : undefined
+              }
+            />
+          </ChatNotificationsProvider>
         </ChatDraftProvider>
       </CrewRailFactsContext.Provider>
     </InfoHubLiveProvider>
@@ -275,8 +288,16 @@ function ChatListLive({
   ...props
 }: Parameters<typeof ChatListPanel>[0] & { infoHub: ChatsLoaderData["infoHub"] }) {
   const live = useInfoHubLive();
+  const unread = useChatUnread();
   const hub = infoHub.ok ? mergeProjectChats(infoHub.data, live?.view ?? null) : null;
-  return <ChatListPanel {...props} aggregates={hub?.chats} />;
+  return (
+    <ChatListPanel
+      {...props}
+      aggregates={hub?.chats}
+      unreadCounts={unread?.counts}
+      notificationAction={<BrowserNotificationToggle />}
+    />
+  );
 }
 
 function ChatDetailsLive({ info, ...props }: Parameters<typeof ChatDetails>[0]) {
