@@ -1,5 +1,5 @@
 import { clearCrewReturn, crewReturnAnchor } from "./crew-return-anchor";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode, Ref } from "react";
 import type { AgentProfile, AgentResult } from "../../contracts/agent";
 import type { AgentRunResult, ChatRunActivity, ChatRunState } from "../../contracts/agent-run";
@@ -47,6 +47,22 @@ function visiblePage(element: HTMLElement): number | null {
     return Number(block.dataset.messagePage ?? 0);
   }
   return null;
+}
+
+/**
+ * 视口里最后一条可见消息：与滚动容器可见框相交的最后一条。
+ * 滚在中间时它是视口底边那条，不是真尾巴——已读游标只该推到这里。
+ * 露出一部分就算看到，不要求整条都露出来。
+ */
+export function lastVisibleMessageId(element: HTMLElement): string | null {
+  const view = element.getBoundingClientRect();
+  let last: string | null = null;
+  for (const item of element.querySelectorAll<HTMLElement>(MESSAGE_ITEM)) {
+    const box = item.getBoundingClientRect();
+    if (box.bottom <= view.top || box.top >= view.bottom) continue;
+    last = item.dataset.messageId ?? null;
+  }
+  return last;
 }
 
 /** 量当前视口：delta 用于插页后第一次还原，锚点消息用于随后几帧的重排纠正。 */
@@ -140,6 +156,8 @@ export function ChatThread({
   onSkillsRefresh,
   archived = false,
   history,
+  unreadCount = 0,
+  onReadThrough,
 }: {
   /** 返回列表入口：正式路由传 Link，演示传按钮。 */
   back?: ReactNode;
@@ -203,13 +221,16 @@ export function ChatThread({
   automationRuleLink?: (source: AutomationSource) => ReactNode;
   /** 消息分页窗口；缺省时按单页全量渲染，演示场景不需要它。 */
   history?: ChatHistory;
+  /** 服务端未读数：决定「有新消息 · 回到最新」是否出现以及用什么文案。 */
+  unreadCount?: number;
+  /** 视口里最后一条可见消息变化时上报，容器据此推进已读游标。 */
+  onReadThrough?: (messageId: string) => void;
 }) {
   const scroll = useRef<HTMLDivElement>(null);
   /** 上一次落定后的视口：上方内容变化时据此把位置还原回去。 */
   const viewport = useRef<ViewportAnchor | null>(null);
   const anchorPage = useRef(-1);
   const [atBottom, setAtBottom] = useState(() => crewReturnAnchor(chat.id) === undefined);
-  const [newSinceScroll, setNewSinceScroll] = useState(false);
   const count = messages.ok ? messages.data.length : 0;
   const active = runState.ok ? isRunActive(runState.data) : false;
   const effectiveKind = kind ?? chat.kind;
@@ -221,31 +242,57 @@ export function ChatThread({
   const first = useRef(crewReturnAnchor(chat.id) === undefined);
   const oldestId = messages.ok ? (messages.data[0]?.id ?? null) : null;
   const newestId = messages.ok ? (messages.data.at(-1)?.id ?? null) : null;
-  // 头部那条消息换了，说明变的是上方（往前插页、卸载上方页），不是尾巴来了新消息。
-  const seenOldest = useRef(oldestId);
-  // 尾部没换、只是中间少了页，不该亮"有新消息"。
-  const seenNewest = useRef(newestId);
+  // 已读游标只认「真正看到」的消息；报过的最后一条记在这，同一条不重复报。
+  const reportedId = useRef<string | null>(null);
+  const readThroughFrame = useRef<number | null>(null);
+  const onReadThroughRef = useRef(onReadThrough);
+  onReadThroughRef.current = onReadThrough;
+  // 滚动一帧会触发多次，合并成一次报告；标签页隐藏时屏幕上没有内容，不能标已读。
+  const reportReadThrough = useCallback(() => {
+    if (document.visibilityState !== "visible") return;
+    if (readThroughFrame.current !== null) return;
+    readThroughFrame.current = requestAnimationFrame(() => {
+      readThroughFrame.current = null;
+      const element = scroll.current;
+      if (element === null) return;
+      const id = lastVisibleMessageId(element);
+      if (id === null || id === reportedId.current) return;
+      reportedId.current = id;
+      onReadThroughRef.current?.(id);
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      if (readThroughFrame.current !== null) {
+        cancelAnimationFrame(readThroughFrame.current);
+        // 取消后必须清空：StrictMode 会在挂载后立刻模拟一次卸载再挂载，
+        // 若只 cancel 不清 ref，这一次的报告就永久卡在 pending 上。
+        readThroughFrame.current = null;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const element = scroll.current;
     if (!element) return;
-    const shiftedAbove = oldestId !== seenOldest.current;
-    const appendedBelow = newestId !== seenNewest.current;
-    seenOldest.current = oldestId;
-    seenNewest.current = newestId;
     if (first.current || atBottom) {
       element.scrollTop = element.scrollHeight;
       first.current = false;
-      setNewSinceScroll(false);
-      return;
+      // 贴底后视口底边就是真尾巴，顺手把游标推到位。依赖 tail id 是因为换窗口后
+      // 长度可能不变，只有 id 变了也要重新贴底并补报。
+      reportReadThrough();
     }
-    // 往上翻出来的历史不该亮"回到底部"的提示。
-    if (shiftedAbove || !appendedBelow) {
-      setNewSinceScroll(false);
-      return;
-    }
-    setNewSinceScroll(true);
-  }, [count, atBottom, oldestId, newestId]);
+  }, [count, atBottom, oldestId, newestId, reportReadThrough]);
+
+  // 从隐藏回到可见时补报一次：隐藏期间游标没有跟着视口走。
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reportReadThrough();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [reportReadThrough]);
 
   const aboveShift = history?.aboveShift ?? 0;
   const pinning = useRef(false);
@@ -369,8 +416,10 @@ export function ChatThread({
       anchorPage.current = page;
       history?.reportAnchor(page);
     }
+    // 程序化定位不会触发 scroll 事件，主动报一次避免恢复到的位置不算已读。
+    reportReadThrough();
     clearCrewReturn(chat.id);
-  }, [chat.id, messages, history, history?.loadingOlder, history?.hasOlder]);
+  }, [chat.id, messages, history, history?.loadingOlder, history?.hasOlder, reportReadThrough]);
 
   const title = displayTitle ?? chatDisplayName(chat, agentName);
   const subline = subtitle ?? (effectiveKind === "crew" ? "Crew" : `DM · 你与${agentName}`);
@@ -413,7 +462,7 @@ export function ChatThread({
           const element = event.currentTarget;
           const bottom = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
           setAtBottom(bottom);
-          if (bottom) setNewSinceScroll(false);
+          reportReadThrough();
           if (history === undefined) return;
           // 还原滚动位置的那几帧里别重量视口：量到的可能是还没落定的中间态。
           if (!pinning.current) viewport.current = measureViewport(element);
@@ -526,19 +575,18 @@ export function ChatThread({
             加载失败，稍后再试。
           </p>
         )}
-        {(newSinceScroll || (history !== undefined && history.hasNewer)) && (
+        {((unreadCount > 0 && !atBottom) || (history !== undefined && history.hasNewer)) && (
           <button
             type="button"
             data-testid="new-messages-jump"
             onClick={() => {
-              // 尾巴被卸载过就先整体换回最新一页，否则只是把当前窗口滚到底。
+              // 尾巴被卸载过就先整体换回最新一页，否则只是把当前窗口滚到底（贴底由 atBottom 的 effect 完成）。
               if (history !== undefined && history.hasNewer) history.onResetToLatest();
               setAtBottom(true);
-              setNewSinceScroll(false);
             }}
             className="sticky bottom-2 mx-auto mt-3 block rounded-control border border-border bg-background px-3 py-2 text-[11px] text-foreground shadow-sm"
           >
-            {newSinceScroll ? "有新消息 · 回到最新" : "回到最新"}
+            {unreadCount > 0 && !atBottom ? "有新消息 · 回到最新" : "回到最新"}
           </button>
         )}
         {history?.resetError != null && (
