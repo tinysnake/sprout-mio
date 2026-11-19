@@ -123,3 +123,23 @@ require_clean_tree() {
   local dir="$1"
   [[ -z "$(git -C "$dir" status --porcelain)" ]] || fail "$dir 有未提交改动，部署只接受干净工作树"
 }
+
+# 迁移演练的判据是表名单，不是表数量：删一张加一张也要能看出来。
+# 「允许消失的表」写在应用目录的 scripts/deploy/declared-drops.txt，一行一个表名，# 起注释。
+list_tables() {
+  local file="$1"
+  [[ -f "$file" ]] || return 0
+  sed -e 's/#.*//' "$file" | tr -s '[:space:]' '\n' | grep -v '^$' | LC_ALL=C sort -u || true
+}
+
+# 迁移后消失了、但没有申报的表，每行一个。输出为空表示都可以接受。
+migration_undeclared_drops() {
+  local before="$1" after="$2" declared="$3"
+  LC_ALL=C comm -23 "$before" "$after" | LC_ALL=C comm -23 - <(list_tables "$declared")
+}
+
+# 申报了、但这次迁移里并没有消失的表。清单过期只提示，不算失败。
+migration_stale_declarations() {
+  local after="$1" declared="$2"
+  LC_ALL=C comm -12 <(list_tables "$declared") "$after"
+}

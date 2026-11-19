@@ -1,0 +1,16 @@
+# 允许在迁移里消失的表：一行一个表名，# 起注释。
+# 迁移演练（check-migration.sh）比对迁移前后的表名单，没写在这里的丢表会让部署停在演练这一步。
+# 每处删表写清它属于哪次迁移、为什么删；表从所有库消失后可以删掉对应行，清单过期只会提示。
+#
+# 0069 移除「对话接续 / 唤醒判定 / 消息唤醒 / 排期」功能时删掉的表。
+chat_continuation_abort
+chat_continuation_command
+chat_continuation_control
+chat_message_wake
+chat_schedule
+continuation_delivery
+continuation_delivery_task
+project_wake_policy_command
+wake_evaluation
+wake_evaluation_attempt
+wake_evaluation_task

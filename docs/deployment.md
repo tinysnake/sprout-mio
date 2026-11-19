@@ -124,7 +124,7 @@ Machine 是远端 Worker，注册与连接是两件事：
 | `scripts/deploy/refresh-data.sh <instance>` | 从 prod 备份刷新目标实例的数据，重写机器凭据哈希 |
 | `scripts/deploy/start.sh <instance>` | 起服务、写 pid 文件、等健康检查通过 |
 | `scripts/deploy/stop.sh <instance>` | 先 SIGTERM，十秒不退再 SIGKILL |
-| `scripts/deploy/check-migration.sh <db>` | 在库副本上先跑一次迁移并比对表数量与完整性 |
+| `scripts/deploy/check-migration.sh <db> [应用目录]` | 在库副本上先跑一次迁移，比对迁移前后的表名单与完整性；没写进 `declared-drops.txt` 的丢表会拦下 |
 | `scripts/deploy/rekey-ids.sh <instance>` | 把实例库与 `repos/`、`pi/` 里的旧格式 id 重写成 `前缀_8 位 hex`，幂等 |
 | `scripts/deploy/drill.sh <sha>` | 在演练实例上部署某个提交并做健康检查 |
 | `scripts/deploy/promote.sh <tag>` | 把某个 tag 部署到 prod，失败自动回滚 |
@@ -152,13 +152,15 @@ bash scripts/deploy/promote.sh deploy/2026-11-01-1200
 1. 备份当前库，校验备份可打开且 `integrity_check` 通过。
 2. `git fetch` 并 `git checkout <tag>` 到 `$SPROUT_RUNTIME_ROOT/prod/app`。
 3. `pnpm install --frozen-lockfile`。
-4. 在**库的副本**上跑迁移，用表与列快照对比确认只多了预期的变化。
+4. 在**库的副本**上跑迁移，比对迁移前后的表名单，只允许申报过消失的表。
 5. 迁移真库。
 6. 把库里的旧格式 id（`前缀_UUID`）重写成 `前缀_8 位 hex`，同时改名 `repos/` 与 `pi/` 下的目录（`scripts/deploy/rekey-ids.sh`）。
 7. `pnpm build`。
 8. 重启服务并等 `/api/health` 通过。
 
-第 4 步是关键。迁移是单向的，跑错就没得退，所以先在副本上跑一遍并比对快照，再动真库。
+第 4 步是关键。迁移是单向的，跑错就没得退，所以先在副本上跑一遍并比对表名单，再动真库。
+
+判据是表名单而不是表数量（删一张又加一张在数量上看不出来）。确实要删的表，在被部署的那份代码里写进 `scripts/deploy/declared-drops.txt`，一行一个表名，跟声明它的那次迁移一起被评审；没申报就消失的表会让部署停在演练这一步。清单里已经不存在的表只提示「可以清理」，不算失败。
 
 第 6 步也是单向的。`rekey-short-ids.ts` 幂等，完成标记写进库（`__id_rekey_done`），第二次运行零变更；它在单个事务里改写 id 列与外键列、摘除并重建身份不可变触发器、跑 `foreign_key_check`，失败整体回滚。文件系统阶段在数据库提交之后，中断时可单独重跑 `--fs` 续上（由库里的 `id_map` 驱动，不靠重算）。散文列 `message.body` 与 `turn_context.serialized_text` 里的旧 id 原样保留。
 
@@ -175,7 +177,7 @@ bash scripts/deploy/drill.sh <sha>
 - 迁移只由部署脚本执行一次。进程启动不自动迁移。
 - 迁移前必须有备份，回滚只允许「恢复备份 + 切回 tag」，不写 down migration。
 - `drizzle/meta/_journal.json` 已发布的条目不许改 `when`。改了会让已经迁过的库重放该迁移，撞 `table ... already exists`，而且库会停在半应用状态。
-- 迁移跑在副本上时，用 `scripts/p7/storage/snapshot.ts` 那套表与列比对当断言。
+- 迁移跑在副本上时，用迁移前后的表名单比对当断言。
 
 ## Worker 机器接入
 

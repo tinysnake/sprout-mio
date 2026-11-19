@@ -67,6 +67,31 @@ bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$prod_db" >/dev/null
 after_rows="$(sqlite_scalar "$prod_db" "select count(*) from user")"
 [[ "$before_rows" == "$after_rows" ]] || fail "迁移演练改动了源库"
 
+step "负向用例：没申报的丢表必须让迁移演练变红"
+mig="$scratch/migrate-drop"
+mkdir -p "$mig/bin" "$mig/app/scripts/deploy"
+# 假的 pnpm：所谓迁移就是删掉一张表。用它验证判据真的接在演练结果上，而不是只测了函数。
+cat >"$mig/bin/pnpm" <<'SH'
+#!/usr/bin/env bash
+last=""
+for arg in "$@"; do last="$arg"; done
+if [[ "$last" == "db:migrate" ]]; then
+  sqlite3 "$DATABASE_URL" "drop table if exists legacy_orphan"
+fi
+SH
+chmod +x "$mig/bin/pnpm"
+sqlite3 "$mig/source.sqlite" "create table keep_me (id text); create table legacy_orphan (id text);"
+run_check() { PATH="$mig/bin:$PATH" bash "$REPO_ROOT/scripts/deploy/check-migration.sh" "$mig/source.sqlite" "$mig/app"; }
+: >"$mig/app/scripts/deploy/declared-drops.txt"
+if run_check >/dev/null 2>&1; then
+  fail "没申报的丢表没有被迁移演练拦下"
+fi
+printf 'legacy_orphan\n' >"$mig/app/scripts/deploy/declared-drops.txt"
+run_check >/dev/null || fail "申报过的丢表不该被迁移演练拦下"
+printf 'legacy_orphan\nkeep_me\n' >"$mig/app/scripts/deploy/declared-drops.txt"
+stale_out="$(run_check 2>&1)" || fail "过期的申报条目不该让迁移演练失败：${stale_out}"
+printf '%s' "$stale_out" | grep -q '可以清理' || fail "过期的申报条目没有被提示出来：${stale_out}"
+
 step "运行根目录可以由指针文件指定，不必在仓库旁边"
 printf '%s\n' "$scratch" > "$scratch/root-pointer"
 SPROUT_RUNTIME_ROOT= SPROUT_RUNTIME_ROOT_FILE="$scratch/root-pointer" bash "$REPO_ROOT/scripts/deploy/verify.sh" prod >/dev/null
