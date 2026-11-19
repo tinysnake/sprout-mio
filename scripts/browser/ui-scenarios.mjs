@@ -8,7 +8,10 @@ const base = process.env.SPROUT_UI_SCENES_URL ?? "http://127.0.0.1:3000/__dev/ui
 const evidence = process.env.SPROUT_UI_SCENES_EVIDENCE ?? ".verify/ui-scenes";
 mkdirSync(evidence, { recursive: true });
 const browser = await chromium.launch();
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ["notifications"] });
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  permissions: ["notifications"],
+});
 // 系统通知没有可读回执，换成可记录的构造器，才能断言「当前对话不弹浏览器通知」。
 await context.addInitScript(() => {
   window.__chatNotifications = [];
@@ -60,20 +63,20 @@ const waitForThreadAtBottom = () =>
 // 用真实滚轮触发滚动，再多等两帧让 React 把 atBottom 提交完。
 const settleFrames = () =>
   page.evaluate(
-    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)))),
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined))),
+      ),
   );
 const scrollThreadTo = async (where) => {
   await test("message-history").hover();
   await page.mouse.wheel(0, where === "top" ? -200000 : 200000);
-  await page.waitForFunction(
-    (target) => {
-      const element = document.querySelector('[data-testid="message-history"]');
-      return target === "top"
-        ? element.scrollTop < 1
-        : element.scrollHeight - element.scrollTop - element.clientHeight < 4;
-    },
-    where,
-  );
+  await page.waitForFunction((target) => {
+    const element = document.querySelector('[data-testid="message-history"]');
+    return target === "top"
+      ? element.scrollTop < 1
+      : element.scrollHeight - element.scrollTop - element.clientHeight < 4;
+  }, where);
   await settleFrames();
 };
 async function open(scene) {
