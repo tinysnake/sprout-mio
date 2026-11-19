@@ -879,11 +879,14 @@ function WorkspaceScene() {
     [chats[0]!.id]: messages,
   });
   const [localTitles, setLocalTitles] = useState<Record<string, string | undefined>>({});
-  const selectedChat = chats.find((item) => item.id === chatId);
+  // 列表默认只有两条对话，撑不满滚动区；这批更早的对话让「未读在可见框外」在场景里可造。
+  const [extraChats, setExtraChats] = useState<Chat[]>([]);
+  const allChats = [...chats, ...extraChats];
+  const selectedChat = allChats.find((item) => item.id === chatId);
   const fixture = selectedChat
     ? workspaceFixture(selectedChat, localMessages[selectedChat.id] ?? [])
     : null;
-  const viewChats = chats
+  const viewChats = allChats
     .map((item) => ({
       ...item,
       ...(item.id in localTitles
@@ -904,7 +907,7 @@ function WorkspaceScene() {
   }, []);
   const names = useMemo(() => new Map(profiles.map((profile) => [profile.id, profile.name])), []);
   const nameFor = (targetChatId: string) => {
-    const chat = chats.find((item) => item.id === targetChatId);
+    const chat = allChats.find((item) => item.id === targetChatId);
     return chat ? chatListName(chat, chatAgents, names) : "新消息";
   };
   // 追加一条模拟消息：appendToThread 为真时同步进线程（当前打开的对话要走这条路，
@@ -982,6 +985,20 @@ function WorkspaceScene() {
       ],
     }));
   };
+  // 默认两条对话不够长；追加一批更早的对话，才能验证「滚到列表中部/底部」后的未读提示。
+  const fillChatList = () => {
+    setExtraChats((previous) => [
+      ...previous,
+      ...Array.from({ length: 20 }, (_, index) => {
+        const order = previous.length + index + 1;
+        return chat(
+          `cnv_fill_${String(order).padStart(8, "0")}`,
+          `更早的对话 ${order}：用来把列表撑到可滚动`,
+          new Date(Date.parse("2026-06-16T00:00:00.000Z") - order * 3_600_000).toISOString(),
+        );
+      }),
+    ]);
+  };
   // 已读游标推进到当前视口就清掉这条对话的角标；没未读时返回原数组，不空转重渲染。
   const markActiveRead = () => {
     if (!selectedChat) return;
@@ -1042,6 +1059,15 @@ function WorkspaceScene() {
                 onClick={fillThread}
               >
                 撑长当前对话
+              </Button>
+              <Button
+                data-testid="dev-fill-chat-list"
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={fillChatList}
+              >
+                撑长对话列表
               </Button>
             </div>
             <ChatListPanel

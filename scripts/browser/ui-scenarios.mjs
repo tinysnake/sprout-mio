@@ -45,6 +45,7 @@ page.on("request", (request) => {
 });
 const test = (id) => page.getByTestId(id);
 const ACTIVE_CHAT_ID = "cnv_44444444";
+const UNREAD_CHAT_ID = "cnv_55555555";
 const activeItem = () =>
   page.locator(`[data-testid="chat-item"][data-chat-id="${ACTIVE_CHAT_ID}"]`);
 const activeBadge = () => activeItem().locator('[data-testid="chat-unread-badge"]');
@@ -317,6 +318,90 @@ try {
     await test("message-item").last().waitFor();
     await scrollThreadTo("top");
     assert.equal(await test("new-messages-jump").count(), 0);
+  });
+  await check("chat_list_hint_appears_for_unread_outside_the_list_viewport", async () => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open("chat");
+    await test("chat-list").waitFor({ state: "visible" });
+    const hint = test("chat-list-unread-hint");
+    // 列表短时未读项就在可见区内：没有总体提示。
+    assert.equal(await hint.count(), 0);
+    assert.equal(await test("chat-unread-badge").count(), 1);
+
+    await test("dev-fill-chat-list").click();
+    assert.equal(await test("chat-item").count(), 22);
+    const scroll = test("chat-list-scroll");
+    const scrollToBottom = async () => {
+      await scroll.hover();
+      await page.mouse.wheel(0, 200000);
+      await page.waitForFunction(() => {
+        const element = document.querySelector('[data-testid="chat-list-scroll"]');
+        return element.scrollHeight - element.scrollTop - element.clientHeight < 4;
+      });
+    };
+    await scrollToBottom();
+    // 未读项滚出可见框：出现总体提示，文案只有「有新消息」，不带数量。
+    await hint.waitFor({ state: "visible" });
+    assert.equal((await hint.textContent()).trim(), "有新消息");
+    await page.screenshot({ path: join(evidence, "chat-list-unread-hint.png") });
+
+    // 可见框外的未读集合变化后提示仍然成立。
+    await test("dev-simulate-message").click();
+    await hint.waitFor({ state: "visible" });
+
+    // 点提示滚到最近活动的不可见未读项；它进入可见框后提示自然消失。
+    await hint.click();
+    await page.waitForFunction((id) => {
+      const view = document
+        .querySelector('[data-testid="chat-list-scroll"]')
+        .getBoundingClientRect();
+      const item = document
+        .querySelector(`[data-testid="chat-item"][data-chat-id="${id}"]`)
+        .getBoundingClientRect();
+      return item.top >= view.top - 1 && item.bottom <= view.bottom + 1;
+    }, UNREAD_CHAT_ID);
+    await hint.waitFor({ state: "detached" });
+    await page.screenshot({ path: join(evidence, "chat-list-unread-hint-jumped.png") });
+
+    await scrollToBottom();
+    await hint.waitFor({ state: "visible" });
+  });
+  await check("chat_list_hint_stays_inside_a_narrow_list_column", async () => {
+    // 列表列宽 < 200（类型筛选行隐藏）时提示占类型行那一档并居中，不挤掉搜索行里的铃铛与新建。
+    // 1000 宽带 inspector 时列表列宽 180：只覆盖这条窄布局分支。
+    await page.setViewportSize({ width: 1000, height: 900 });
+    await open("chat");
+    await test("chat-list").waitFor({ state: "visible" });
+    assert.equal(await test("chat-type-filters").isVisible(), false);
+    const panel = await test("chat-list-content").boundingBox();
+    assert.ok(panel.width < 200);
+
+    await test("dev-fill-chat-list").click();
+    const hint = test("chat-list-unread-hint");
+    const scroll = test("chat-list-scroll");
+    await scroll.hover();
+    await page.mouse.wheel(0, 200000);
+    await page.waitForFunction(() => {
+      const element = document.querySelector('[data-testid="chat-list-scroll"]');
+      return element.scrollHeight - element.scrollTop - element.clientHeight < 4;
+    });
+    await hint.waitFor({ state: "visible" });
+    assert.equal(await hint.count(), 1);
+    const box = await hint.boundingBox();
+    assert.ok(box.x >= panel.x && box.x + box.width <= panel.x + panel.width);
+    await page.screenshot({ path: join(evidence, "chat-list-unread-hint-narrow.png") });
+
+    await hint.click();
+    await page.waitForFunction((id) => {
+      const view = document
+        .querySelector('[data-testid="chat-list-scroll"]')
+        .getBoundingClientRect();
+      const item = document
+        .querySelector(`[data-testid="chat-item"][data-chat-id="${id}"]`)
+        .getBoundingClientRect();
+      return item.top >= view.top - 1 && item.bottom <= view.bottom + 1;
+    }, UNREAD_CHAT_ID);
+    await hint.waitFor({ state: "detached" });
   });
   await check("fixtures_make_no_application_requests_and_have_no_console_errors", async () => {
     assert.deepEqual(applicationRequests, []);
