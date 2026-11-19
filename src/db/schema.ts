@@ -877,6 +877,33 @@ export const message = sqliteTable(
 );
 
 /**
+ * 每个 (对话, 人类) 一行的已读游标：记住读到哪条消息。未读数由消息 rowid 与游标 rowid 比较得出，
+ * 只存游标不存计数，天然吸收并发追加（照原 sprout 的读标记做法）。复合外键保证游标消息属于同一对话。
+ */
+export const chatReadMarker = sqliteTable(
+  "chat_read_marker",
+  {
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chat.id),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id),
+    messageId: text("message_id").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.chatId, table.userId] }),
+    foreignKey({
+      columns: [table.messageId, table.chatId],
+      foreignColumns: [message.id, message.chatId],
+    }),
+  ],
+);
+
+/**
  * 消息内的 @mention 片段。偏移是半开区间 [start, end)，单位是 `message.body` 的字符下标；
  * 只存位置与成员身份，不复制正文，正文改写后由写入方负责重算。
  */

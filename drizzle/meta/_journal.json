@@ -491,6 +491,13 @@
       "when": 1794903719328,
       "tag": "0069_remove_continuation",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1795054168534,
+      "tag": "0070_bizarre_leper_queen",
+      "breakpoints": true
     }
   ]
 }
