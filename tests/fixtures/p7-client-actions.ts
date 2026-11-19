@@ -44,3 +44,17 @@ export async function listMessagesFn() {
     data: { messages: [], tailCursor: null, olderCursor: null, hasOlder: false, hasNewer: false },
   };
 }
+/**
+ * 未读读与写：夹具不挂未读 Provider，这两个入口只被模块图引用，运行时不会调用。
+ * 同样不能借用 `request`，否则会污染 send 动作的调用计数。
+ */
+export async function listChatUnreadFn() {
+  return { ok: true as const, requestId: "req_p7", data: [] };
+}
+export async function markChatReadFn({ data }: { data: { chatId: string } }) {
+  return {
+    ok: true as const,
+    requestId: "req_p7",
+    data: { chatId: data.chatId, unreadCount: 0 },
+  };
+}
