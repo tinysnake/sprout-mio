@@ -42,7 +42,7 @@ auth 表来自 `experiments/spa-auth-db/src/db/auth-schema.ts`，保留生成物
 
 初始 SQL 是 `drizzle/0000_pale_famine.sql`。它由 `pnpm db:generate` 生成。再次生成显示 `7 tables` 和 `No schema changes, nothing to migrate`。空库初始化与第二次迁移均已运行，迁移账本保持一条记录。
 
-`pnpm db:migrate` 沿用 a 的 `drizzle-kit migrate` 脚本。`drizzle.config.ts` 显式读取 `.env.local` 与 `.env`，按解析后的 `DATABASE_URL` 递归创建数据库父目录，再交给 drizzle-kit 打开文件；`:memory:` 不创建目录。默认路径仍为 `./data/sprout.sqlite`，不依赖 `pnpm setup` 先运行。程序化入口使用 Drizzle ORM migrator。两者消费同一 `drizzle/` 和迁移账本，验收已验证先用 CLI 迁移、再用程序化入口重复执行成功。
+`pnpm db:migrate` 沿用 a 的 `drizzle-kit migrate` 脚本。`drizzle.config.ts` 显式读取 `.env.local` 与 `.env`，按解析后的 `DATABASE_URL` 递归创建数据库父目录，再交给 drizzle-kit 打开文件；`:memory:` 不创建目录。默认路径仍为 `./data/sprout.sqlite`，不依赖 `pnpm run setup` 先运行。程序化入口使用 Drizzle ORM migrator。两者消费同一 `drizzle/` 和迁移账本，验收已验证先用 CLI 迁移、再用程序化入口重复执行成功。
 
 SQLite 查询构造器约束错误的驱动码在 `error.code`，Drizzle `.run(sql)` 包装错误的驱动码在 `error.cause.code`。本实现的外键行为测试使用真实连接，不以 mock 替代 SQLite。
 
@@ -57,7 +57,7 @@ rm -rf data
 pnpm db:migrate
 ```
 
-命令退出 0，输出 `migrations applied successfully!`。随后以只读 SQLite 连接检查，`data/sprout.sqlite` 已存在，包含 `project`、`diagnostic_event`、`runtime_boot`、`user`、`session`、`account`、`verification` 和迁移账本。没有先运行 `pnpm setup`。输出日志为 `.verify/c-data-auth/clean-migrate.log`。
+命令退出 0，输出 `migrations applied successfully!`。随后以只读 SQLite 连接检查，`data/sprout.sqlite` 已存在，包含 `project`、`diagnostic_event`、`runtime_boot`、`user`、`session`、`account`、`verification` 和迁移账本。没有先运行 `pnpm run setup`。输出日志为 `.verify/c-data-auth/clean-migrate.log`。
 
 再次删除 `data/` 后，实际执行 `pnpm start`。验证进程注入运行时生成的随机 `BETTER_AUTH_SECRET`，其余环境覆盖与请求命令如下。
 
@@ -94,7 +94,7 @@ curl --noproxy '*' -fsS http://localhost:3114/api/auth/get-session
 
 1. 运行 `pnpm install --frozen-lockfile`。
 2. 将 `.env.example` 复制为 `.env.local`，填写随机 `BETTER_AUTH_SECRET`。
-3. 运行 `pnpm setup`。该命令创建 `data/` 并应用迁移。
+3. 运行 `pnpm run setup`。该命令创建 `data/` 并应用迁移。
 4. 运行 `pnpm build`，然后运行 `pnpm start`。开发使用 `pnpm dev`。两者都监听全部接口；从局域网或 VPN 访问时把常用地址设为 `APP_ORIGIN`（如 `http://192.168.1.10:3000`），让 `PORT` 与之一致，其余地址写进 `APP_TRUSTED_ORIGINS`（如 `http://192.168.50.*:3000`）。
 5. 打开实际访问地址下的 `/login`（默认 `http://localhost:3000/login`），选择注册并创建第一个 Human。可用的地址取决于上面的 origin 配置，不在列表里的来源会被拒绝为 `forbidden 请求来源不受信任`。
 
@@ -182,7 +182,7 @@ HTTP 分桶修订的实际回归：新增“不同 IP 必须有独立预算”�
 
 | 结论                                                          | 运行命令                                                                                                                    | 输出摘要与产物                                                                                                                                                                                        |
 | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 已验证，迁移可从零重放且可重复执行。                          | `pnpm db:generate`，指定验收库后 `pnpm setup`，`pnpm db:migrate`，`node --import tsx src/db/migrate.ts`。                   | SQL 为 `0000_pale_famine.sql`。七张表、八个显式索引正确，账本一条。日志位于 `.verify/c-data-auth/generate.log`、`setup.log`、`migrate-again.log`、`migrate-entry.log`、`schema.log`。                 |
+| 已验证，迁移可从零重放且可重复执行。                          | `pnpm db:generate`，指定验收库后 `pnpm run setup`，`pnpm db:migrate`，`node --import tsx src/db/migrate.ts`。               | SQL 为 `0000_pale_famine.sql`。七张表、八个显式索引正确，账本一条。日志位于 `.verify/c-data-auth/generate.log`、`setup.log`、`migrate-again.log`、`migrate-entry.log`、`schema.log`。                 |
 | 已验证，真实 HTTP 注册与 cookie session。                     | `bash scripts/verify/c-data-auth.sh`。                                                                                      | `PASS curl signup with Origin`，`PASS session cookie readable`。请求与响应证据为 `signup.*`、`session.*`。cookie jar 与这些响应包含凭据，仅留在忽略的 `.verify/`，不提交。                            |
 | 已验证，受保护 function 的成功和失败载荷。                    | 同上。                                                                                                                      | 带 cookie 返回 HTTP 200、`ok:true`、ISO `expiresAt`。登出后同一调用返回 HTTP 200、`ok:false`、`unauthorized`。证据为 `protected-authenticated.*`、`protected-after-signout.*`。                       |
 | 已验证，无 Origin 的 POST 被拒。                              | 同上。                                                                                                                      | HTTP 403，载荷 `{"message":"Missing or null Origin","code":"MISSING_OR_NULL_ORIGIN"}`。证据为 `no-origin.*`。                                                                                         |

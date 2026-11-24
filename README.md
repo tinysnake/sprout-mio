@@ -7,7 +7,7 @@
 ```bash
 pnpm install --frozen-lockfile
 cp .env.example .env.local   # 填入至少 32 字符的 BETTER_AUTH_SECRET
-pnpm setup                   # 创建 data/ 并应用迁移
+pnpm run setup               # 创建 data/ 并应用迁移
 pnpm dev                     # 开发；生产用 pnpm build && pnpm start
 ```
 
