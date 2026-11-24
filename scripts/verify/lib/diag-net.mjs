@@ -27,7 +27,10 @@ function describe(value) {
 }
 
 function callSite() {
-  const lines = (new Error().stack ?? "").split("\n").slice(2, 6).map((line) => line.trim());
+  const lines = (new Error().stack ?? "")
+    .split("\n")
+    .slice(2, 6)
+    .map((line) => line.trim());
   return lines.join(" | ");
 }
 
@@ -73,7 +76,9 @@ function instrument() {
   const originalListen = net.Server.prototype.listen;
   net.Server.prototype.listen = function patchedListen(...args) {
     const target = readListenTarget(args);
-    report(`listen(${args.map(describe).join(", ")}) [${this.constructor?.name}] target=${describe(target)} <- ${callSite()}`);
+    report(
+      `listen(${args.map(describe).join(", ")}) [${this.constructor?.name}] target=${describe(target)} <- ${callSite()}`,
+    );
     // prepend：Vite 的探测套接字会在自己的 'listening' 处理器里立刻 close()，晚挂的处理器只会读到 null。
     this.prependOnceListener("listening", () => report(`listening ${describe(this.address())}`));
     this.once("error", (error) => report(`listen error ${error?.code} ${error?.message}`));
@@ -86,9 +91,13 @@ function instrument() {
     const host = typeof target.host === "string" ? target.host : "";
     if (target.port === interestedPort || host.toLowerCase().includes("localhost")) {
       report(`connect ${describe(target)} <- ${callSite()}`);
-      this.once("connect", () => report(`connected ${describe(this.remoteAddress)}:${describe(this.remotePort)}`));
+      this.once("connect", () =>
+        report(`connected ${describe(this.remoteAddress)}:${describe(this.remotePort)}`),
+      );
       this.once("error", (error) =>
-        report(`connect error target=${describe(target)} code=${error?.code} address=${describe(error?.address)} port=${describe(error?.port)} message=${error?.message}`),
+        report(
+          `connect error target=${describe(target)} code=${error?.code} address=${describe(error?.address)} port=${describe(error?.port)} message=${error?.message}`,
+        ),
       );
     }
     return originalConnect.apply(this, args);
@@ -106,7 +115,9 @@ function instrument() {
     if (String(hostname).toLowerCase().includes("localhost")) {
       report(`dns.lookup(${describe(hostname)}, ${describe(lookupOptions)}) <- ${callSite()}`);
       const wrapped = (...result) => {
-        report(`dns.lookup result ${describe(hostname)} -> ${describe(result[0] ?? null)} ${describe(result[1] ?? null)}`);
+        report(
+          `dns.lookup result ${describe(hostname)} -> ${describe(result[0] ?? null)} ${describe(result[1] ?? null)}`,
+        );
         return lookupCallback(...result);
       };
       return originalLookup.call(dns, hostname, lookupOptions, wrapped);
