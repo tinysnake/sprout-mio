@@ -114,23 +114,36 @@ async function health(child, origin, name) {
   }
   throw new Error(`health not ready at ${origin}; inspect server log`)
 }
-// EPERM 说的是「这组里有进程，只是不归我」：不能用它当「已经没了」。
+// PID 还在不等于进程还活着：容器里被 SIGKILL 的孤儿由不回收子进程的 pid 1 托管，会一直以僵尸留在进程表里。
+function groupMembers(pgid) {
+  return spawnSync('ps', ['-A', '-o', 'pgid=,stat=,command='], { encoding: 'utf8' })
+    .stdout.split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [group, stat] = line.split(/\s+/, 2)
+      return { group: Number(group), stat, line }
+    })
+    .filter((member) => member.group === pgid)
+}
+// EPERM 说的是「这组里有进程，只是不归我」：不能用它当「已经没了」；僵尸同理，不能当「还在跑」。
 function groupAlive(pgid) {
-  try { process.kill(-pgid, 0); return true } catch (error) {
+  try { process.kill(-pgid, 0) } catch (error) {
     if (error.code === 'ESRCH') return false
     if (error.code !== 'EPERM') throw error
-    const listing = spawnSync('ps', ['-A', '-o', 'pgid='], { encoding: 'utf8' })
-    return listing.stdout.split('\n').some((line) => line.trim() !== '' && Number(line.trim()) === pgid)
   }
+  return groupMembers(pgid).some((member) => !member.stat.startsWith('Z'))
 }
 async function stop(child) {
   kill(child)
   const result = await bounded(child, 10000)
+  // 子进程已经退出，组里剩下的孙进程没有优雅收场可言：清掉它们，别把它们算成 shutdown 失败。
+  if (groupAlive(child.pid)) kill(child, 'SIGKILL')
   for (let attempt = 0; attempt < 100; attempt++) {
     if (!groupAlive(child.pid)) return result
     await delay(100)
   }
-  throw new Error(`process group ${child.pid} survived shutdown`)
+  throw new Error(`process group ${child.pid} survived shutdown: ${groupMembers(child.pid).map((member) => member.line).join('; ')}`)
 }
 function boot(id) { return database.prepare('SELECT id, phase, stopped_at FROM runtime_boot WHERE id = ?').get(id) }
 function modules(name) {
