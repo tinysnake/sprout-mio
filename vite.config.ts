@@ -109,6 +109,11 @@ export default defineConfig({
     options: { typeAware: true, typeCheck: true },
   },
   resolve: { tsconfigPaths: true },
+  // 构建期 prerender 由 Vite 预览服务器驱动：它按 hostname 解析 'localhost' 得到绑定地址，
+  // 而 crawl 的 fetch 解析 'localhost' 时带 ADDRCONFIG，glibc 会因此忽略 loopback 的 IPv6。
+  // 只配 IPv4 的容器里两边就会各落一个地址族（监听 ::1、连接 127.0.0.1）而 ECONNREFUSED。
+  // 绑字面 IPv4 后监听和 resolvedUrls 都是 127.0.0.1，解析顺序不再影响结果。
+  preview: { host: "127.0.0.1" },
   plugins: process.env.VITEST
     ? []
     : lazyPlugins(() => [

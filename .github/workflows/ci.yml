@@ -123,79 +123,27 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      # 临时诊断：prerender 回连 http://localhost:3000 失败，确认容器里的绑定与可达性。
+      # 临时诊断：prerender 回连 http://localhost:3000 失败，根因是监听地址族与客户端解析族错配。
+      # 定位完成后删除本步骤与 scripts/verify/lib/diag-net.mjs。
       - name: Diagnose container networking
         if: matrix.group == 'api-a'
         run: |
-          echo "== env =="
-          env | grep -Ei '^(host|port|nitro|node_|playwright)' || true
           echo "== /etc/hosts =="
           cat /etc/hosts
-          echo "== bindv6only =="
-          cat /proc/sys/net/ipv6/bindv6only 2>/dev/null || echo "no ipv6"
-          echo "== dns ==
-          cat > /tmp/probe.mjs <<'PROBE'
-          import net from "node:net";
-          const detail = (error) => {
-            const cause = error.cause;
-            const errors = cause?.errors?.map((item) => `${item.code}@${item.address}:${item.port}`).join(",");
-            return `${error.message} cause=${cause?.code ?? cause?.name ?? "?"} errors=${errors ?? "-"}`;
-          };
-          const round = async (label, options) => {
-            const server = net.createServer((socket) => socket.end("ok"));
-            await new Promise((done) => server.listen(options, done));
-            console.log(label, "address", JSON.stringify(server.address()));
-            try {
-              const response = await fetch(`http://localhost:${options.port}/`);
-              console.log(label, "fetch", response.status);
-            } catch (error) {
-              console.log(label, "fetch failed", detail(error));
-            }
-            await new Promise((done) => server.close(done));
-          };
-          await round("bind-localhost", { port: 3200, host: "localhost" });
-          await round("bind-127.0.0.1", { port: 3201, host: "127.0.0.1" });
-          await round("bind-default", { port: 3202 });
-          try {
-            const response = await fetch("http://127.0.0.1:3202/");
-            console.log("default-then-127.0.0.1 fetch", response.status);
-          } catch (error) {
-            console.log("default-then-127.0.0.1 fetch failed", detail(error));
-          }
-          PROBE
-          echo "== probe ==
-          node /tmp/probe.mjs || true
-          echo "== probe with ipv4first =="
-          NODE_OPTIONS=--dns-result-order=ipv4first node /tmp/probe.mjs || true
-          echo "== listeners while building (100ms) =="
+          echo "== localhost resolution =="
           node -e '
-          const fs = require("node:fs");
-          const listeners = () => {
-            const found = [];
-            for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
-              let text = "";
-              try { text = fs.readFileSync(file, "utf8"); } catch { continue; }
-              for (const line of text.split("\n").slice(1)) {
-                const columns = line.trim().split(/\s+/);
-                if (columns[3] === "0A") found.push(`${columns[1]}@${file.replace("/proc/net/", "")}`);
-              }
+            const dns = require("node:dns");
+            console.log("resultOrder", dns.getDefaultResultOrder(), "ADDRCONFIG", dns.ADDRCONFIG);
+            const cases = [{ all: true }, { all: true, hints: dns.ADDRCONFIG }];
+            for (const item of cases) {
+              dns.lookup("localhost", item, (error, list) => {
+                console.log("lookup", JSON.stringify(item), error ? error.message : JSON.stringify(list));
+              });
             }
-            return found;
-          };
-          const started = Date.now();
-          const timer = setInterval(() => {
-            const rows = listeners();
-            if (rows.length) console.log(`${Date.now() - started}ms`, rows.join(" | "));
-          }, 100);
-          setTimeout(() => { clearInterval(timer); process.exit(0); }, 120000);
-          ' > /tmp/diag-listen.log 2>&1 &
-          poll=$!
-          node scripts/verify/prepare.mjs server --fresh > /tmp/diag-build.log 2>&1 || true
-          kill "$poll" 2>/dev/null || true
-          echo "== listeners seen =="
-          cat /tmp/diag-listen.log
-          echo "== build tail =="
-          tail -15 /tmp/diag-build.log
+          ' || true
+          echo "== build with listen/connect instrumentation =="
+          SPROUT_DIAG_NET=1 NODE_OPTIONS="--import ./scripts/verify/lib/diag-net.mjs" \
+            node scripts/verify/prepare.mjs server --fresh || true
 
       - name: Verify assigned gates
         env:
