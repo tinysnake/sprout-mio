@@ -105,6 +105,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # 容器里以 root 运行，挂载进来的 workspace 属于宿主 runner 用户，
+      # 不声明 safe.directory 时 git 会以 dubious ownership 拒绝仓库操作。
+      - name: Trust the mounted workspace
+        run: git config --global --add safe.directory '*'
+
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
