@@ -122,6 +122,41 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
+      # 临时诊断：prerender 回连 http://localhost:3000 失败，先确认容器里的默认绑定行为。
+      - name: Diagnose container networking
+        if: matrix.group == 'api-a'
+        run: |
+          echo "== env =="
+          env | grep -Ei '^(host|port|nitro|node_|playwright)' || true
+          echo "== /etc/hosts =="
+          cat /etc/hosts
+          echo "== ipv6 interfaces =="
+          cat /proc/net/if_inet6 || echo "no ipv6"
+          node -e '
+          const net = require("node:net");
+          const probe = (label, options) =>
+            new Promise((done) => {
+              const server = net.createServer();
+              server.once("error", (error) => {
+                console.log(label, "error", error.code);
+                done();
+              });
+              server.listen(options, () => {
+                console.log(label, "listening", JSON.stringify(server.address()));
+                server.close(done);
+              });
+            });
+          (async () => {
+            await probe("default", { port: 3000 });
+            await probe("ipv6-any", { port: 3000, host: "::" });
+            await probe("ipv4-any", { port: 3000, host: "0.0.0.0" });
+            await probe("loopback", { port: 3000, host: "127.0.0.1" });
+          })().catch((error) => {
+            console.error(error);
+            process.exitCode = 1;
+          });
+          '
+
       - name: Verify assigned gates
         env:
           VERIFY_GROUP: ${{ matrix.group }}
