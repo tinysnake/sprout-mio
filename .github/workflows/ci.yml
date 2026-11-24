@@ -123,28 +123,6 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      # 临时诊断：prerender 回连 http://localhost:3000 失败，根因是监听地址族与客户端解析族错配。
-      # 定位完成后删除本步骤与 scripts/verify/lib/diag-net.mjs。
-      - name: Diagnose container networking
-        if: matrix.group == 'api-a'
-        run: |
-          echo "== /etc/hosts =="
-          cat /etc/hosts
-          echo "== localhost resolution =="
-          node -e '
-            const dns = require("node:dns");
-            console.log("resultOrder", dns.getDefaultResultOrder(), "ADDRCONFIG", dns.ADDRCONFIG);
-            const cases = [{ all: true }, { all: true, hints: dns.ADDRCONFIG }];
-            for (const item of cases) {
-              dns.lookup("localhost", item, (error, list) => {
-                console.log("lookup", JSON.stringify(item), error ? error.message : JSON.stringify(list));
-              });
-            }
-          ' || true
-          echo "== build with listen/connect instrumentation =="
-          SPROUT_DIAG_NET=1 NODE_OPTIONS="--import ./scripts/verify/lib/diag-net.mjs" \
-            node scripts/verify/prepare.mjs server --fresh || true
-
       - name: Verify assigned gates
         env:
           VERIFY_GROUP: ${{ matrix.group }}
