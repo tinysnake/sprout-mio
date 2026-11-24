@@ -196,6 +196,7 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/workspace-fence.test.ts",
     "tests/workspace-source.test.ts",
     "tests/workspace-root.test.ts",
+    "tests/stray-processes.test.ts",
   ],
   local: [
     "tests/agent-prompt-runner.test.ts",

@@ -72,6 +72,7 @@ P3 C 与 R1 并行时互相覆盖的正是这些串行资源，`drizzle/meta/_jo
 - git 自己挡住重复分支。同一分支不能在两个 worktree 同时 checkout；`main` 被主 checkout 占着时，任何 worktree 切 `main` 都失败（`fatal: 'main' is already used by worktree at ...`）。写代码的分支因此天然互斥。
 - worktree 之间共享一份 `.git`。`git stash`、`git branch -D`、删 tag 会波及所有 worktree，不在 worktree 里做这些操作；分支收尾与删除在主 checkout 上做。
 - 一个 worktree 只放一个写者。多个子代理并行写文件时各自开 worktree，共享同一个 checkout 就回到了这次事故。
+- 起过的服务必须由起它的运行收掉：dev server、临时预览、`verify` 的 gate 服务都不能在自己退出后还留在宿主机上。`pnpm stray` 检查这类残留（ppid 已变成 1 的本仓库进程），`pnpm stray:fix` 收掉；`pnpm check` 已包含这项检查。只把存活时间达到 `--min-age`（默认 1 小时）的进程判为失败，还在跑的 verify 运行与它启动的后台命令不算残留（要连未满该时间的一起看，用 `pnpm stray --min-age 0`）。它报 `FAIL stray-processes` 时，通常是别的线程留下的进程，清完再继续；`sprout-bin` 下的部署实例（prod/drill）不属于残留。
 - worktree 在其分支合入或明确放弃、且没有未提交改动之后才删除，随后 `git worktree prune`。
 
 ## 维护项目规范
