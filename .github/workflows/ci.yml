@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # push 与 pull_request 对同一分支是同一份代码，但 ref 字符串不同（refs/heads/<branch> 与
+  # refs/pull/<n>/merge），只按 ref 归组会绕过取消，同一次推送跑两遍完整矩阵。按分支名归组。
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
