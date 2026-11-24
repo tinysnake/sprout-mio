@@ -53,6 +53,23 @@ function call(directory, entry, args, env = {}) {
     env: { ...process.env, ...env },
   });
 }
+function jobBlock(workflow, name) {
+  const lines = workflow.split("\n");
+  const start = lines.indexOf(`  ${name}:`);
+  assert.notEqual(start, -1, `ci.yml must define the ${name} job`);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^ {2}\S/.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join("\n");
+}
+function matrixGroups(workflow, name) {
+  const block = jobBlock(workflow, name);
+  const match = block.match(/group:\s*\[([\s\S]*?)\]/);
+  assert(match, `the ${name} job must declare its gate groups`);
+  return match[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
 
 await test("every gate and unit file has an explicit target; only split A/B overlap", () => {
   const inventory = validateGateTargets(root);
@@ -77,14 +94,27 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "tests/worker-report-budget.test.ts",
   ]);
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-  const matrix = workflow.slice(workflow.indexOf("matrix:"));
-  const listed = matrix.slice(matrix.indexOf("[") + 1, matrix.indexOf("]"));
-  assert.deepEqual(
-    listed
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter(Boolean),
-    Object.keys(CI_GROUPS),
+  const listed = [
+    ...matrixGroups(workflow, "portable"),
+    ...matrixGroups(workflow, "portableBrowser"),
+  ];
+  assert.equal(listed.length, Object.keys(CI_GROUPS).length);
+  assert.deepEqual(new Set(listed), new Set(Object.keys(CI_GROUPS)));
+});
+
+await test("browser groups run in the pinned Playwright image, tool chains stay on the runner", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  // 浏览器与系统依赖靠镜像预装，容器里的 job 不能依赖 apt 安装的工具（lsof 只在 runner 上装）。
+  assert.match(jobBlock(workflow, "portableBrowser"), /^\s+container:\n\s+image: (\S+)/m);
+  assert.doesNotMatch(jobBlock(workflow, "portable"), /^\s+container:/m);
+  const container = matrixGroups(workflow, "portableBrowser");
+  assert(!container.includes("base") && !container.includes("tooling"));
+  const { playwright } = JSON.parse(
+    readFileSync(join(root, "package.json"), "utf8"),
+  ).devDependencies;
+  assert.equal(
+    jobBlock(workflow, "portableBrowser").match(/image: (\S+)/)[1],
+    `mcr.microsoft.com/playwright:v${playwright}-noble`,
   );
 });
 

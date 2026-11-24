@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { MANUAL_GATES, RETIRED_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
 export const CI_GROUPS = Object.freeze({
-  // 键顺序与 ci.yml 的 matrix 顺序一致（targets.test.mjs 会核对），最重的组排在最前。
+  // 集合由 targets.test.mjs 与 ci.yml 的两个 matrix 核对（portable + portableBrowser），最重的组排在最前。
   "browser-c": [
     "ui-scenarios",
     "p7-client-navigation",
@@ -32,15 +32,9 @@ export const CI_GROUPS = Object.freeze({
     "rm2-attachments",
     "bf-p6b-agent-tool",
   ],
-  tooling: ["b-tooling", "deploy-selftest", "worker-artifact"],
-  "api-a": [
-    "d-runtime",
-    "drain-http",
-    "an-p4d-authority",
-    "g-identity-data",
-    "assistant-core",
-    "i-chat",
-  ],
+  // g-identity-data 跑 `pnpm check`（会调 stray-processes 的 lsof 路径），必须留在装了 lsof 的 job。
+  tooling: ["b-tooling", "deploy-selftest", "worker-artifact", "g-identity-data"],
+  "api-a": ["d-runtime", "drain-http", "an-p4d-authority", "assistant-core", "i-chat"],
   turns: [
     "k2-cross-family-isolation",
     "m-error-mapping",

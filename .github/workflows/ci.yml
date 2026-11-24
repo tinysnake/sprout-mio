@@ -19,28 +19,14 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 11
-      # 最重的组排在最前，GitHub 按顺序启动，组内门禁串行。
+      max-parallel: 5
+      # 不需要页面链路的组，按预估耗时从重到轻排列；需要页面链路的组在 portableBrowser。
       matrix:
-        group:
-          [
-            browser-c,
-            browser-a,
-            browser-b,
-            tooling,
-            api-a,
-            turns,
-            api-b,
-            contracts,
-            base,
-            tasks,
-            docs,
-          ]
+        group: [tooling, base, contracts, docs, tasks]
     env:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
       MCP_EVERYTHING: "0"
-      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.verify/browsers
       BETTER_AUTH_SECRET: sprout-ci-only-not-production-secret
       NO_PROXY: localhost,127.0.0.1,::1
     steps:
@@ -64,22 +50,6 @@ jobs:
       - name: Install Linux test tools
         if: matrix.group == 'base' || matrix.group == 'tooling'
         run: sudo apt-get update && sudo apt-get install -y lsof
-
-      - name: Cache Chromium
-        id: chromium-cache
-        if: startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.verify/browsers
-          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
-
-      - name: Install Chromium and system dependencies
-        if: (startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')) && steps.chromium-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-
-      - name: Install Chromium system dependencies
-        if: (startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')) && steps.chromium-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
 
       - name: Verify assigned gates
         env:
@@ -107,15 +77,76 @@ jobs:
             .verify/a-base/*.log
             .verify/b-tooling/*.log
 
+  portableBrowser:
+    name: Linux / ${{ matrix.group }}
+    runs-on: ubuntu-24.04
+    # 浏览器与系统依赖由 Playwright 镜像预装：不需要下载浏览器，也不装 apt 包。
+    # 镜像 tag 必须与 package.json 的 playwright 版本一致（targets.test.mjs 会核对）。
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --ipc=host
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      # 需要页面链路的组，按预估耗时从重到轻排列。
+      matrix:
+        group: [browser-c, browser-a, api-a, browser-b, api-b, turns]
+    env:
+      SPROUT_PI_ENABLED: "false"
+      SPROUT_VERIFY_CHAT_MODE: model-fixture
+      MCP_EVERYTHING: "0"
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      BETTER_AUTH_SECRET: sprout-ci-only-not-production-secret
+      NO_PROXY: localhost,127.0.0.1,::1
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify assigned gates
+        env:
+          VERIFY_GROUP: ${{ matrix.group }}
+        run: pnpm verify:ci --group "$VERIFY_GROUP"
+
+      - name: Upload reports and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.group }}-${{ github.run_attempt }}
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: |
+            .verify/runs/**/report.json
+            .verify/runs/**/*.log
+            .verify/targets/*.json
+
   verify:
     if: always()
-    needs: portable
+    needs: [portable, portableBrowser]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require all Linux groups to pass
         # 被 cancel-in-progress 取消的旧运行不再额外制造一次失败。
-        if: needs.portable.result != 'cancelled'
+        if: needs.portable.result != 'cancelled' && needs.portableBrowser.result != 'cancelled'
         env:
           PORTABLE_RESULT: ${{ needs.portable.result }}
-        run: test "$PORTABLE_RESULT" = success
+          PORTABLE_BROWSER_RESULT: ${{ needs.portableBrowser.result }}
+        run: |
+          test "$PORTABLE_RESULT" = success
+          test "$PORTABLE_BROWSER_RESULT" = success
