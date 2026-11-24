@@ -19,9 +19,23 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 11
+      # 最重的组排在最前，GitHub 按顺序启动，组内门禁串行。
       matrix:
-        group: [base, tooling, docs, contracts, api, tasks, turns, browser]
+        group:
+          [
+            browser-c,
+            browser-a,
+            browser-b,
+            tooling,
+            api-a,
+            turns,
+            api-b,
+            contracts,
+            base,
+            tasks,
+            docs,
+          ]
     env:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
@@ -48,11 +62,24 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Install Linux test tools
+        if: matrix.group == 'base' || matrix.group == 'tooling'
         run: sudo apt-get update && sudo apt-get install -y lsof
 
+      - name: Cache Chromium
+        id: chromium-cache
+        if: startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.verify/browsers
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+
       - name: Install Chromium and system dependencies
-        if: matrix.group == 'browser' || matrix.group == 'turns' || matrix.group == 'api'
+        if: (startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')) && steps.chromium-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Chromium system dependencies
+        if: (startsWith(matrix.group, 'browser') || matrix.group == 'turns' || startsWith(matrix.group, 'api')) && steps.chromium-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       - name: Verify assigned gates
         env:
@@ -87,6 +114,8 @@ jobs:
     timeout-minutes: 2
     steps:
       - name: Require all Linux groups to pass
+        # 被 cancel-in-progress 取消的旧运行不再额外制造一次失败。
+        if: needs.portable.result != 'cancelled'
         env:
           PORTABLE_RESULT: ${{ needs.portable.result }}
         run: test "$PORTABLE_RESULT" = success

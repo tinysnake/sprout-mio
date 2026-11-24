@@ -77,7 +77,15 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "tests/worker-report-budget.test.ts",
   ]);
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-  assert(workflow.includes(`group: [${Object.keys(CI_GROUPS).join(", ")}]`));
+  const matrix = workflow.slice(workflow.indexOf("matrix:"));
+  const listed = matrix.slice(matrix.indexOf("[") + 1, matrix.indexOf("]"));
+  assert.deepEqual(
+    listed
+      .split(",")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    Object.keys(CI_GROUPS),
+  );
 });
 
 await test("unclassified gates and test files fail before any command executes", (t) => {
