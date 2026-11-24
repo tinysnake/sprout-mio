@@ -74,6 +74,7 @@ jobs:
             .verify/runs/**/report.json
             .verify/runs/**/*.log
             .verify/targets/*.json
+            .verify/sandboxes/**/*.log
             .verify/a-base/*.log
             .verify/b-tooling/*.log
 
@@ -122,7 +123,7 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      # 临时诊断：prerender 回连 http://localhost:3000 失败，先确认容器里的默认绑定行为。
+      # 临时诊断：prerender 回连 http://localhost:3000 失败，确认容器里的绑定与可达性。
       - name: Diagnose container networking
         if: matrix.group == 'api-a'
         run: |
@@ -134,28 +135,44 @@ jobs:
           cat /proc/net/if_inet6 || echo "no ipv6"
           node -e '
           const net = require("node:net");
-          const probe = (label, options) =>
+          const reach = (label, options, url) =>
             new Promise((done) => {
-              const server = net.createServer();
+              const server = net.createServer((socket) => socket.end("ok"));
               server.once("error", (error) => {
-                console.log(label, "error", error.code);
+                console.log(label, "listen error", error.code);
                 done();
               });
-              server.listen(options, () => {
-                console.log(label, "listening", JSON.stringify(server.address()));
+              server.listen(options, async () => {
+                try {
+                  const response = await fetch(url);
+                  console.log(label, "fetch", response.status);
+                } catch (error) {
+                  console.log(label, "fetch error", error.cause?.code ?? error.message);
+                }
                 server.close(done);
               });
             });
           (async () => {
-            await probe("default", { port: 3000 });
-            await probe("ipv6-any", { port: 3000, host: "::" });
-            await probe("ipv4-any", { port: 3000, host: "0.0.0.0" });
-            await probe("loopback", { port: 3000, host: "127.0.0.1" });
+            await reach("default+localhost", { port: 3100 }, "http://localhost:3100/");
+            await reach("default+127.0.0.1", { port: 3100 }, "http://127.0.0.1:3100/");
+            await reach("ipv6-any+127.0.0.1", { port: 3100, host: "::" }, "http://127.0.0.1:3100/");
+            await reach("ipv4-any+localhost", { port: 3100, host: "0.0.0.0" }, "http://localhost:3100/");
           })().catch((error) => {
             console.error(error);
             process.exitCode = 1;
           });
           '
+          echo "== listeners while building =="
+          node scripts/verify/prepare.mjs server --fresh > /tmp/diag-build.log 2>&1 &
+          build=$!
+          for _ in $(seq 1 120); do
+            awk '$4 == "0A" { print "LISTEN " FILENAME " " $2 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null || true
+            kill -0 "$build" 2>/dev/null || break
+            sleep 1
+          done
+          wait "$build" || true
+          echo "== build tail =="
+          tail -15 /tmp/diag-build.log
 
       - name: Verify assigned gates
         env:
@@ -174,6 +191,7 @@ jobs:
             .verify/runs/**/report.json
             .verify/runs/**/*.log
             .verify/targets/*.json
+            .verify/sandboxes/**/*.log
 
   verify:
     if: always()
