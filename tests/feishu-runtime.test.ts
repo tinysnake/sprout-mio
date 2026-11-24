@@ -19,10 +19,35 @@ afterAll(() => f.close());
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitFor(check: () => boolean, timeoutMs = 15_000) {
+// 诊断本身不能抛：它只在超时路径上跑，抛出会把真正要看的现场换成诊断错误。
+function dumpRows(
+  fixture: Awaited<ReturnType<typeof channelNativeFixture>>,
+  sql: string,
+  id: string,
+) {
+  try {
+    return fixture.sqlite.prepare(sql).all(id);
+  } catch (error) {
+    return `diagnose_failed: ${String(error)}`;
+  }
+}
+
+// message.created_at 由 SQLite 的 unixepoch() 默认值给出，粒度是整秒；投递按 due_at_ms 排队。
+// 用冻结时钟当排期时钟时，"下一整秒"永远晚于现在，刚捕获的投递就再也不会到期。
+// 这里从场景时刻开始让时间真的流动：投递会立刻到期，失败重试也能在等待窗口内重排。
+function liveClockFrom(base: Date) {
+  const startedAt = Date.now();
+  return () => new Date(base.getTime() + (Date.now() - startedAt));
+}
+
+async function waitFor(check: () => boolean, timeoutMs = 15_000, diagnose?: () => unknown) {
   const startedAt = Date.now();
   while (!check()) {
-    if (Date.now() - startedAt > timeoutMs) throw new Error("waitFor timed out");
+    if (Date.now() - startedAt > timeoutMs) {
+      // 这里等的是墙钟，被等的投递却是按冻结时钟排期的：只有带上现场，CI 上超时才可判定。
+      const detail = diagnose ? ` ${JSON.stringify(diagnose())}` : "";
+      throw new Error(`waitFor timed out${detail}`);
+    }
     await sleep(5);
   }
 }
@@ -185,7 +210,7 @@ it("assembles owner, port and loop behind enabled config and delivers on wake", 
     transport: fakeTransport(),
     createClient: fakeClientFactory(log, callbacks),
     createDispatcher: dispatcher,
-    now: () => s.now,
+    now: liveClockFrom(s.now),
     requestId: () => "req_runtime",
     onError: (error) => errors.push(error),
   });
@@ -194,14 +219,29 @@ it("assembles owner, port and loop behind enabled config and delivers on wake", 
     expect(runtime.isRunning()).toBe(true);
     expect(runtime.snapshot().phase).toBe("connected");
     runtime.wake();
-    await waitFor(() => {
-      const state = (
-        f.sqlite.prepare("SELECT state FROM channel_delivery WHERE id=?").get(delivery.id) as {
-          state: string;
-        }
-      ).state;
-      return state === "accepted";
-    });
+    await waitFor(
+      () => {
+        const state = (
+          f.sqlite.prepare("SELECT state FROM channel_delivery WHERE id=?").get(delivery.id) as {
+            state: string;
+          }
+        ).state;
+        return state === "accepted";
+      },
+      15_000,
+      () => ({
+        frozenNow: s.now.getTime(),
+        wall: Date.now(),
+        delivery: dumpRows(f, "SELECT * FROM channel_delivery WHERE id=?", delivery.id),
+        attempts: dumpRows(
+          f,
+          "SELECT * FROM channel_attempt WHERE delivery_id=? ORDER BY rowid",
+          delivery.id,
+        ),
+        errors: errors.map((error) => String(error)),
+        snapshot: runtime.snapshot(),
+      }),
+    );
     expect(errors).toEqual([]);
   } finally {
     // 断言先失败也要停掉：租约按 app 存库，漏放会让后面的用例看到别人还持着。

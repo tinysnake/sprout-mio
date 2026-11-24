@@ -117,7 +117,7 @@ if [ "${SPROUT_VERIFY_TARGET-all}" != local ]; then
 port_guard "$prod_port"
 port_guard "$dev_port"
 [ "$prod_port" != "$dev_port" ] || fail 'production and dev ports must differ'
-run 'typecheck Web, Worker and extension' typecheck pnpm typecheck
+# pnpm check 已覆盖 tsc --noEmit（Web/Worker/extension）。
 run 'format lint and type gate' check pnpm check
 run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
 [ -f .output/server/index.mjs ] || fail 'missing .output/server/index.mjs'

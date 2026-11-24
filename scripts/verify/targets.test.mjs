@@ -53,6 +53,23 @@ function call(directory, entry, args, env = {}) {
     env: { ...process.env, ...env },
   });
 }
+function jobBlock(workflow, name) {
+  const lines = workflow.split("\n");
+  const start = lines.indexOf(`  ${name}:`);
+  assert.notEqual(start, -1, `ci.yml must define the ${name} job`);
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => /^ {2}\S/.test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join("\n");
+}
+function matrixGroups(workflow, name) {
+  const block = jobBlock(workflow, name);
+  const match = block.match(/group:\s*\[([\s\S]*?)\]/);
+  assert(match, `the ${name} job must declare its gate groups`);
+  return match[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
 
 await test("every gate and unit file has an explicit target; only split A/B overlap", () => {
   const inventory = validateGateTargets(root);
@@ -77,7 +94,28 @@ await test("every gate and unit file has an explicit target; only split A/B over
     "tests/worker-report-budget.test.ts",
   ]);
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-  assert(workflow.includes(`group: [${Object.keys(CI_GROUPS).join(", ")}]`));
+  const listed = [
+    ...matrixGroups(workflow, "portable"),
+    ...matrixGroups(workflow, "portableBrowser"),
+  ];
+  assert.equal(listed.length, Object.keys(CI_GROUPS).length);
+  assert.deepEqual(new Set(listed), new Set(Object.keys(CI_GROUPS)));
+});
+
+await test("browser groups run in the pinned Playwright image, tool chains stay on the runner", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  // 浏览器与系统依赖靠镜像预装，容器里的 job 不能依赖 apt 安装的工具（lsof 只在 runner 上装）。
+  assert.match(jobBlock(workflow, "portableBrowser"), /^\s+container:\n\s+image: (\S+)/m);
+  assert.doesNotMatch(jobBlock(workflow, "portable"), /^\s+container:/m);
+  const container = matrixGroups(workflow, "portableBrowser");
+  assert(!container.includes("base") && !container.includes("tooling"));
+  const { playwright } = JSON.parse(
+    readFileSync(join(root, "package.json"), "utf8"),
+  ).devDependencies;
+  assert.equal(
+    jobBlock(workflow, "portableBrowser").match(/image: (\S+)/)[1],
+    `mcr.microsoft.com/playwright:v${playwright}-noble`,
+  );
 });
 
 await test("unclassified gates and test files fail before any command executes", (t) => {
@@ -103,27 +141,26 @@ await test("a planned sandbox gate the sandbox whitelist omits fails before any 
   assert.equal(existsSync(join(directory, ".verify")), false);
 });
 
-await test("CI continues after a failing gate and reports its real failure within its assigned group", (t) => {
+await test("a CI group runs as one serial runner and its failure reaches the job", (t) => {
   const directory = fixture(t);
   writeFileSync(
     join(directory, "scripts/verify/runner.mjs"),
     `
     import {appendFileSync} from 'node:fs';
-    const id=process.argv.at(-1);appendFileSync('calls',JSON.stringify({id,target:process.env.SPROUT_VERIFY_TARGET})+'\\n');
-    process.exit(id==='f-docs'?7:0);
+    appendFileSync('calls',JSON.stringify({args:process.argv.slice(2),target:process.env.SPROUT_VERIFY_TARGET})+'\\n');
+    process.exit(7);
   `,
   );
   const result = call(directory, "targets.mjs", ["ci", "--group", "docs"]);
   assert.equal(result.status, 1, result.stderr);
   const calls = readFileSync(join(directory, "calls"), "utf8").trim().split("\n").map(JSON.parse);
-  assert.deepEqual(
-    calls,
-    CI_GROUPS.docs.map((id) => ({ id, target: "ci" })),
-  );
+  assert.deepEqual(calls, [
+    { args: ["--only", CI_GROUPS.docs.join(","), "--max-parallel", "1"], target: "ci" },
+  ]);
   const report = JSON.parse(readFileSync(join(directory, ".verify/targets/ci-docs.json"), "utf8"));
   assert.deepEqual(
-    report.outcomes.map(({ code }) => code),
-    CI_GROUPS.docs.map((id) => (id === "f-docs" ? 7 : 0)),
+    report.outcomes.map(({ gates, code }) => ({ gates, code })),
+    [{ gates: CI_GROUPS.docs, code: 7 }],
   );
 });
 

@@ -52,7 +52,10 @@ async function command(command, args, log, settings = env, limit = 300000) {
   try {
     const result = await child.completion
     assert(!timedOut, `${command} exceeded ${limit}ms, see ${log}`)
-    assert.equal(result.code, 0, `${command} ${args.join(' ')} failed, see ${log}`)
+    if (result.code !== 0) {
+      const tail = readFileSync(join(logDir, log), 'utf8').trim().split('\n').slice(-20).join('\n')
+      assert.fail(`${command} ${args.join(' ')} failed, see ${log}:\n${tail}`)
+    }
   } finally {
     clearTimeout(timer)
     children.delete(child)
@@ -125,7 +128,7 @@ try {
   const sqlFiles = readdirSync('drizzle').filter((file) => file.endsWith('.sql')).sort()
   pass('db:generate produces no new migration',
     `${sqlFiles.length} SQL files; no schema changes; drizzle/ clean against git; see generate.log`)
-  await command('pnpm', ['setup'], 'setup.log')
+  await command('pnpm', ['run', 'setup'], 'setup.log')
   pass('setup from deleted database', databaseUrl)
   await command('pnpm', ['db:migrate'], 'migrate-again.log')
   pass('second db:migrate', 'exit 0; see migrate-again.log')

@@ -41,7 +41,7 @@ const forceStopMs = 10_000;
 const tailLines = 40;
 const tailCharacters = 4_000;
 
-const usage = `Usage: pnpm verify [--only <id>[,<id>...]] [--help]
+const usage = `Usage: pnpm verify [--only <id>[,<id>...]] [--max-parallel <n>] [--help]
 
 Runs known scripts/verify/*.sh gates in bounded resource pools after serial
 artifact preparation. Gates that modify source or outputs use private trees.
@@ -50,14 +50,24 @@ A failing script does not stop later scripts. The command exits 1 when any
 script fails. Gates listed as manual run only with --only or a direct script invocation.
 
 Options:
-  --only <ids>  Run exactly these comma-separated script ids (file names without .sh).
-  --help        Print this help without creating a run directory or running scripts.
+  --only <ids>       Run exactly these comma-separated script ids (file names without .sh).
+  --max-parallel <n> Admit at most n pooled gates at once (default: no limit).
+  --help             Print this help without creating a run directory or running scripts.
 
 Environment:
   SPROUT_VERIFY_ALLOW_LOADED=1  Start even when this machine is already saturated.
 `;
 
 class UsageError extends Error {}
+
+function parseMaxParallel(value) {
+  if (!/^[1-9][0-9]*$/.test(value)) {
+    throw new UsageError(
+      `--max-parallel requires a positive integer, got ${JSON.stringify(value)}`,
+    );
+  }
+  return Number(value);
+}
 
 function discoverScripts() {
   if (!existsSync(verifyDirectory)) return [];
@@ -76,9 +86,11 @@ function parseArguments(rawArguments) {
   if (args[0] === "--") args.shift();
 
   let only = null;
+  let maxParallel = null;
   for (let index = 0; index < args.length; index++) {
     const argument = args[index];
-    if (argument === "--help" || argument === "-h") return { help: true, only: null };
+    if (argument === "--help" || argument === "-h")
+      return { help: true, only: null, maxParallel: null };
     if (argument === "--only") {
       if (only !== null) throw new UsageError("--only may be passed only once");
       const value = args[++index];
@@ -91,10 +103,18 @@ function parseArguments(rawArguments) {
       only = argument.slice("--only=".length);
       continue;
     }
+    if (argument === "--max-parallel" || argument.startsWith("--max-parallel=")) {
+      if (maxParallel !== null) throw new UsageError("--max-parallel may be passed only once");
+      const value =
+        argument === "--max-parallel" ? args[++index] : argument.slice("--max-parallel=".length);
+      if (value === undefined) throw new UsageError("--max-parallel requires a value");
+      maxParallel = parseMaxParallel(value);
+      continue;
+    }
     throw new UsageError(`unknown argument: ${argument}`);
   }
 
-  if (only === null) return { help: false, only: null };
+  if (only === null) return { help: false, only: null, maxParallel };
 
   const selected = only.split(",").map((id) => id.trim());
   if (selected.length === 0 || selected.some((id) => id === "")) {
@@ -113,7 +133,7 @@ function parseArguments(rawArguments) {
   const unknown = selected.filter((id) => !available.has(id));
   if (unknown.length > 0) throw new UsageError(`unknown script id: ${unknown.join(", ")}`);
 
-  return { help: false, only: selected };
+  return { help: false, only: selected, maxParallel };
 }
 
 function createRunDirectory() {
@@ -328,9 +348,9 @@ function runScript(script, runDirectory, environment = {}) {
 const preparationOutcomes = [];
 const resourceEvents = [];
 
-async function runPooledBatch(scripts, runDirectory) {
+async function runPooledBatch(scripts, runDirectory, maxParallel = null) {
   console.log(
-    `Resource batch gates=${scripts.map((script) => script.id).join(",")} capacity=${JSON.stringify(SUITE_CAPACITY)}`,
+    `Resource batch gates=${scripts.map((script) => script.id).join(",")} capacity=${JSON.stringify(SUITE_CAPACITY)}${maxParallel === null ? "" : ` maxParallel=${maxParallel}`}`,
   );
   const required = new Set(scripts.flatMap((script) => SUITE_PLAN[script.id].preparation));
   let preparationFailure = null;
@@ -400,7 +420,9 @@ async function runPooledBatch(scripts, runDirectory) {
   while (pending.length || running.size) {
     if (interrupted.signal === null) {
       let index;
+      const parallelLimit = maxParallel ?? Number.POSITIVE_INFINITY;
       while (
+        running.size < parallelLimit &&
         (index = pending.findIndex((script) =>
           fitsResources(used, SUITE_PLAN[script.id].resources),
         )) !== -1
@@ -565,13 +587,14 @@ async function main() {
     if (interrupted.signal !== null) break;
     if (Object.hasOwn(SUITE_PLAN, script.id)) batch.push(script);
     else {
-      if (batch.length) outcomes.push(...(await runPooledBatch(batch, run.directory)));
+      if (batch.length)
+        outcomes.push(...(await runPooledBatch(batch, run.directory, parsed.maxParallel)));
       batch = [];
       if (interrupted.signal === null) outcomes.push(await runScript(script, run.directory));
     }
   }
   if (batch.length && interrupted.signal === null)
-    outcomes.push(...(await runPooledBatch(batch, run.directory)));
+    outcomes.push(...(await runPooledBatch(batch, run.directory, parsed.maxParallel)));
   await cleanup;
   outcomes.sort(
     (left, right) =>

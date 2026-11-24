@@ -36,6 +36,16 @@ const git = (...args) => {
     return '';
   }
 };
+// 历史断言只在 main 上成立：特性分支可以从 P2/P3 合入之前展开，距离断言会假红。
+const onMain = (() => {
+  const ref = process.env.SPROUT_VERIFY_REF ?? '';
+  if (ref) return ref === 'main' || ref === 'refs/heads/main';
+  try {
+    return execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim() === 'main';
+  } catch {
+    return false;
+  }
+})();
 const slug = (heading) => heading.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}_\-\s]/gu, '').replace(/ /g, '-');
 const withoutFences = (text) => text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '');
 /**
@@ -206,19 +216,23 @@ for (const unit of p3Units) {
   const row = p3UnitTable.split('\n').find((line) => line.includes(`PR #${unit.pr}，`)) ?? '';
   check(row.includes(`head \`${unit.head}\``) && row.includes(`merge \`${unit.merge}\``), `P3 summary lacks PR #${unit.pr} identity`);
   check(p3Completion.includes(`PR #${unit.pr} head \`${unit.head}\` merge \`${unit.merge}\``), `P3 completion lacks PR #${unit.pr} head or merge`);
-  check(git('show', '-s', '--format=%s', unit.merge).startsWith(`Merge pull request #${unit.pr} `), `PR #${unit.pr} differs from merge commit title`);
-  check(git('rev-parse', `${unit.merge}^2`) === git('rev-parse', unit.head), `PR #${unit.pr} head differs from second merge parent`);
-  git('merge-base', '--is-ancestor', unit.merge, 'e5e2b4e');
+  if (onMain) {
+    check(git('show', '-s', '--format=%s', unit.merge).startsWith(`Merge pull request #${unit.pr} `), `PR #${unit.pr} differs from merge commit title`);
+    check(git('rev-parse', `${unit.merge}^2`) === git('rev-parse', unit.head), `PR #${unit.pr} head differs from second merge parent`);
+    git('merge-base', '--is-ancestor', unit.merge, 'e5e2b4e');
+  }
 }
 check(completion.includes('P2 最终实现、验收与合入范围 `28d4fb2..db185f8`') && summary?.text.includes('`28d4fb2..db185f8`'), 'P2 final range must end at db185f8 in plan and summary');
 check(p3Completion.includes('实现基线 `db185f8`') && p3Completion.includes('`db185f8..e5e2b4e`') && p3Summary?.text.includes('`db185f8..e5e2b4e`'), 'P3 baseline and final range must be db185f8..e5e2b4e in plan and summary');
-check(git('show', '-s', '--format=%s', 'db185f8').startsWith('Merge pull request #18 '), 'P2 final commit must match PR #18');
-check(git('rev-parse', 'db185f8^2') === git('rev-parse', '6886bfa'), 'P2 final commit must have the verified PR #18 head');
-check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baseline differs from first merge parent');
-const p3Merges = git('log', '--first-parent', '--format=%H', 'db185f8..e5e2b4e').split('\n');
-const p3Recorded = [...p3Units].reverse().map((unit) => git('rev-parse', unit.merge));
-check(p3Merges.join(',') === p3Recorded.join(','), `P3 range differs from five recorded Git merges (log ${p3Merges.join(',')}; docs ${p3Recorded.join(',')})`);
-git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
+if (onMain) {
+  check(git('show', '-s', '--format=%s', 'db185f8').startsWith('Merge pull request #18 '), 'P2 final commit must match PR #18');
+  check(git('rev-parse', 'db185f8^2') === git('rev-parse', '6886bfa'), 'P2 final commit must have the verified PR #18 head');
+  check(git('rev-parse', '34b078e^1') === git('rev-parse', 'db185f8'), 'P3 baseline differs from first merge parent');
+  const p3Merges = git('log', '--first-parent', '--format=%H', 'db185f8..e5e2b4e').split('\n');
+  const p3Recorded = [...p3Units].reverse().map((unit) => git('rev-parse', unit.merge));
+  check(p3Merges.join(',') === p3Recorded.join(','), `P3 range differs from five recorded Git merges (log ${p3Merges.join(',')}; docs ${p3Recorded.join(',')})`);
+  git('merge-base', '--is-ancestor', '28d4fb2', 'db185f8');
+}
 const boxesIn = (section) => [...section.matchAll(/^- \[([ x])\] (.+)$/gm)].map((match) => ({ state: match[1], text: match[2] }));
 const sectionOf = (text, heading, level) =>
   text.match(new RegExp(`^${'#'.repeat(level)} ${heading} [^\\n]*\\n([\\s\\S]*?)(?=^${'#'.repeat(level)} |^${'#'.repeat(level - 1)} |$(?![\\s\\S]))`, 'm'))?.[1] ?? '';
