@@ -141,27 +141,26 @@ await test("a planned sandbox gate the sandbox whitelist omits fails before any 
   assert.equal(existsSync(join(directory, ".verify")), false);
 });
 
-await test("CI continues after a failing gate and reports its real failure within its assigned group", (t) => {
+await test("a CI group runs as one serial runner and its failure reaches the job", (t) => {
   const directory = fixture(t);
   writeFileSync(
     join(directory, "scripts/verify/runner.mjs"),
     `
     import {appendFileSync} from 'node:fs';
-    const id=process.argv.at(-1);appendFileSync('calls',JSON.stringify({id,target:process.env.SPROUT_VERIFY_TARGET})+'\\n');
-    process.exit(id==='f-docs'?7:0);
+    appendFileSync('calls',JSON.stringify({args:process.argv.slice(2),target:process.env.SPROUT_VERIFY_TARGET})+'\\n');
+    process.exit(7);
   `,
   );
   const result = call(directory, "targets.mjs", ["ci", "--group", "docs"]);
   assert.equal(result.status, 1, result.stderr);
   const calls = readFileSync(join(directory, "calls"), "utf8").trim().split("\n").map(JSON.parse);
-  assert.deepEqual(
-    calls,
-    CI_GROUPS.docs.map((id) => ({ id, target: "ci" })),
-  );
+  assert.deepEqual(calls, [
+    { args: ["--only", CI_GROUPS.docs.join(","), "--max-parallel", "1"], target: "ci" },
+  ]);
   const report = JSON.parse(readFileSync(join(directory, ".verify/targets/ci-docs.json"), "utf8"));
   assert.deepEqual(
-    report.outcomes.map(({ code }) => code),
-    CI_GROUPS.docs.map((id) => (id === "f-docs" ? 7 : 0)),
+    report.outcomes.map(({ gates, code }) => ({ gates, code })),
+    [{ gates: CI_GROUPS.docs, code: 7 }],
   );
 });
 

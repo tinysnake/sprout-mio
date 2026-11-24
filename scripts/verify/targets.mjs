@@ -38,18 +38,25 @@ if (list) {
       }
     });
   const outcomes = [];
-  // CI jobs have independent checkouts; keep each job's gates serial on the hosted runner.
-  const batches = target === "ci" ? gates.map((gate) => [gate]) : [gates];
+  // CI jobs have independent checkouts, so one runner per job reuses a single
+  // preparation pass. Gates stay serial there through --max-parallel 1, which
+  // keeps the hosted runner's timing budgets honest.
+  const batches = [gates];
+  const parallel = target === "ci" ? ["--max-parallel", "1"] : [];
   for (const batch of batches) {
     if (interrupted) break;
     const startedAt = new Date().toISOString();
     console.log(`RUN target=${target} group=${group ?? "all"} gates=${batch.join(",")}`);
     const result = await new Promise((resolve) => {
-      active = spawn(process.execPath, ["scripts/verify/runner.mjs", "--only", batch.join(",")], {
-        cwd: root,
-        stdio: "inherit",
-        env: { ...process.env, SPROUT_VERIFY_TARGET: target },
-      });
+      active = spawn(
+        process.execPath,
+        ["scripts/verify/runner.mjs", "--only", batch.join(","), ...parallel],
+        {
+          cwd: root,
+          stdio: "inherit",
+          env: { ...process.env, SPROUT_VERIFY_TARGET: target },
+        },
+      );
       active.once("error", (error) => resolve({ code: null, signal: null, error: error.message }));
       active.once("exit", (code, signal) => resolve({ code, signal }));
     });
