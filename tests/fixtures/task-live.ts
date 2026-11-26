@@ -889,7 +889,13 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     );
     assert.equal(taskResults.length, 2);
     assert.deepEqual(JSON.parse(textOf(taskResults[0].message.content)), ownGet.result);
-    assert.deepEqual(JSON.parse(textOf(taskResults[1].message.content)), foreignGet.result);
+    // 业务拒绝以扩展的 rejected envelope 到达模型：保留 HTTP status 与服务器错误码/消息。
+    assert.deepEqual(JSON.parse(textOf(taskResults[1].message.content)), {
+      outcome: "rejected",
+      status: foreignGet.status,
+      error: foreignGet.result.error,
+      requestId: foreignGet.result.requestId,
+    });
     const modelTools = modelRequests().flatMap((row) => requestToolTexts(row.input));
     assert(
       modelTools.some((text) => text.includes(first.id) && text.includes(chatId)),
