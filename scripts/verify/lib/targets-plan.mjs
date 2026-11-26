@@ -2,71 +2,85 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MANUAL_GATES, RETIRED_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
+// 两个 matrix 的组名与顺序是外部契约：targets.test.mjs 逐项核对 ci.yml。portableBrowser 的
+// 顺序按预测耗时从重到轻排列（见 docs/verification.md 的分箱说明）。
+export const PORTABLE_GROUPS = Object.freeze(["tooling", "base", "contracts", "docs", "tasks"]);
+export const CONTAINER_GROUPS = Object.freeze([
+  "api-a",
+  "turns",
+  "browser-b",
+  "api-b",
+  "browser-c",
+  "browser-a",
+]);
+
 export const CI_GROUPS = Object.freeze({
-  // 集合由 targets.test.mjs 与 ci.yml 的两个 matrix 核对（portable + portableBrowser），最重的组排在最前。
-  "browser-c": [
-    "ui-scenarios",
-    "p7-client-navigation",
-    "rm3-html",
-    "aq-p4d-pages",
-    "as-p5b-task-pages",
-    "c-data-auth",
-    "p7-client-pwa",
-    "ag-execution-wiring-ui",
-    "as-p5a-chat-ui",
-    "p6c-member-governance-ui",
+  // 组名与顺序和 ci.yml 的两个 matrix 一致；容器组按预测耗时从重到轻排列，
+  // 预测与再平衡方法见 docs/verification.md 的「容器组分箱」。
+  "api-a": [
     "am-execution-log-honesty",
-    "bf-p6b-turn-context",
+    "an-p4d-authority",
+    "d-runtime",
+    "drain-http",
+    "i-chat",
+    "i7-chat-scope",
+    "ui-scenarios",
   ],
-  "browser-a": [
-    "p4a-machine-scenes",
-    "y-lease-ui",
-    "bf-p6b-pages",
-    "p7-client-states",
-    "bf-p6b-info",
-  ],
-  "browser-b": [
-    "r-ui-layout",
-    "k-acceptance",
-    "ad-execution-log-ui",
-    "rm2-attachments",
-    "bf-p6b-agent-tool",
-  ],
-  // g-identity-data 跑 `pnpm check`（会调 stray-processes 的 lsof 路径），必须留在装了 lsof 的 job。
-  tooling: ["b-tooling", "deploy-selftest", "worker-artifact", "g-identity-data"],
-  "api-a": ["d-runtime", "drain-http", "an-p4d-authority", "assistant-core", "i-chat"],
   turns: [
+    "ad-execution-log-ui",
+    "aq-p4d-pages",
+    "bf-p6b-agent-tool",
     "k2-cross-family-isolation",
     "m-error-mapping",
     "n-pi-session",
     "o-turn-semantics",
-    "run-attention",
     "p-repo-entry",
     "q-info-hub-runs",
   ],
+  "browser-b": [
+    "ag-execution-wiring-ui",
+    "k-acceptance",
+    "r-ui-layout",
+    "rm2-attachments",
+    "run-attention",
+  ],
   "api-b": [
-    "webhook-core",
-    "cron-core",
-    "e-project",
-    "h-project-agents",
-    "j-info-hub",
+    "bf-p6b-turn-context",
+    "bf-p6c-lifecycle",
     "c-auth-rate-limit",
     "crew-delegation",
     "crew-resource",
+    "cron-core",
+    "e-project",
+    "h-project-agents",
     "i5-project-removal",
-    "p6c-member-removal",
-    "p8c-removal",
-    "p8c-removal-integration",
-    "p6c-participation-revocation",
-    "bf-p6c-lifecycle",
     "i6-chat-info",
-    "i7-chat-scope",
+    "j-info-hub",
+    "p4a-machine-scenes",
+    "p6c-member-removal",
+    "p6c-participation-revocation",
     "p7-loop-collaboration",
-    "p7-loop-runtime",
     "p7-loop-restart",
-    "p7-storage-recovery",
+    "p7-loop-runtime",
     "p7-service-baseline",
+    "p7-storage-recovery",
+    "p8c-removal-integration",
+    "webhook-core",
   ],
+  "browser-c": [
+    "as-p5a-chat-ui",
+    "as-p5b-task-pages",
+    "c-data-auth",
+    "p6c-member-governance-ui",
+    "p7-client-navigation",
+    "p7-client-pwa",
+    "p8c-removal",
+    "rm3-html",
+  ],
+  "browser-a": ["assistant-core", "bf-p6b-info", "bf-p6b-pages", "p7-client-states", "y-lease-ui"],
+  // g-identity-data 跑 `pnpm check`（会调 stray-processes 的 lsof 路径），必须留在装了 lsof 的 job。
+  tooling: ["b-tooling", "deploy-selftest", "worker-artifact", "g-identity-data"],
+  base: ["a-base"],
   contracts: [
     "s-machine-contracts",
     "v-lease-contracts",
@@ -81,9 +95,8 @@ export const CI_GROUPS = Object.freeze({
     "ak-execution-accept-fixes-2",
     "al-execution-exit-custody",
   ],
-  base: ["a-base"],
-  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
   docs: ["f-docs", "l-docs", "l-docs-probes", "deploy-leaks"],
+  tasks: ["ba-task-domain", "bc-task-start", "bd-task-migration", "be-task-info"],
 });
 
 export const LOCAL_GATES = Object.freeze({

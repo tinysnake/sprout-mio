@@ -92,9 +92,9 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 6
-      # 需要页面链路的组，按预估耗时从重到轻排列。
+      # 需要页面链路的组，按实测预测耗时从重到轻排列；门禁归属由 scripts/verify/ci-balance.mjs 分箱。
       matrix:
-        group: [browser-c, browser-a, api-a, browser-b, api-b, turns]
+        group: [api-a, turns, browser-b, api-b, browser-c, browser-a]
     env:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
