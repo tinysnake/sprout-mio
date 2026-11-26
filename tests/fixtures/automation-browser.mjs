@@ -4,25 +4,34 @@ export async function verifyAutomationTargetPicker({ ui, page, project, beta, ca
   const chats = await call("listChatsFn", { projectId: project.id });
   const channel = chats.find((chat) => chat.kind === "crew");
   assert(channel, "Project has its Crew");
-  await call("addCrewMemberFn", {
-    chatId: channel.id,
-    member: { kind: "agent", id: beta.id },
-    expectedRevision: channel.governanceRevision,
-  });
   await ui.getByLabel("动作", { exact: true }).selectOption("crew");
   const target = ui.getByLabel("目标 Chat", { exact: true });
-  assert.equal(await target.locator(`option[value="${channel.id}"]`).count(), 1);
+  await until(
+    async () => (await target.locator(`option[value="${channel.id}"]`).count()) === 1,
+    "Crew appears in the target picker",
+  );
+  assert.deepEqual(
+    await target
+      .locator("option")
+      .evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+    chats.filter((chat) => chat.kind === "crew" && !chat.archivedAt).map((chat) => chat.id),
+    "Crew target offers the Project Crews and nothing else",
+  );
   await target.selectOption(channel.id);
+  assert.equal(
+    await ui.getByLabel("目标 Agent", { exact: true }).count(),
+    0,
+    "Crew action targets the current lead instead of a per-agent picker",
+  );
+  await ui.getByLabel("动作", { exact: true }).selectOption("dm_agent");
+  assert.equal(await ui.getByLabel("目标 Chat", { exact: true }).count(), 0);
   await until(
     async () =>
       (
         await ui.getByLabel("目标 Agent", { exact: true }).locator("option").allTextContents()
       ).includes(beta.name),
-    "Crew exposes explicitly added worker",
+    "DM picker exposes Project worker",
   );
-  await ui.getByLabel("目标 Agent", { exact: true }).selectOption(beta.id);
-  await ui.getByLabel("动作", { exact: true }).selectOption("dm_agent");
-  assert.equal(await ui.getByLabel("目标 Chat", { exact: true }).count(), 0);
   await page.setViewportSize({ width: 390, height: 844 });
   assert(
     await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
