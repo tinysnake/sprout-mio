@@ -115,20 +115,17 @@ await test("every gate and unit file has an explicit target; only split A/B over
   assert.deepEqual(matrixGroups(workflow, "portableBrowser"), [...CONTAINER_GROUPS]);
 });
 
-await test("browser groups run in the pinned Playwright image, tool chains stay on the runner", () => {
+await test("browser groups install the lockfile's Chromium headless shell before verification", () => {
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
-  // 浏览器与系统依赖靠镜像预装，容器里的 job 不能依赖 apt 安装的工具（lsof 只在 runner 上装）。
-  assert.match(jobBlock(workflow, "portableBrowser"), /^\s+container:\n\s+image: (\S+)/m);
-  assert.doesNotMatch(jobBlock(workflow, "portable"), /^\s+container:/m);
-  const container = matrixGroups(workflow, "portableBrowser");
-  assert(!container.includes("base") && !container.includes("tooling"));
-  const { playwright } = JSON.parse(
-    readFileSync(join(root, "package.json"), "utf8"),
-  ).devDependencies;
-  assert.equal(
-    jobBlock(workflow, "portableBrowser").match(/image: (\S+)/)[1],
-    `mcr.microsoft.com/playwright:v${playwright}-noble`,
+  const browser = jobBlock(workflow, "portableBrowser");
+  assert.doesNotMatch(browser, /^\s+container:/m);
+  const groups = matrixGroups(workflow, "portableBrowser");
+  assert(!groups.includes("base") && !groups.includes("tooling"));
+  assert.match(
+    browser,
+    /run: pnpm install --frozen-lockfile\b[\s\S]*run: pnpm exec playwright install --with-deps --only-shell chromium\b[\s\S]*name: Verify assigned gates/,
   );
+  assert.doesNotMatch(jobBlock(workflow, "portable"), /playwright install/);
 });
 
 await test("unit shards are deterministic, disjoint, and complete", () => {

@@ -83,11 +83,6 @@ jobs:
   portableBrowser:
     name: Linux / ${{ matrix.group }}
     runs-on: ubuntu-24.04
-    # 浏览器与系统依赖由 Playwright 镜像预装：不需要下载浏览器，也不装 apt 包。
-    # 镜像 tag 必须与 package.json 的 playwright 版本一致（targets.test.mjs 会核对）。
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
-      options: --ipc=host
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -98,7 +93,7 @@ jobs:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
       MCP_EVERYTHING: "0"
-      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.verify/browsers
       BETTER_AUTH_SECRET: sprout-ci-only-not-production-secret
       NO_PROXY: localhost,127.0.0.1,::1
     steps:
@@ -106,11 +101,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      # 容器里以 root 运行，挂载进来的 workspace 属于宿主 runner 用户，
-      # 不声明 safe.directory 时 git 会以 dubious ownership 拒绝仓库操作。
-      - name: Trust the mounted workspace
-        run: git config --global --add safe.directory '*'
 
       - uses: pnpm/action-setup@v4
         with:
@@ -123,6 +113,9 @@ jobs:
 
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium headless shell and system dependencies
+        run: pnpm exec playwright install --with-deps --only-shell chromium
 
       - name: Verify assigned gates
         env:
