@@ -207,7 +207,6 @@ jobs:
           PORTABLE_RESULT: ${{ needs.portable.result }}
           BROWSER_RESULT: ${{ needs.portableBrowser.result }}
           UNIT_RESULT: ${{ needs.portableUnits.result }}
-          CI_CANCELLED: ${{ cancelled() }}
         run: |
           failed=0
           require_success() {
@@ -219,8 +218,10 @@ jobs:
           require_success portable "$PORTABLE_RESULT"
           require_success portableBrowser "$BROWSER_RESULT"
           require_success portableUnits "$UNIT_RESULT"
-          if [ "$CI_CANCELLED" = true ]; then
-            printf 'FAIL workflow cancelled\n' >&2
-            failed=1
-          fi
           exit "$failed"
+
+      - name: Reject cancelled workflow
+        if: cancelled()
+        run: |
+          printf 'FAIL workflow cancelled\n' >&2
+          exit 1

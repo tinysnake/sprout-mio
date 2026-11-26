@@ -139,6 +139,7 @@ function summary(env) {
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
   const script = jobBlock(workflow, "verify")
     .split("        run: |\n")[1]
+    .split("\n      - name:")[0]
     .split("\n")
     .map((line) => line.slice(10))
     .join("\n");
@@ -191,15 +192,20 @@ await test("workflow runs every unit shard independently and always checks requi
   ]);
   assert.deepEqual(
     [...summary.matchAll(/if: (.*)/g)].map((match) => match[1]),
-    ["always()", "always()"],
+    ["always()", "always()", "cancelled()"],
   );
   assert.match(summary, /require_success portableUnits/);
 });
 
-await test("summary fails a cancelled workflow even when its completed jobs succeeded", () => {
-  const result = summary({ CI_CANCELLED: "true" });
+await test("workflow rejects cancellation using a supported step condition", () => {
+  const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+  const rejection = jobBlock(workflow, "verify").split("- name: Reject cancelled workflow")[1];
+  assert.match(rejection, /if: cancelled\(\)/);
+  const script = rejection.split("        run: |\n")[1];
+  const result = spawnSync("bash", ["-e", "-c", script], { encoding: "utf8", timeout: 10_000 });
   assert.equal(result.status, 1);
   assert.match(result.stderr, /FAIL workflow cancelled/);
+  assert.doesNotMatch(workflow, /CI_CANCELLED:.*cancelled\(\)/);
 });
 
 await test("unclassified gates and test files fail before any command executes", (t) => {
