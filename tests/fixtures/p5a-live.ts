@@ -1,6 +1,7 @@
 // I-P5a live gate: production HTTP, private SQLite, one real Worker and real Pi models,
 // or the same chain with the loopback model fixture in routine verify.
 import assert from "node:assert/strict";
+import { provisionCrewResource } from "./crew-resource.mjs";
 import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -191,6 +192,8 @@ function collectTranscripts() {
   });
 }
 let sampler: ReturnType<typeof setInterval> | undefined;
+/** 首个模型请求到达时，lead run 已落库，协整器可以给它签发机器授权。 */
+let crewProvision: (() => boolean) | null = null;
 const deadline = setTimeout(() => {
   failure = new Error("live fixture total timeout (600s)");
   void finish();
@@ -275,7 +278,14 @@ process.once("SIGINT", () => {
 try {
   assert.equal(process.platform, "darwin", "real macOS Worker required");
   if (chatMode === "model-fixture") {
-    modelFixture = await startModelFixture({ privateDir: join(directory, "model-fixture") });
+    const fixtureOptions = {
+      privateDir: join(directory, "model-fixture"),
+      onRequest: () => {
+        if (!crewProvision) return;
+        if (crewProvision()) crewProvision = null;
+      },
+    };
+    modelFixture = await startModelFixture(fixtureOptions);
     environment.PI_CODING_AGENT_DIR = modelFixture.agentDir;
     const pinned = fixtureRoles.map((role) => modelFixture!.model(role));
     facts.model = pinned;
@@ -406,6 +416,8 @@ try {
     });
   }, 50);
   const marker = `P5A_${scenario.toUpperCase()}_${randomUUID().replaceAll("-", "")}`;
+  // Crew 的 lead 没有旧 lease 工具面，机器授权由协调器签发给 lead run；DM/频道会话仍自己取租约。
+  const isCrew = scenario === "crew";
   const leaseParameters = {
     machineId,
     expectedGeneration: 0,
@@ -420,24 +432,49 @@ try {
     blockMs: 1000,
   };
   const toolInstructions = [
-    `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`,
-    `Then call sprout_remote_shell once with ${JSON.stringify(shellParameters)}.`,
-    "After the tools reply briefly with your own name and the shell output. Never mention any other agent.",
+    ...(isCrew
+      ? []
+      : [
+          `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`,
+        ]),
+    `Only LiveAlpha: call sprout_remote_shell once with ${JSON.stringify(shellParameters)}.`,
+    "After the tool replies briefly with your own name and the shell output. Never mention any other agent.",
   ].join("\n");
   const body =
     scenario === "crew"
       ? `@LiveAlpha @LiveBeta please each reply once in this conversation. LiveBeta: reply only with your own name and READY; do not call tools.\n${toolInstructions}`
       : `@LiveAlpha please run this real Worker check and reply once.\n${toolInstructions}`;
   if (modelFixture) {
+    const steps = [
+      ...(isCrew ? [] : [{ name: "sprout_lease_acquire", arguments: leaseParameters }]),
+      { name: "sprout_remote_shell", arguments: shellParameters },
+    ];
     modelFixture.arm("chatOwner", {
       expectedUserText: body,
       expectedUserPrefix: body,
-      steps: [
-        { name: "sprout_lease_acquire", arguments: leaseParameters },
-        { name: "sprout_remote_shell", arguments: shellParameters },
-      ],
+      steps,
       reply: "LiveAlpha completed the requested tools; inspect the real Worker receipt.",
     });
+    if (isCrew) {
+      // 授权只发给当前 lead run：先在模型回应前完成申请、批准与分配，模型再执行 shell。
+      crewProvision = () => {
+        const lead = rows(
+          "SELECT r.id FROM agent_run r JOIN agent_instance i ON i.id=r.instance_id WHERE r.chat_id=? AND i.agent_profile_id=? AND r.status IN ('queued','running') ORDER BY r.queued_at DESC, r.rowid DESC LIMIT 1",
+          chatId,
+          agents[0]!.id,
+        )[0];
+        if (!lead) return false;
+        const leased = provisionCrewResource(environment.DATABASE_URL!, {
+          crewChatId: chatId,
+          machineId,
+          operations: ["shell"],
+        });
+        assert.equal(leased.runId, lead.id);
+        assert.equal(leased.state, "active");
+        assert.equal(leased.generation, shellParameters.authorizationGeneration);
+        return true;
+      };
+    }
   }
   const sentAtMs = Date.now();
   const human = await call("sendMessageFn", { chatId, body });
@@ -637,7 +674,7 @@ try {
     ),
   );
   assert(
-    toolCalls.includes("sprout_lease_acquire") && toolCalls.includes("sprout_remote_shell"),
+    toolCalls.includes("sprout_remote_shell"),
     "Pi transcript proves real model requested Worker execution",
   );
   modelFixture?.assertDrained();

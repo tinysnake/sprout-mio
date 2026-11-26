@@ -13,7 +13,7 @@ fi
 # 这条门禁需要宿主已安装的托管 Pi SDK（bin/pi 或 install/releases 任一形态）。先决条件不在时
 # 打印 SKIP 并退出 77，runner 会记为 skipped：不计失败，也不产生通过结论。
 node scripts/verify/lib/host-pi-sdk.mjs p8a-lease-integration || exit $?
-# I-P8a 集成线：挂靠 / 领取 / 撤销挂靠的真实 Agent 工具链路。
+# I-P8a 集成线：挂靠 / 撤销挂靠的真实 Agent 工具链路；领取按 CR3 只剩拒绝一侧。
 # 生产 HTTP 服务 -> 真人消息 -> 真实 Pi runner -> sprout_lease_* 工具 -> 真实 macOS Worker。
 # 没有人类入口：三条命令都只由分身发起，人类只有可见性与强制收回。
 # 私有 SQLite、凭据、会话与命令正文都留在 mktemp 里。
@@ -83,7 +83,7 @@ async function call(name, data) { const result = await rpc(name, data); if (!res
 async function signup(name) {
   const response = await fetch(`${base}/api/auth/sign-up/email`, { method: 'POST', headers: {'content-type': 'application/json', origin: base}, body: JSON.stringify({ name, email: `${randomUUID()}@lease.test`, password: randomBytes(20).toString('hex') }) });
   assert.equal(response.status, 200);
-  // Pi runner 的授权来自 Cookie 会话；用户 id 只用来把真人加进 Group。
+  // Pi runner 的授权来自 Cookie 会话；用户 id 只用来把真人加进 Crew。
   const db = new Sqlite(env.DATABASE_URL, { readonly: true });
   try { humanId = db.prepare('SELECT id FROM user LIMIT 1').get()?.id; } finally { db.close(); }
   assert(typeof humanId === 'string' && humanId.length > 0, 'signed-up human id');
@@ -145,7 +145,9 @@ async function settled(chatId) {
 /** 期望被拒的一次真实工具调用：读回真实 HTTP 错误码并核对没有副作用。 */
 async function deniedLease({ role, chatId, action, parameters, code }) {
   const attempt = await leaseAction({ role, chatId, action, parameters });
-  assert.equal(attempt.result.details?.outcome, 'failed', `${action} must be rejected`);
+  // 服务端可验证的失败 envelope 由扩展原样保留为 rejected（含 HTTP status），不再折叠成 failed。
+  assert.equal(attempt.result.details?.outcome, 'rejected', `${action} must be rejected`);
+  assert.equal(typeof attempt.result.details?.status, 'number', `${action} keeps the HTTP status`);
   assert.equal(attempt.result.details?.error?.code, code, `real server error code for ${action}`);
   return attempt;
 }
@@ -174,7 +176,7 @@ async function allowedShell({ role, chatId, generation, holder, marker, label })
   const execution = await until(async () => (await call('listProjectExecutionsFn', { projectId, machineId, limit: 100 })).find(e => e.requestId === requestId && e.result), `${label} execution result`, 180000);
   await until(() => existsSync(marker) || null, `${label} writes on the real Worker`, 60000);
   assert.equal(readFileSync(marker, 'utf8'), label, `${label} private sentinel matches`);
-  // 记录下来的授权是领取/撤销之后的那一代与那个持有者：执行本身已被真实 Worker 跑完。
+  // 记录下来的授权是撤销之后的那一代与那个持有者：执行本身已被真实 Worker 跑完。
   assert.equal(execution.holderInstanceId, holder, `${label} runs under the current holder`);
   assert.equal(execution.authorizationGeneration, generation, `${label} runs on the current generation`);
   writeFileSync(join(evidence, `allowed-${label}.json`), JSON.stringify({ generation, requestId, executionId: execution.id, state: execution.state, holder, authority: execution.authority }, null, 2));
@@ -194,11 +196,11 @@ try {
   launch(['.output/server/index.mjs'], 'server');
   await until(async () => { try { return (await fetch(`${base}/api/health`)).ok; } catch { return false; } }, 'service');
   cookie = await signup('Integration Human');
-  projectId = (await call('createProjectFn', {name:'Lease escrow integration', description:'Real Machine, Group and Agent tools'})).id;
+  projectId = (await call('createProjectFn', {name:'Lease escrow integration', description:'Real Machine, Crew and Agent tools'})).id;
   projectB = (await call('createProjectFn', {name:'Independent Project'})).id;
   const persona = 'Use the named Sprout remote and lease tools exactly as requested. Never substitute host tools for remote tools. Report tool errors faithfully and do not retry changed generations.';
   profileA = await call('createAgentProfileFn', {name:'Lease holder', persona, ...profileModel('operator'), effort:'off'});
-  profileB = await call('createAgentProfileFn', {name:'Lease claimant', persona, ...profileModel('nonHolder'), effort:'off'});
+  profileB = await call('createAgentProfileFn', {name:'Crew claimant', persona, ...profileModel('nonHolder'), effort:'off'});
   await call('addProjectMemberFn', {projectId, agentProfileId:profileA.id});
   await call('addProjectMemberFn', {projectId, agentProfileId:profileB.id});
   await call('addProjectMemberFn', {projectId:projectB, agentProfileId:profileA.id});
@@ -250,7 +252,7 @@ try {
   snapshot('lease-2-refused-escrow.json', { generation: afterRefusals.generation, errors:['lease_escrow_dm_unsupported','lease_escrow_cross_project'] });
   pass('sprout_lease_escrow refuses DM and cross-Project targets through the real gateway');
 
-  // 3) 挂到 Group：代次 +1，Machine 仍占用，持有者不变，操作权转 escrowed。
+  // 3) 挂到 Crew：代次 +1，Machine 仍占用，持有者不变，操作权转 escrowed。
   const escrowAttempt = await leaseAction({ role:'operator', chatId:chatA, action:'escrow', parameters:{machineId, expectedGeneration:1, chatId:chatG} });
   assert.equal(escrowAttempt.result.details?.outcome, 'succeeded', 'escrow tool result');
   const escrowData = escrowAttempt.result.details.data;
@@ -263,7 +265,7 @@ try {
   assert.equal(escrowRow.state, 'escrowed'); assert.equal(escrowRow.claimedByInstanceId, null);
   process.kill(longPid, 0);
   snapshot('lease-3-escrowed.json', { generation: escrowed.generation, holderInstanceId: escrowed.holderInstanceId, escrow: escrowRow });
-  pass('escrow to the target Group keeps the Machine occupied, bumps generation and hands over operation authority');
+  pass('escrow to the target Crew keeps the Machine occupied, bumps generation and hands over operation authority');
 
   // 4) 旧凭据被拒：同一个真实 run 链路，只是换了当前代次。
   await deniedShell({ role:'operator', chatId:chatA, generation:2, code:'lease_not_holder', marker:join(root, projectId, 'escrowed-holder-must-not-exist'), label:'escrowed-holder' });
@@ -271,39 +273,42 @@ try {
   assert.equal(stillEscrowed.generation, 2); assert.equal(stillEscrowed.escrow?.state, 'escrowed');
   pass('the escrowing holder is rejected as an operator with a real lease_not_holder response and no side effects');
 
-  // 5) 领取：A 不在目标 Group 内，B 才是合法领取者。
+  // 5) 领取范围：只有挂靠目标 Crew 内的分身能领取，DM 发起者不行。
+  // CR3 之后 Crew 会话不暴露旧租约工具（`sprout_lease_*`），Crew 的资源由协调器分配；
+  // 这里能真实验证的是拒绝一侧：越界领取被服务端拒绝，且不动租约事实。
   await deniedLease({ role:'operator', chatId:chatA, action:'claim', parameters:{machineId, expectedGeneration:2, escrowId}, code:'lease_claim_out_of_scope' });
-  const claimAttempt = await leaseAction({ role:'nonHolder', chatId:chatG, action:'claim', parameters:{machineId, expectedGeneration:2, escrowId} });
-  assert.equal(claimAttempt.result.details?.outcome, 'succeeded', 'claim tool result');
-  const claimed = await leaseNow();
-  const instanceB = claimAttempt.run.instanceId;
-  assert.equal(claimed.generation, 3, 'claim bumps the generation');
-  assert.equal(claimed.holderInstanceId, instanceB, 'claim moves the holder to the Group member instance');
-  assert.notEqual(instanceB, instanceA);
-  assert.equal(claimed.escrow, null, 'a claimed escrow is no longer live');
-  const claimedRow = await escrowNow(escrowId);
-  assert.equal(claimedRow.state, 'claimed'); assert.equal(claimedRow.claimedByInstanceId, instanceB); assert.equal(claimedRow.claimedGeneration, 3);
-  assert.equal(claimAttempt.result.details.data.lease.holderInstanceId, instanceB);
-  snapshot('lease-4-claimed.json', { generation: claimed.generation, holderInstanceId: instanceB, escrow: claimedRow });
-  pass('a Group member instance claims the escrow; generation +1 and the holder changes');
+  const unclaimed = await leaseNow();
+  assert.deepEqual(
+    { generation: unclaimed.generation, state: unclaimed.state, holder: unclaimed.holderInstanceId, escrow: unclaimed.escrow?.escrowId },
+    { generation: 2, state: 'held', holder: instanceA, escrow: escrowId },
+    'a refused claim leaves the escrow and the holder untouched',
+  );
+  snapshot('lease-4-claim-refused.json', { generation: unclaimed.generation, error: 'lease_claim_out_of_scope', escrow: escrowId });
+  pass('claiming from outside the escrowed Crew is refused and leaves the escrow in place');
 
-  await deniedLease({ role:'nonHolder', chatId:chatG, action:'claim', parameters:{machineId, expectedGeneration:3, escrowId}, code:'lease_not_escrowed' });
-  pass('claiming an already claimed escrow is rejected with lease_not_escrowed');
+  // 6) 撤销挂靠：只有发起者能撤销，操作权回到发起者，Machine 不释放。
+  const cancelAttempt = await leaseAction({ role:'operator', chatId:chatA, action:'escrow_cancel', parameters:{machineId, expectedGeneration:2, escrowId} });
+  assert.equal(cancelAttempt.result.details?.outcome, 'succeeded', 'escrow_cancel tool result');
+  assert.equal(cancelAttempt.result.details.data.lease.holderInstanceId, instanceA, 'the cancel returns authority to the escrower');
+  const returned = await leaseNow();
+  assert.equal(returned.generation, 3, 'cancel bumps the generation');
+  assert.equal(returned.state, 'held'); assert.equal(returned.holderInstanceId, instanceA, 'authority returns to the escrower');
+  assert.equal(returned.escrow, null, 'a cancelled escrow is no longer live');
+  const cancelledRow = await escrowNow(escrowId);
+  assert.equal(cancelledRow.state, 'cancelled'); assert.equal(cancelledRow.escrowedByInstanceId, instanceA);
+  snapshot('lease-5-authority-returned.json', { generation: returned.generation, holderInstanceId: returned.holderInstanceId, escrow: cancelledRow });
+  pass('only the escrower can cancel; authority returns to it with generation +1 and the Machine stays occupied');
 
-  // 6) 新旧持有者：旧持有者不能发起远端操作，新持有者可以。
-  await deniedShell({ role:'operator', chatId:chatA, generation:3, code:'lease_not_holder', marker:join(root, projectId, 'deposed-holder-must-not-exist'), label:'deposed-holder' });
-  const markerB = join(root, projectId, 'claimant-proof.txt');
-  await allowedShell({ role:'nonHolder', chatId:chatG, generation:3, holder:instanceB, marker:markerB, label:'claimant-proof' });
-  snapshot('lease-5-authority-switched.json', { generation: claimed.generation, deposed: instanceA, holder: instanceB });
-  pass('the new holder runs a real remote operation while the deposed holder stays rejected');
+  // 7) 回到手里的操作权是真的：真实远端写成功，并且看得见、控得住挂靠前留下的进程。
+  const markerA = join(root, projectId, 'returned-holder-proof.txt');
+  await allowedShell({ role:'operator', chatId:chatA, generation:returned.generation, holder:instanceA, marker:markerA, label:'returned-holder-proof' });
+  pass('the returned holder runs a real remote operation after the cancel');
 
-
-  // 6b) 领取者可以查看并控制原持有者启动的进程；旧持有者已被真实拒绝。
   const listRequestId = reqId();
-  const listBody = `Use sprout_remote_process_list on machineId ${machineId}, authorizationGeneration ${claimed.generation}, requestId ${listRequestId}, limit 200. Report the returned items. Do not use the local bash tool. Do not release the lease.`;
-  const listResult = await toolRun({ role:'nonHolder', chatId:chatG, tool:'sprout_remote_process_list', parameters:{machineId, authorizationGeneration:claimed.generation, requestId:listRequestId, limit:200}, body:listBody });
-  assert.equal(listResult.details?.error, undefined, 'the claimant lists processes through the real tool');
-  const listExecution = await executionFor(listRequestId, 'claimant process list result');
+  const listBody = `Use sprout_remote_process_list on machineId ${machineId}, authorizationGeneration ${returned.generation}, requestId ${listRequestId}, limit 200. Report the returned items. Do not use the local bash tool. Do not release the lease.`;
+  const listResult = await toolRun({ role:'operator', chatId:chatA, tool:'sprout_remote_process_list', parameters:{machineId, authorizationGeneration:returned.generation, requestId:listRequestId, limit:200}, body:listBody });
+  assert.equal(listResult.details?.error, undefined, 'the returned holder lists processes through the real tool');
+  const listExecution = await executionFor(listRequestId, 'returned holder process list result');
   assert.equal(listExecution.operation.kind, 'process_list');
   const listed = listExecution.result.items;
   // process_list 只回前 200 条（worker 用 ps -axo，按 pid 升序）：繁忙主机上 pid 可能被截掉，
@@ -311,42 +316,41 @@ try {
   const listNote = { count: listed.length, truncated: listExecution.result.truncated, containsPid: listed.some(item => item.pid === longPid) };
   const viewRequestId = reqId();
   const viewCommand = `ps -p ${longPid} -o pid=,comm=`;
-  const viewBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${claimed.generation}, requestId ${viewRequestId}. command: ${JSON.stringify(viewCommand)}. blockMs: 2000. Do not use the local bash tool. Do not release the lease.`;
-  const viewResult = await toolRun({ role:'nonHolder', chatId:chatG, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:claimed.generation, requestId:viewRequestId, command:viewCommand, blockMs:2000}, body:viewBody });
-  assert.equal(viewResult.details?.error, undefined, 'the claimant inspects the inherited process');
-  const viewExecution = await executionFor(viewRequestId, 'claimant process view result');
-  assert(viewExecution.result.stdout.includes(String(longPid)), `the claimant sees pid ${longPid} through a real shell`);
+  const viewBody = `Use sprout_remote_shell on machineId ${machineId}, authorizationGeneration ${returned.generation}, requestId ${viewRequestId}. command: ${JSON.stringify(viewCommand)}. blockMs: 2000. Do not use the local bash tool. Do not release the lease.`;
+  const viewResult = await toolRun({ role:'operator', chatId:chatA, tool:'sprout_remote_shell', parameters:{machineId, authorizationGeneration:returned.generation, requestId:viewRequestId, command:viewCommand, blockMs:2000}, body:viewBody });
+  assert.equal(viewResult.details?.error, undefined, 'the returned holder inspects its inherited process');
+  const viewExecution = await executionFor(viewRequestId, 'returned holder process view result');
+  assert(viewExecution.result.stdout.includes(String(longPid)), `the returned holder sees pid ${longPid} through a real shell`);
   const signalRequestId = reqId();
-  const signalBody = `Use sprout_remote_process_signal on machineId ${machineId}, authorizationGeneration ${claimed.generation}, requestId ${signalRequestId}, pid ${longPid}, signal "TERM". Report the returned result. Do not use the local bash tool. Do not release the lease.`;
-  const signalResult = await toolRun({ role:'nonHolder', chatId:chatG, tool:'sprout_remote_process_signal', parameters:{machineId, authorizationGeneration:claimed.generation, requestId:signalRequestId, pid:longPid, signal:'TERM'}, body:signalBody });
-  assert.equal(signalResult.details?.error, undefined, 'the claimant signals the inherited process');
-  const signalExecution = await executionFor(signalRequestId, 'claimant process signal result');
+  const signalBody = `Use sprout_remote_process_signal on machineId ${machineId}, authorizationGeneration ${returned.generation}, requestId ${signalRequestId}, pid ${longPid}, signal "TERM". Report the returned result. Do not use the local bash tool. Do not release the lease.`;
+  const signalResult = await toolRun({ role:'operator', chatId:chatA, tool:'sprout_remote_process_signal', parameters:{machineId, authorizationGeneration:returned.generation, requestId:signalRequestId, pid:longPid, signal:'TERM'}, body:signalBody });
+  assert.equal(signalResult.details?.error, undefined, 'the returned holder signals its inherited process');
+  const signalExecution = await executionFor(signalRequestId, 'returned holder process signal result');
   assert.equal(signalExecution.result.kind, 'process_signal'); assert.equal(signalExecution.result.pid, longPid); assert.equal(signalExecution.result.delivered, true);
   await until(() => { try { process.kill(longPid, 0); return null; } catch { return true; } }, 'the inherited process stops', 60000);
-  snapshot('lease-7-process-continuity.json', { pid: longPid, list: listNote, viewed: true, signalled: true });
-  pass('the claimant views and signals the process the previous holder started');
+  snapshot('lease-6-process-continuity.json', { pid: longPid, list: listNote, viewed: true, signalled: true });
+  pass('the returned holder views and signals the process it started before escrow');
 
-  // 7) 失去持有者身份后不能再挂靠。
-  await deniedLease({ role:'operator', chatId:chatA, action:'escrow', parameters:{machineId, expectedGeneration:3, chatId:chatG}, code:'lease_not_holder' });
-  pass('a non-holder cannot escrow the lease');
-
-  // 8) 撤销挂靠：只有发起者能撤销，操作权回到发起者，Machine 不释放。
-  const secondEscrow = await leaseAction({ role:'nonHolder', chatId:chatG, action:'escrow', parameters:{machineId, expectedGeneration:3, chatId:chatG} });
+  // 8) 第二次挂靠：代次继续前进，旧代次的撤销被拒，只有当前代次能撤销。
+  const secondEscrow = await leaseAction({ role:'operator', chatId:chatA, action:'escrow', parameters:{machineId, expectedGeneration:returned.generation, chatId:chatG} });
   assert.equal(secondEscrow.result.details?.outcome, 'succeeded', 'second escrow tool result');
   const escrow2 = secondEscrow.result.details.data.escrow.escrowId;
-  assert.equal((await leaseNow()).generation, 4);
-  await deniedLease({ role:'operator', chatId:chatA, action:'escrow_cancel', parameters:{machineId, expectedGeneration:4, escrowId:escrow2}, code:'lease_not_holder' });
-  const cancelled = await leaseAction({ role:'nonHolder', chatId:chatG, action:'escrow_cancel', parameters:{machineId, expectedGeneration:4, escrowId:escrow2} });
-  assert.equal(cancelled.result.details?.outcome, 'succeeded', 'cancel tool result');
-  const afterCancel = await leaseNow();
-  assert.equal(afterCancel.generation, 5); assert.equal(afterCancel.state, 'held'); assert.equal(afterCancel.holderInstanceId, instanceB, 'authority returns to the escrowing instance'); assert.equal(afterCancel.escrow, null);
-  const cancelledRow = await escrowNow(escrow2);
-  assert.equal(cancelledRow.state, 'cancelled'); assert.equal(cancelledRow.escrowedByInstanceId, instanceB);
+  assert.equal((await leaseNow()).generation, 4, 'the second escrow bumps the generation');
+  await deniedLease({ role:'operator', chatId:chatA, action:'escrow_cancel', parameters:{machineId, expectedGeneration:returned.generation, escrowId:escrow2}, code:'lease_stale_generation' });
+  assert.equal((await leaseNow()).generation, 4, 'a stale cancel leaves the second escrow untouched');
+  pass('a second escrow bumps the generation and a stale cancel generation is refused');
+
+  const cancelled2 = await leaseAction({ role:'operator', chatId:chatA, action:'escrow_cancel', parameters:{machineId, expectedGeneration:4, escrowId:escrow2} });
+  assert.equal(cancelled2.result.details?.outcome, 'succeeded', 'second cancel tool result');
+  const afterCancel2 = await leaseNow();
+  assert.equal(afterCancel2.generation, 5); assert.equal(afterCancel2.state, 'held'); assert.equal(afterCancel2.holderInstanceId, instanceA, 'authority returns to the escrower again'); assert.equal(afterCancel2.escrow, null);
+  const cancelledRow2 = await escrowNow(escrow2);
+  assert.equal(cancelledRow2.state, 'cancelled'); assert.equal(cancelledRow2.escrowedByInstanceId, instanceA);
   const markerCancel = join(root, projectId, 'cancel-returned-proof.txt');
-  await allowedShell({ role:'nonHolder', chatId:chatG, generation:5, holder:instanceB, marker:markerCancel, label:'cancel-returned-proof' });
+  await allowedShell({ role:'operator', chatId:chatA, generation:afterCancel2.generation, holder:instanceA, marker:markerCancel, label:'cancel-returned-proof' });
   assert.equal((await leaseNow()).generation, 5);
-  snapshot('lease-6-cancelled.json', { generation: afterCancel.generation, holderInstanceId: afterCancel.holderInstanceId, escrow: cancelledRow });
-  pass('only the escrower can cancel; authority returns to it with generation +1 and the Machine stays occupied');
+  snapshot('lease-7-cancelled.json', { generation: afterCancel2.generation, holderInstanceId: afterCancel2.holderInstanceId, escrow: cancelledRow2 });
+  pass('the caller cancels again; authority returns once more with generation +1 and the Machine stays occupied');
 
   // 9) 数据库侧事实：代次授权链与挂靠行状态。
   const factsDb = new Sqlite(env.DATABASE_URL, { readonly: true });
@@ -358,15 +362,15 @@ try {
       [0, 'revoked', 'initial'],
       [1, 'revoked', 'acquire'],
       [2, 'revoked', 'escrow'],
-      [3, 'revoked', 'claim'],
+      [3, 'revoked', 'escrow_cancel'],
       [4, 'revoked', 'escrow'],
       [5, 'active', 'escrow_cancel'],
     ]);
-    assert.deepEqual(escrows.map(r => [r.state, r.escrow_generation, r.claimed_generation]), [['claimed', 2, 3], ['cancelled', 4, null]]);
-    assert.equal(lease.state, 'held'); assert.equal(lease.generation, 5); assert.equal(lease.holder, instanceB);
+    assert.deepEqual(escrows.map(r => [r.state, r.escrow_generation, r.claimed_generation]), [['cancelled', 2, null], ['cancelled', 4, null]]);
+    assert.equal(lease.state, 'held'); assert.equal(lease.generation, 5); assert.equal(lease.holder, instanceA);
     writeFileSync(join(evidence, 'database-facts.json'), JSON.stringify({ authorizations, escrows, lease }, null, 2));
   } finally { factsDb.close(); }
-  pass('database authorization chain records escrowed, claimed and cancelled generations in order');
+  pass('database authorization chain records both escrow and cancel generations in order');
 
   modelFixture?.assertDrained();
   assert.equal(passes.length, 12, 'all escrow integration conditions passed');

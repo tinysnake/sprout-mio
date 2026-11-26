@@ -172,7 +172,7 @@ insert(
   Date.now(),
 );
 insert(
-  "INSERT INTO lease_authorization(project_id,machine_id,generation,owner_kind,holder_instance_id,state,issued_at,reason) VALUES (?,?,1,?,'active',?,'acquire')",
+  "INSERT INTO lease_authorization(project_id,machine_id,generation,owner_kind,holder_instance_id,state,issued_at,reason) VALUES (?,?,1,'instance',?,'active',?,'acquire')",
   projectId,
   machineId,
   instanceId,

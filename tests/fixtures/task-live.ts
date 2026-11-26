@@ -334,8 +334,8 @@ if (process.argv[2] === "--service") {
     void finish();
   });
 
-  // The observer forwards the production wire byte for byte, except for one withheld
-  // ACK. It never constructs prompts, tool results or SDK session records.
+  // The observer preserves Task prompts and tool results, withholding one ACK to test
+  // cancellation during delivery. Info Hub hint delivery is exercised by bf-p6b-lifecycle.
   const observer = join(directory, "runner-observer.mjs");
   const preload = join(directory, "observe-http.mjs");
   const trace = join(directory, "runner-wire.jsonl");
@@ -398,6 +398,10 @@ const record = (direction, value) => appendFileSync(${JSON.stringify(trace)}, JS
 const held = new Set();
 createInterface({ input: process.stdin }).on('line', raw => {
   const value = JSON.parse(raw);
+  if (value.type === 'info_hub_hint') {
+    record('isolated-info-hub-hint', value);
+    return;
+  }
   if (value.type === 'steer' && JSON.stringify(value).includes(JSON.parse(readFileSync(${JSON.stringify(controls)}, 'utf8')).cancel)) held.add(value.messageId);
   record('command', value.type === 'open' ? { type: value.type, id: value.id } : value);
   child.stdin.write(raw + '\\n');
@@ -889,7 +893,13 @@ process.on('SIGTERM', () => child.kill('SIGTERM'));
     );
     assert.equal(taskResults.length, 2);
     assert.deepEqual(JSON.parse(textOf(taskResults[0].message.content)), ownGet.result);
-    assert.deepEqual(JSON.parse(textOf(taskResults[1].message.content)), foreignGet.result);
+    // 业务拒绝以扩展的 rejected envelope 到达模型：保留 HTTP status 与服务器错误码/消息。
+    assert.deepEqual(JSON.parse(textOf(taskResults[1].message.content)), {
+      outcome: "rejected",
+      status: foreignGet.status,
+      error: foreignGet.result.error,
+      requestId: foreignGet.result.requestId,
+    });
     const modelTools = modelRequests().flatMap((row) => requestToolTexts(row.input));
     assert(
       modelTools.some((text) => text.includes(first.id) && text.includes(chatId)),

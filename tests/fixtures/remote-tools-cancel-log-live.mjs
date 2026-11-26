@@ -4,7 +4,8 @@ import { once } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomBytes, randomUUID } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
+import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { remoteToolInputSchemas } from "../../src/contracts/remote.ts";
@@ -131,7 +132,16 @@ const actualEntry = pathToFileURL(join(root, "pi/sprout-extension.ts")).href;
 // 只按 remote 表比会随任何一个新工具变成过期断言。current_time/sleep/git_read 由
 // scripts/pi-host-runner.mjs 的 registerCurrentTimeTool/registerSleepTool/registerGitReadTool
 // 注册，没有契约表，只能点名列出（与 tests/fixtures/remote-tools-runner.mjs 保持一致）。
+const { crewDelegationToolInputSchemas, delegationToolInputSchemas } = await import(
+  pathToFileURL(join(root, "src/contracts/delegation.ts")).href
+);
+const registryOnly = [
+  "sprout_chat_send",
+  ...Object.keys(crewDelegationToolInputSchemas),
+  ...Object.keys(delegationToolInputSchemas),
+].sort();
 const expectedToolNames = [
+  ...registryOnly.filter((name) => name !== "sprout_chat_send"),
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
@@ -226,8 +236,10 @@ export default function probe(pi) {
 );
 
 let runner;
+let fixture;
 let evidence;
 try {
+  fixture = await startModelFixture({ privateDir: directory });
   runner = spawn(process.execPath, ["--import", "tsx", join(root, "scripts/pi-host-runner.mjs")], {
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
@@ -284,7 +296,7 @@ try {
       sessionId: randomUUID(),
       sessionDirectory: join(directory, "sessions"),
       cwd: join(directory, "workspace"),
-      agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
+      agentDir: fixture.agentDir,
       extensionPath: probePath,
       // 协议必填字段（src/server/pi-host/protocol.ts 的 OpenSession）：缺省等同 disabled，但必须显式写出。
       resources: { kind: "disabled" },
@@ -293,6 +305,7 @@ try {
         name: "Cancellation and log tools verification",
         persona: "Verification only.",
         harness: "pi",
+        model: fixture.model("status"),
         updatedAt: "2026-10-24T00:00:00.000Z",
       },
       remote: {
@@ -308,19 +321,9 @@ try {
   // 真实 Pi 的活动工具名就是模型看到的 tools/list。
   assert.ok(ready.tools.includes("sprout_remote_execution_cancel"), "tools/list 缺少取消工具");
   assert.ok(ready.tools.includes("sprout_remote_execution_log"), "tools/list 缺少日志工具");
-  // sprout_chat_send 只留在 registry：宿主要自动发本轮最终回答，不能再让模型重复发送。
-  const registryOnly = new Set(["sprout_chat_send"]);
   assert.deepEqual(
     probe.toolNames.filter((name) => !ready.tools.includes(name)),
-    ["sprout_chat_send"],
-    "未声明的工具只能是被契约有意留在 registry 的 sprout_chat_send",
-  );
-  assert.equal(ready.tools.includes("sprout_chat_send"), false, "sprout_chat_send 不声明给模型");
-  assert.ok(
-    probe.toolNames
-      .filter((name) => !registryOnly.has(name))
-      .every((name) => ready.tools.includes(name)),
-    "其余 registry 工具（含 current_time/git_read）都必须进入 tools/list",
+    registryOnly,
   );
   // 6 次参数拒绝不应产生任何 HTTP 调用；到达服务端的是 2 次取消 + 4 次日志读取。
   assert.equal(calls, 6, "只有 2 次取消 + 4 次日志读取到达服务端，6 次参数拒绝未发请求");
@@ -367,6 +370,7 @@ try {
     await once(runner, "exit");
     clearTimeout(timer);
   }
+  await fixture?.close();
   server.closeAllConnections();
   server.close();
   rmSync(directory, { recursive: true, force: true });

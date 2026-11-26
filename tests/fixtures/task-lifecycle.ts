@@ -1,6 +1,7 @@
 // Production HTTP + private SQLite + the installed Pi SDK/runner + a real Worker.
 // The observer only delays original bytes. It never synthesizes runner events or domain results.
 import assert from "node:assert/strict";
+import { provisionCrewResource } from "./crew-resource.mjs";
 import { createCrewFixture } from "./crew-live.mjs";
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -18,7 +19,6 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
-import { ID_PREFIXES, newId } from "../../src/contracts/ids";
 
 const mode = process.env.SPROUT_VERIFY_CHAT_MODE ?? "model-fixture";
 assert(["model-fixture", "live"].includes(mode));
@@ -609,13 +609,12 @@ try {
     `Call these tools once each, in this order, with exactly these arguments: ${steps.map((step) => `${step.name} ${JSON.stringify(step.arguments)}`).join("; ")}. Then reply exactly ${JSON.stringify(reply)}. Do not call other tools or change Task status.`;
   // sprout_chat_send 不声明给模型：点名与汇报走 run 的最终回答（同一条 sendMessage 路径）。
   const memberMessage = `@LifecycleMember collaborate on ${taskId}. ${instructions(memberSteps, returnMention)}`;
-  const ownerSteps = [
-    {
-      name: "sprout_lease_acquire",
-      arguments: { machineId, expectedGeneration: 0, requestId: newId(ID_PREFIXES.request) },
-    },
-    ...memberSteps,
-  ];
+  // Crew 的 lead 没有旧 lease 工具面：每个延迟注册的 Task 工具先由 tool_search 发现。
+  const discover = (name: string) => ({
+    name: "tool_search",
+    arguments: { query: name, limit: 1 },
+  });
+  const ownerSteps = memberSteps.flatMap((step: any) => [discover(step.name), step]);
   current = await change("updateTaskFn", current, {
     description: instructions(ownerSteps, memberMessage),
   });
@@ -672,6 +671,15 @@ try {
     text: startCommand[0].value.text,
   };
   assert.equal(current.task.revision, memberSteps[0].arguments.expectedRevision);
+  // Crew 的机器授权由协调器签发给 lead run：申请、批准、分配都走真实 domain 路径。
+  const leased = provisionCrewResource(environment.DATABASE_URL!, {
+    crewChatId: chat.id,
+    machineId,
+    operations: ["shell"],
+  });
+  assert.equal(leased.runId, ownerRun.id);
+  assert.equal(leased.state, "active");
+  assert.equal(leased.generation, 1);
   // Crew 的 lead 完成工具操作；最终回答中的 @worker 不启动其他成员。
   arm("chatOwner", taskPrefix(taskId), ownerSteps, memberMessage);
   configure({ modelGate: null });
@@ -697,8 +705,17 @@ try {
     messageId: delivery.messageId,
     taskStatus: current.task.status,
   });
-  const leaseBefore = rows("SELECT * FROM machine_lease WHERE machine_id=?", machineId);
-  assert(leaseBefore.length > 0 && leaseBefore[0].holder_instance_id, "real Agent acquired lease");
+  const grants = rows("SELECT * FROM lease_grant WHERE grantee_run_id=?", ownerRun.id);
+  assert.equal(grants.length, 1, "real Crew grant issued to the lead run");
+  assert.equal(grants[0].generation, leased.generation);
+  // 授权随 run 终态回收：等机器侧静默后再比较，只观察 Human 完成 Task 的影响。
+  let leaseBefore = rows("SELECT * FROM machine_lease WHERE machine_id=?", machineId);
+  for (let round = 0; round < 60; round++) {
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
+    const observed = rows("SELECT * FROM machine_lease WHERE machine_id=?", machineId);
+    if (JSON.stringify(observed) === JSON.stringify(leaseBefore)) break;
+    leaseBefore = observed;
+  }
   const machineBefore = rows("SELECT * FROM machine WHERE id=?", machineId);
   current = await change("completeTaskFn", current);
   assert.equal(current.task.status, "finished");
@@ -712,9 +729,10 @@ try {
   );
   assert.equal(firstComplete.length, 1);
   assert.equal(firstComplete[0].record_seq_at_event, current.completionRecord.seq);
-  pass("Human completion uses final record, preserves real lease and Machine rows", {
+  pass("Human completion uses final record, preserves Crew grant and Machine rows", {
     resultSeq: current.completionRecord.seq,
     completionEvent: firstComplete[0],
+    grantId: leased.grantId,
   });
   current = await change("correctTaskFn", current, {
     record: { body: "Human corrected final result" },

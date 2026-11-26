@@ -14,7 +14,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
-import { CI_GROUPS, validateGateTargets } from "./lib/targets-plan.mjs";
+import {
+  CI_GROUPS,
+  CONTAINER_GROUPS,
+  PORTABLE_GROUPS,
+  validateGateTargets,
+} from "./lib/targets-plan.mjs";
 import {
   CI_UNIT_SHARDS,
   UNIT_TARGETS,
@@ -106,6 +111,8 @@ await test("every gate and unit file has an explicit target; only split A/B over
   ];
   assert.equal(listed.length, Object.keys(CI_GROUPS).length);
   assert.deepEqual(new Set(listed), new Set(Object.keys(CI_GROUPS)));
+  assert.deepEqual(matrixGroups(workflow, "portable"), [...PORTABLE_GROUPS]);
+  assert.deepEqual(matrixGroups(workflow, "portableBrowser"), [...CONTAINER_GROUPS]);
 });
 
 await test("browser groups run in the pinned Playwright image, tool chains stay on the runner", () => {

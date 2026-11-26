@@ -35,7 +35,7 @@
 
 日常使用 `pnpm verify:local` 运行必须依赖真实 macOS 或已安装 Pi 的部分；GitHub Actions 的 Ubuntu job 执行其余部分。`pnpm verify` 仍是单机全量入口，包含全部原始断言与全量单测，便于完整复现；它不因分工而静默缩减范围。分工入口先校验完整门禁与测试文件清单，新文件未分类时立即失败。归属清单见 `scripts/verify/lib/targets-plan.mjs` 与 `scripts/verify/lib/test-targets.mjs`。
 
-CI 的执行 job 分为三类：`portable` 跑 tooling、base、contracts、docs、tasks 五个组，`portableBrowser` 跑 browser-c、browser-a、api-a、browser-b、api-b、turns 六个需要页面链路的组，`portableUnits` 独立运行四个 portable unit shards。每个矩阵实例各自独立 checkout 一个 workspace；execution job 之间没有依赖。门禁 job 只起一个运行器进程（`targets.mjs` 对 `ci` 不再逐门禁拆调用），组内门禁按 `--max-parallel 1` 串行并共享同一份准备结果（`install` 与 `server` 各只做一次），既避免在 hosted runner 内过量并发，也省掉每组重复的准备时间；组内矩阵按预估耗时从重到轻排列，GitHub 从前往后启动。共接管 80 个门禁，本机保留 30 个（`a-base` 与 `b-tooling` 两边都跑），另有 2 个 MANUAL 门禁只在真实环境手工运行（`p8d-windows-worker` 与 `p8d-windows-integration` 需要真实 Windows 主机）；`scripts/verify/*.sh` 共 113 个（另 3 个已退役），去重后合计 110 个。拆组只改 job 与矩阵归属，门禁脚本本身与总覆盖不变；`pnpm verify:ci --list` 与 `validateGateTargets` 继续校验新文件必须归类。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
+CI 的执行 job 分为三类：`portable` 跑 tooling、base、contracts、docs、tasks 五个组，`portableBrowser` 跑 api-a、turns、browser-b、api-b、browser-c、browser-a 六个需要页面链路的组，`portableUnits` 独立运行四个 portable unit shards。每个矩阵实例各自独立 checkout 一个 workspace；execution job 之间没有依赖。门禁 job 只起一个运行器进程（`targets.mjs` 对 `ci` 不再逐门禁拆调用），组内门禁按 `--max-parallel 1` 串行并共享同一份准备结果（`install` 与 `server` 各只做一次），既避免在 hosted runner 内过量并发，也省掉每组重复的准备时间；组内矩阵按实测报告预测的耗时从重到轻排列，GitHub 从前往后启动；容器组按串行耗时重新分箱（见下文「容器组分箱」）。共接管 80 个门禁，本机保留 30 个（`a-base` 与 `b-tooling` 两边都跑），另有 2 个 MANUAL 门禁只在真实环境手工运行（`p8d-windows-worker` 与 `p8d-windows-integration` 需要真实 Windows 主机）；`scripts/verify/*.sh` 共 113 个（另 3 个已退役），去重后合计 110 个。拆组只改 job 与矩阵归属，门禁脚本本身与总覆盖不变；`pnpm verify:ci --list` 与 `validateGateTargets` 继续校验新文件必须归类。A 的类型/静态检查、生产和开发启动、SPA/HTTP、Worker CLI 与 extension 构建交给 CI，真实 Pi CLI 调用留在本机；B 的静态检查、生产 smoke 及通用测试交给 CI，本机只执行专属测试文件。单机全量入口仍执行 A/B 原有全部内容。
 
 测试文件按 `scripts/verify/lib/test-targets.mjs` 的显式 inventory 分成 CI 与 local 集合；新增文件、重复归类或漏归类会在执行前失败。`pnpm test:ci` 与 `pnpm test:local` 可单独运行各自完整集合；两边都保留文件隔离。`pnpm test:ci --shard 1/4` 可复现一个独立 unit job；四份清单按完整路径的 SHA-256 确定归属，交集为空、并集等于 CI inventory，改变文件内容不会改变其 shard。每份最多两个 file worker，沿用每个测试的既有 timeout，命令保留 B 原来的 300 秒预算。CI 入口使用空的临时 Pi agent，清除 inherited Pi runner/module，关闭 MCP_EVERYTHING，并为数据库（`DATABASE_URL`）、Pi 数据（`SPROUT_PI_DATA_DIR`）、repo（`SPROUT_REPO_DIR`）与缓存（`XDG_CACHE_HOME`、`npm_config_cache`）分配私有临时路径；每个 Actions shard 的 checkout 与宿主也独立。执行器将 Vitest 实际 JSON 结果与选中文件逐一比对，缺失、额外或重复文件，以及 failed、pending 或 todo 测试均失败；`.verify/units/ci-<n>-of-4.json` 记录计划和实际文件、测试计数、退出及信号，原始断言 JSON 在临时目录中清理。N/Q 等使用生成 protocol stub 的验证属于 CI，不因名称含 Pi 就保留本机；真实 Pi SDK、MCP extension、真实 Worker 初始化/环境探测仍留本机。
 
@@ -55,6 +55,16 @@ node scripts/verify/timing-audit.mjs report --cache /tmp/sprout-ci-audit-snapsho
 `collect` 用 `gh api` 分页获取至少 150 个历史 run（仓库不足则取实际数量），逐一读取每个 attempt 的 run 与全部 jobs，并缓存原始 API 数据及 head SHA 对应 workflow 内容。使用外部目录保存 snapshot，同一目录重跑只读已缓存响应；新的一次采集使用新目录。报告按 workflow 内容 SHA-256、event、attempt 编号和 conclusion 分 cohort，保留 head SHA、原始时间戳、runner labels、步骤及失败/取消样本；p50/p95 用 nearest-rank，只统计成功 workflow attempt，job percentile 只使用其中成功 job。queue、Verify 前 setup、Verify running、cleanup 分开计算，缺失或反向时间戳为 null，不填零。反馈耗时以第一次 run 的 created_at 为起点，重试 attempt 以该 attempt 最早 job.created_at 为起点；不能确定时不算 percentile，避免把人工等待重试的时间当运行时间。结束取全部 jobs 的最晚 completed_at，不把 run.updated_at 当结束时间。
 
 既有 `/tmp/sprout-ci-audit/{runs.json,jobs-<id>.json}` 可直接作为 `report --cache` 的输入，不会重新获取网络数据：它只含已捕获的最新 attempt，报告明确标记缺失的早期 attempts 与不完整 jobs。旧采集的 workflow 内容由本地 `git show <headSha>:<workflow path>` 恢复，无法恢复的样本保留但不进入 cohort。需要关联已下载 gate/unit artifact 时，传 `--reports /tmp/reports-manifest.json`，格式为 `[{"runId":45437301271,"runAttempt":1,"kind":"gate","path":"/absolute/path/report.json"}]`（kind 也可为 `unit`）；只有匹配 run/attempt 的报告会关联，仅保留执行身份、计时、计数和结果，不读取原始日志或输出断言内容。
+
+### 容器组分箱
+
+容器组分箱使用无额外依赖的 `scripts/verify/ci-balance.mjs`，输入是每个 job 上传的 `.verify/runs/<run>/report.json`：门禁耗时取 `outcomes[].durationMs`，共享准备取 `preparation[].durationMs`，单位毫秒。默认按多次报告的同门禁均值规划，`--durations=max` 取已观测到的最大单次值做敏感性分析，不代表未来耗时上界。失败或耗时无效的输入会被拒绝。预测耗时 = install 均值 + 组内有 server 门禁时的 server 构建均值 + 组内门禁耗时之和；组内 `--max-parallel 1` 串行，所以它只用于排序与分箱，不是 workflow 实测（实测还含 checkout、镜像拉取、runner 排队和同 runner 抖动）。脚本同时输出 LPT 参考方案，以及从现有归属出发、只接受降低峰值的搬移或互换的方案；峰值相同时保留原归属，避免为几秒预测差大面积重排：
+
+```sh
+node scripts/verify/ci-balance.mjs /path/to/linux-*/report.json
+```
+
+本轮用两次 55 门禁基线（run 45812137840 与 run 45437301271 的 artifacts）规划：六组中最大的预测负载从 266.3s 降到 176.8s，调整后各组为 175.8–176.8s（max 模式为 177.2–183.8s），共搬移 12 个门禁。只改归属：门禁集合、镜像、env、`--max-parallel`、timeout 与各组准备语义都不变，browser-a 继续只做 install 准备。分箱结果必须能被同一脚本从同一批报告复现；报告新增或缺失门禁时脚本直接失败，而不是静默重排。
 
 集成或交付可使用同一 commit 的 Actions 全部 job 成功结果，加上对应 commit 的 `verify:local` 成功结果，联合证明完整范围。单独一边通过不能称为完整验证通过；有未提交改动时，远端未包含的 diff 必须单独验证并按[证据复用与失效](#证据复用与失效)记录。单机全量验证也继续有效，不再额外重复执行 `pnpm test`。尚未实际运行的 Actions 配置只能报告为已配置，不能报告为 Ubuntu 门禁已通过。
 
