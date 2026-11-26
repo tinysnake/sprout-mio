@@ -83,7 +83,11 @@ const scrollThreadTo = async (where) => {
 async function open(scene) {
   const url = new URL(base);
   url.searchParams.set("scene", scene);
-  await page.goto(url.toString(), { waitUntil: "networkidle" });
+  await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
+  await page
+    .locator("summary")
+    .filter({ hasText: /^开发演示$/ })
+    .waitFor();
 }
 async function check(name, run) {
   try {
