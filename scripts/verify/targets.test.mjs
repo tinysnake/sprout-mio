@@ -115,7 +115,7 @@ await test("every gate and unit file has an explicit target; only split A/B over
   assert.deepEqual(matrixGroups(workflow, "portableBrowser"), [...CONTAINER_GROUPS]);
 });
 
-await test("browser groups install the lockfile's Chromium headless shell before verification", () => {
+await test("browser groups install the lockfile's Chromium before verification", () => {
   const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
   const browser = jobBlock(workflow, "portableBrowser");
   assert.doesNotMatch(browser, /^\s+container:/m);
@@ -123,9 +123,30 @@ await test("browser groups install the lockfile's Chromium headless shell before
   assert(!groups.includes("base") && !groups.includes("tooling"));
   assert.match(
     browser,
-    /run: pnpm install --frozen-lockfile\b[\s\S]*run: pnpm exec playwright install --with-deps --only-shell chromium\b[\s\S]*name: Verify assigned gates/,
+    /run: pnpm install --frozen-lockfile\b[\s\S]*run: pnpm exec playwright install --with-deps chromium\b[\s\S]*name: Verify assigned gates/,
   );
   assert.doesNotMatch(jobBlock(workflow, "portable"), /playwright install/);
+});
+
+await test("CI runner fails when a selected gate skips", (t) => {
+  const directory = fixture(t);
+  const scripts = join(directory, "scripts/verify");
+  cpSync(join(root, "scripts/verify/runner.mjs"), join(scripts, "runner.mjs"));
+  cpSync(join(root, "scripts/verify/lib"), join(scripts, "lib"), { recursive: true });
+  const gate = join(scripts, "prerequisite-probe.sh");
+  const args = ["--only", "prerequisite-probe"];
+  writeFileSync(gate, "exit 77\n");
+  const ci = call(directory, "runner.mjs", args, { SPROUT_VERIFY_TARGET: "ci" });
+  assert.equal(ci.status, 1, ci.stderr);
+  assert.match(ci.stdout, /skipped=1/);
+  assert.match(ci.stderr, /FAIL CI requires every selected gate to pass/);
+  const local = call(directory, "runner.mjs", args, { SPROUT_VERIFY_TARGET: "local" });
+  assert.equal(local.status, 0, local.stderr);
+  assert.match(local.stdout, /skipped=1/);
+  writeFileSync(gate, "exit 0\n");
+  const passed = call(directory, "runner.mjs", args, { SPROUT_VERIFY_TARGET: "ci" });
+  assert.equal(passed.status, 0, passed.stderr);
+  assert.match(passed.stdout, /skipped=0/);
 });
 
 await test("unit shards are deterministic, disjoint, and complete", () => {

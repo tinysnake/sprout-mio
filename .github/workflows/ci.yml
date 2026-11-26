@@ -114,8 +114,8 @@ jobs:
       - name: Install frozen dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Install Chromium headless shell and system dependencies
-        run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: Install Chromium and system dependencies
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Verify assigned gates
         env:
