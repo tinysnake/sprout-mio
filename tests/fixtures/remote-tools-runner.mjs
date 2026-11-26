@@ -4,7 +4,8 @@ import { once } from "node:events";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { randomBytes, randomUUID } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
+import { startModelFixture } from "../../scripts/verify/lib/model-fixture.mjs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -49,6 +50,8 @@ const server = createServer((req, res) => {
             generation: 0,
             state: "free",
             holderInstanceId: null,
+            ownerKind: null,
+            holderCrewChatId: null,
             changedAt: "2026-10-24T00:00:00.000Z",
             pendingMutationId: null,
             // 租约视图的必填字段（src/contracts/lease.ts 的 leaseViewSchema）：free 租约没有挂靠。
@@ -79,7 +82,16 @@ const { infoHubToolInputSchemas } = await import(
 // 工具面从契约推导：remote、task、info-hub 各有一份输入 schema 表；sprout_status
 // 的参数在 src/extension/status.ts 里内联声明；宿主时钟、等待与 git 工具由 runner 注册，
 // 没有公共契约表，在这里点名列出。
+const { crewDelegationToolInputSchemas, delegationToolInputSchemas } = await import(
+  pathToFileURL(join(root, "src/contracts/delegation.ts")).href
+);
+const registryOnly = [
+  "sprout_chat_send",
+  ...Object.keys(crewDelegationToolInputSchemas),
+  ...Object.keys(delegationToolInputSchemas),
+].sort();
 const expectedToolNames = [
+  ...registryOnly.filter((name) => name !== "sprout_chat_send"),
   ...Object.keys(remoteToolInputSchemas),
   ...Object.keys(taskToolInputSchemas),
   ...Object.keys(infoHubToolInputSchemas),
@@ -191,7 +203,9 @@ export default function probe(pi) {
 `,
 );
 let runner;
+let fixture;
 try {
+  fixture = await startModelFixture({ privateDir: directory });
   runner = spawn(process.execPath, ["--import", "tsx", join(root, "scripts/pi-host-runner.mjs")], {
     cwd: root,
     stdio: ["pipe", "pipe", "pipe"],
@@ -250,7 +264,7 @@ try {
       sessionId: randomUUID(),
       sessionDirectory: join(directory, "sessions"),
       cwd: join(directory, "workspace"),
-      agentDir: process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent"),
+      agentDir: fixture.agentDir,
       extensionPath: probePath,
       // 协议必填字段（src/server/pi-host/protocol.ts 的 OpenSession）：缺省等同 disabled，但必须显式写出。
       resources: { kind: "disabled" },
@@ -259,6 +273,7 @@ try {
         name: "Remote tools verification",
         persona: "Verification only.",
         harness: "pi",
+        model: fixture.model("status"),
         updatedAt: "2026-10-24T00:00:00.000Z",
       },
       remote: {
@@ -275,13 +290,8 @@ try {
   assert.equal(identityInjected, true);
   assert.ok(!JSON.stringify(ready).includes(secret));
   assert.ok(!Object.hasOwn(ready, "remote"));
-  // sprout_chat_send 只留在 registry：宿主要自动发本轮最终回答，不能再让模型重复发送。
-  const registryOnly = new Set(["sprout_chat_send"]);
   const inactive = probe.toolNames.filter((name) => !ready.tools.includes(name));
-  assert.deepEqual(
-    inactive.filter((name) => !registryOnly.has(name)),
-    [],
-  );
+  assert.deepEqual(inactive, registryOnly);
   const evidence = {
     ...probe,
     sdkVersion: ready.sdkVersion,
@@ -303,6 +313,7 @@ try {
     await once(runner, "exit");
     clearTimeout(timer);
   }
+  await fixture?.close();
   server.closeAllConnections();
   server.close();
   rmSync(directory, { recursive: true, force: true });
