@@ -19,8 +19,14 @@ import {
 } from "./lib/ci-balance.mjs";
 
 const args = process.argv.slice(2);
-const mode = args.includes("--durations=max") ? "max" : "mean";
-const paths = args.filter((argument) => !argument.startsWith("--"));
+const paths = [];
+let mode = "mean";
+for (const argument of args) {
+  if (argument === "--durations=max") mode = "max";
+  else if (argument === "--durations=mean") mode = "mean";
+  else if (argument.startsWith("--")) throw new Error(`Unknown option: ${argument}`);
+  else paths.push(argument);
+}
 if (paths.length === 0) {
   console.error("Usage: ci-balance.mjs [--durations=mean|max] <report.json...>");
   process.exit(1);

@@ -12,8 +12,8 @@ import {
 
 const report = (id, outcomes, preparation = [{ kind: "install", durationMs: 2000 }]) => ({
   runId: id,
-  outcomes: outcomes.map(([gate, durationMs]) => ({ id: gate, durationMs })),
-  preparation,
+  outcomes: outcomes.map(([gate, durationMs]) => ({ id: gate, status: "passed", durationMs })),
+  preparation: preparation.map((entry) => ({ status: "passed", ...entry })),
 });
 
 test("samples average repeated reports and keep the slowest observation", () => {
@@ -39,6 +39,26 @@ test("samples average repeated reports and keep the slowest observation", () => 
         ]),
       ]),
     /Duplicate gate in one report: a/,
+  );
+});
+
+test("invalid or unsuccessful timings cannot influence a proposed plan", () => {
+  for (const durationMs of [undefined, null, NaN, Infinity, -1]) {
+    assert.throws(() => gateSamples([report("bad", [["a", durationMs]])]), /Invalid successful/);
+    assert.throws(
+      () => preparationModel([report("bad", [], [{ kind: "install", durationMs }])]),
+      /Invalid successful/,
+    );
+  }
+  const failed = report("failed", [["a", 0]]);
+  failed.outcomes[0].status = "failed";
+  assert.throws(() => gateSamples([failed]), /Invalid successful/);
+  assert.throws(
+    () =>
+      preparationModel([
+        report("failed", [], [{ kind: "install", status: "failed", durationMs: 0 }]),
+      ]),
+    /Invalid successful/,
   );
 });
 

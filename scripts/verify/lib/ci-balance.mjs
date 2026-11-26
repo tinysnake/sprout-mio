@@ -16,6 +16,12 @@ export function gateSamples(reports) {
     for (const outcome of report.outcomes) {
       if (seen.has(outcome.id)) throw new Error(`Duplicate gate in one report: ${outcome.id}`);
       seen.add(outcome.id);
+      if (
+        outcome.status !== "passed" ||
+        !Number.isFinite(outcome.durationMs) ||
+        outcome.durationMs < 0
+      )
+        throw new Error(`Invalid successful gate timing: ${outcome.id}`);
       const list = samples.get(outcome.id) ?? [];
       list.push(outcome.durationMs);
       samples.set(outcome.id, list);
@@ -48,7 +54,11 @@ export function preparationModel(reports) {
   const observed = { install: [], server: [] };
   for (const report of reports)
     for (const entry of report.preparation ?? [])
-      if (entry.kind in observed) observed[entry.kind].push(entry.durationMs);
+      if (entry.kind in observed) {
+        if (entry.status !== "passed" || !Number.isFinite(entry.durationMs) || entry.durationMs < 0)
+          throw new Error(`Invalid successful preparation timing: ${entry.kind}`);
+        observed[entry.kind].push(entry.durationMs);
+      }
   for (const [kind, values] of Object.entries(observed))
     if (values.length === 0) throw new Error(`Reports contain no ${kind} preparation`);
   return { installMs: mean(observed.install), serverMs: mean(observed.server) };

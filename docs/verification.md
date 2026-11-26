@@ -58,13 +58,13 @@ node scripts/verify/timing-audit.mjs report --cache /tmp/sprout-ci-audit-snapsho
 
 ### 容器组分箱
 
-容器组分箱使用无额外依赖的 `scripts/verify/ci-balance.mjs`，输入是每个 job 上传的 `.verify/runs/<run>/report.json`：门禁耗时取 `outcomes[].durationMs`，共享准备取 `preparation[].durationMs`，单位毫秒。默认按多次报告的同门禁均值规划，`--durations=max` 取最大单次值做噪声上界。预测耗时 = install 均值 + 组内有 server 门禁时的 server 构建均值 + 组内门禁耗时之和；组内 `--max-parallel 1` 串行，所以它只用于排序与分箱，不是 workflow 实测（实测还含 checkout、镜像拉取、runner 排队和同 runner 抖动）。脚本同时输出 LPT 参考方案，以及从现有归属出发、只接受降低峰值的搬移或互换的方案；峰值相同时保留原归属，避免为几秒预测差大面积重排：
+容器组分箱使用无额外依赖的 `scripts/verify/ci-balance.mjs`，输入是每个 job 上传的 `.verify/runs/<run>/report.json`：门禁耗时取 `outcomes[].durationMs`，共享准备取 `preparation[].durationMs`，单位毫秒。默认按多次报告的同门禁均值规划，`--durations=max` 取已观测到的最大单次值做敏感性分析，不代表未来耗时上界。失败或耗时无效的输入会被拒绝。预测耗时 = install 均值 + 组内有 server 门禁时的 server 构建均值 + 组内门禁耗时之和；组内 `--max-parallel 1` 串行，所以它只用于排序与分箱，不是 workflow 实测（实测还含 checkout、镜像拉取、runner 排队和同 runner 抖动）。脚本同时输出 LPT 参考方案，以及从现有归属出发、只接受降低峰值的搬移或互换的方案；峰值相同时保留原归属，避免为几秒预测差大面积重排：
 
 ```sh
 node scripts/verify/ci-balance.mjs /path/to/linux-*/report.json
 ```
 
-本轮用两次 55 门禁基线（run 45812137840 的 artifacts，以及更早一次 audit artifacts）规划：六个容器组的预测峰值从 228.6–266.3s 降到 175.8–176.8s（max 模式上界 177.2–183.8s），共搬移 12 个门禁。只改归属：门禁集合、镜像、env、`--max-parallel`、timeout 与各组准备语义都不变，browser-a 继续只做 install 准备。分箱结果必须能被同一脚本从同一批报告复现；报告新增或缺失门禁时脚本直接失败，而不是静默重排。
+本轮用两次 55 门禁基线（run 45812137840 与 run 45437301271 的 artifacts）规划：六组中最大的预测负载从 266.3s 降到 176.8s，调整后各组为 175.8–176.8s（max 模式为 177.2–183.8s），共搬移 12 个门禁。只改归属：门禁集合、镜像、env、`--max-parallel`、timeout 与各组准备语义都不变，browser-a 继续只做 install 准备。分箱结果必须能被同一脚本从同一批报告复现；报告新增或缺失门禁时脚本直接失败，而不是静默重排。
 
 集成或交付可使用同一 commit 的 Actions 全部 job 成功结果，加上对应 commit 的 `verify:local` 成功结果，联合证明完整范围。单独一边通过不能称为完整验证通过；有未提交改动时，远端未包含的 diff 必须单独验证并按[证据复用与失效](#证据复用与失效)记录。单机全量验证也继续有效，不再额外重复执行 `pnpm test`。尚未实际运行的 Actions 配置只能报告为已配置，不能报告为 Ubuntu 门禁已通过。
 
