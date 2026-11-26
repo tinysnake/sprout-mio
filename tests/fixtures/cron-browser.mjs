@@ -343,25 +343,42 @@ export async function verifyCronBrowser({
     await route.fulfill({ response });
     handled();
   });
+  const trialNetwork = [];
+  const networkListeners = ["request", "requestfinished", "requestfailed"].map((event) => [
+    event,
+    (request) => {
+      const functionId = new URL(request.url()).pathname.split("/").at(-1);
+      const name = Object.keys(ids).find((key) => ids[key] === functionId);
+      if (name) trialNetwork.push({ event, name, error: request.failure()?.errorText });
+    },
+  ]);
+  for (const [event, listener] of networkListeners) page.on(event, listener);
   try {
-    await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).click();
-    await responsePending;
-    assert.equal(await page.getByTestId("cron-settings").getAttribute("disabled"), "");
-    assert(await ui.getByLabel("规则名称", { exact: true }).isDisabled());
-    assert(await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).isDisabled());
+    try {
+      await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).click();
+      await responsePending;
+      assert.equal(await page.getByTestId("cron-settings").getAttribute("disabled"), "");
+      assert(await ui.getByLabel("规则名称", { exact: true }).isDisabled());
+      assert(await ui.getByRole("button", { name: "Trial 定时规则", exact: true }).isDisabled());
+    } finally {
+      release();
+      await routeHandled;
+      await page.unroute(trialRoute);
+    }
+    await until(
+      () => db.prepare("SELECT id FROM message WHERE body='CRON_TRIAL_REPLY'").get(),
+      "real Pi Trial reply",
+    );
+    await until(
+      () => ui.getByRole("button", { name: "Trial 定时规则", exact: true }).isEnabled(),
+      "trial response settled",
+    );
+  } catch (error) {
+    console.error("Trial network", JSON.stringify(trialNetwork));
+    throw error;
   } finally {
-    release();
-    await routeHandled;
-    await page.unroute(trialRoute);
+    for (const [event, listener] of networkListeners) page.off(event, listener);
   }
-  await until(
-    () => db.prepare("SELECT id FROM message WHERE body='CRON_TRIAL_REPLY'").get(),
-    "real Pi Trial reply",
-  );
-  await until(
-    () => ui.getByRole("button", { name: "Trial 定时规则", exact: true }).isEnabled(),
-    "trial response settled",
-  );
   const firstHistory = await call("cronHistoryFn", { ruleId: rule.id });
   const trial = firstHistory.find((item) => item.mode === "trial");
   assert.equal(trial.decision, "accepted");

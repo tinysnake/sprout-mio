@@ -358,7 +358,7 @@ try {
   );
   await page.getByTestId("machine-refresh").click();
   await page.getByTestId("machine-detail-enrollment").filter({ hasText: "已配对" }).waitFor();
-  assert((await page.getByTestId("machine-detail-connection").innerText()).includes("在线"));
+  await page.getByTestId("machine-detail-connection").getByText("在线", { exact: true }).waitFor();
   assert.equal(await page.getByTestId("machine-ticket-value").count(), 0);
   const activePresentation = await assertDetailPresentation(page, "active");
   pass("independently copied macOS Worker connects and refresh reads active identity", {
