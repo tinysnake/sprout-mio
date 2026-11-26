@@ -1,9 +1,7 @@
 import { SUITE_PLAN } from "./suite-plan.mjs";
 
-// 组内门禁按 --max-parallel 1 串行，所以一个容器 job 的预测耗时等于共享准备加上
-// 组内门禁耗时之和。这里只做这项预测和分箱，不读取 runner 状态，也不改任何门禁。
-
 const compare = (left, right) => left.localeCompare(right);
+const minimumPeakImprovementMs = 1;
 
 function mean(values) {
   return values.reduce((total, value) => total + value, 0) / values.length;
@@ -39,8 +37,6 @@ export function validateCoverage(samples, groups) {
   if (extra.length) throw new Error(`Reports contain unassigned gates: ${extra.join(",")}`);
 }
 
-// durations: 每个门禁的耗时，单位毫秒。ms 是规划取值（默认均值），maxMs 保留最慢一次
-// 供噪声上界检查。
 export function gateDurations(samples) {
   const durations = new Map();
   for (const [id, list] of samples)
@@ -48,8 +44,6 @@ export function gateDurations(samples) {
   return durations;
 }
 
-// 准备耗时取采样报告里实际发生的 install/server 调用均值。它假设容器 job 的 install
-// 与 server 构建成本相同，只在缺少足够样本时偏差几个百分点，不替代 Actions 实测。
 export function preparationModel(reports) {
   const observed = { install: [], server: [] };
   for (const report of reports)
@@ -89,7 +83,6 @@ function movedGates(groups, owner) {
     .sort(compare);
 }
 
-// LPT：按耗时从大到小放入当前预测负载最低的组，作为不考虑现有归属的参考方案。
 export function largestProcessingTime({ names, durations, preparation }) {
   const groups = Object.fromEntries(names.map((name) => [name, []]));
   const ordered = [...durations.entries()].sort(
@@ -108,8 +101,6 @@ export function largestProcessingTime({ names, durations, preparation }) {
   return { groups, loadsMs: loads(groups, durations, preparation) };
 }
 
-// 从现有归属出发只做降低峰值的单点搬移或互换。这样在峰值几乎相同的方案里保留更多原归属，
-// 减少无关改动；峰值严格不降时停止，不为了几秒的预测差制造大面积重排。
 export function rebalance({ groups, durations, preparation }) {
   const names = Object.keys(groups);
   const owner = new Map(names.flatMap((name) => groups[name].map((id) => [id, name])));
@@ -122,12 +113,12 @@ export function rebalance({ groups, durations, preparation }) {
     let best = null;
     const consider = (candidate) => {
       const candidatePeak = peak(loads(candidate, durations, preparation));
-      if (candidatePeak >= before - 1) return;
+      if (candidatePeak >= before - minimumPeakImprovementMs) return;
       const moved = movedGates(candidate, owner).length;
       if (
         best === null ||
-        candidatePeak < best.peak - 1 ||
-        (Math.abs(candidatePeak - best.peak) <= 1 && moved < best.moved)
+        candidatePeak < best.peak - minimumPeakImprovementMs ||
+        (Math.abs(candidatePeak - best.peak) <= minimumPeakImprovementMs && moved < best.moved)
       )
         best = { peak: candidatePeak, moved, groups: candidate };
     };
@@ -164,12 +155,11 @@ export function rebalance({ groups, durations, preparation }) {
     for (const name of names) current[name] = best.groups[name];
   }
 
-  const ownerMap = new Map(names.flatMap((name) => groups[name].map((id) => [id, name])));
   const moved = Object.entries(current)
     .flatMap(([name, gates]) =>
       gates
-        .filter((id) => ownerMap.get(id) !== name)
-        .map((id) => ({ id, from: ownerMap.get(id), to: name })),
+        .filter((id) => owner.get(id) !== name)
+        .map((id) => ({ id, from: owner.get(id), to: name })),
     )
     .sort((left, right) => compare(left.id, right.id));
   return { groups: current, loadsMs: loads(current, durations, preparation), moved };

@@ -2,8 +2,6 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MANUAL_GATES, RETIRED_GATES, SUITE_PLAN } from "./suite-plan.mjs";
 
-// 两个 matrix 的组名与顺序是外部契约：targets.test.mjs 逐项核对 ci.yml。portableBrowser 的
-// 顺序按预测耗时从重到轻排列（见 docs/verification.md 的分箱说明）。
 export const PORTABLE_GROUPS = Object.freeze(["tooling", "base", "contracts", "docs", "tasks"]);
 export const CONTAINER_GROUPS = Object.freeze([
   "api-a",
@@ -15,8 +13,6 @@ export const CONTAINER_GROUPS = Object.freeze([
 ]);
 
 export const CI_GROUPS = Object.freeze({
-  // 组名与顺序和 ci.yml 的两个 matrix 一致；容器组按预测耗时从重到轻排列，
-  // 预测与再平衡方法见 docs/verification.md 的「容器组分箱」。
   "api-a": [
     "am-execution-log-honesty",
     "an-p4d-authority",

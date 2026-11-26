@@ -92,7 +92,6 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 6
-      # 需要页面链路的组，按实测预测耗时从重到轻排列；门禁归属由 scripts/verify/ci-balance.mjs 分箱。
       matrix:
         group: [api-a, turns, browser-b, api-b, browser-c, browser-a]
     env:
