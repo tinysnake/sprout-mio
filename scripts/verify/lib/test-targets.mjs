@@ -1,4 +1,6 @@
+import { createHash } from "node:crypto";
 import { globSync } from "node:fs";
+import { relative } from "node:path";
 
 export const UNIT_TARGETS = Object.freeze({
   ci: [
@@ -210,6 +212,45 @@ export const UNIT_TARGETS = Object.freeze({
     "tests/worker-report-budget.test.ts",
   ],
 });
+
+export const CI_UNIT_SHARDS = 4;
+
+export function unitShardFiles(files, shard) {
+  if (shard === undefined) return files;
+  const match = /^([1-9]\d*)\/([1-9]\d*)$/.exec(shard);
+  if (!match || Number(match[2]) !== CI_UNIT_SHARDS || Number(match[1]) > CI_UNIT_SHARDS)
+    throw new Error(`Expected --shard <1..${CI_UNIT_SHARDS}>/${CI_UNIT_SHARDS}`);
+  return files.filter(
+    (file) =>
+      createHash("sha256").update(file).digest().readUInt32BE(0) % CI_UNIT_SHARDS ===
+      Number(match[1]) - 1,
+  );
+}
+
+export function unitExecution(files, report, root) {
+  const executedFiles = report.testResults.map(({ name }) =>
+    relative(root, name).split("\\").join("/"),
+  );
+  const missingFiles = files.filter((file) => !executedFiles.includes(file));
+  const unexpectedFiles = executedFiles.filter((file) => !files.includes(file));
+  return {
+    executedFiles,
+    missingFiles,
+    unexpectedFiles,
+    complete:
+      missingFiles.length === 0 &&
+      unexpectedFiles.length === 0 &&
+      new Set(executedFiles).size === executedFiles.length,
+    success:
+      report.success === true &&
+      report.numFailedTests === 0 &&
+      report.numPendingTests === 0 &&
+      report.numTodoTests === 0,
+    tests: report.numTotalTests,
+    failed: report.numFailedTests,
+    skipped: report.numPendingTests,
+  };
+}
 
 export function validateUnitTargets(root) {
   const actual = globSync("tests/**/*.test.ts", { cwd: root }).sort();

@@ -6,6 +6,13 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$root"
 log_dir="$root/.verify/b-tooling"
 mkdir -p "$log_dir"
+if [ "${SPROUT_VERIFY_TARGET-all}" = ci ]; then
+  [ "${SPROUT_VERIFY_CI_UNITS-}" = independent ] || {
+    printf 'FAIL b-tooling CI requires the validated independent unit plan from verify:ci\n' >&2
+    exit 1
+  }
+  node scripts/verify/test-target.mjs ci --list > "$log_dir/unit-plan.json"
+fi
 
 # 本机分支会跑真实 Pi CLI/SDK 与 installed-Pi 测试，缺托管 Pi SDK 时给 SKIP 而不是假红；
 # CI 的 tooling job 只跑 ci 文件集（不需要本机 SDK），所以跳过这次检查。
@@ -127,9 +134,7 @@ install_seconds="$(( $(date +%s) - install_start ))"
 pass "frozen lockfile preparation request took ${install_seconds}s; original producer/reuse details: $log_dir/install.log (pnpm store not cold: COLD store untested)"
 
 run 'format lint and type gate' check pnpm check
-if [ "${SPROUT_VERIFY_TARGET-all}" = ci ]; then
-  run 'portable contract and tooling tests' test node scripts/verify/test-target.mjs ci
-else
+if [ "${SPROUT_VERIFY_TARGET-all}" != ci ]; then
   run 'contract and tooling tests' test pnpm test
 fi
 run 'ensure Nitro production artifact' build node scripts/verify/prepare.mjs server
