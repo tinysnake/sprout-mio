@@ -41,27 +41,37 @@ if (list) {
   // CI jobs have independent checkouts, so one runner per job reuses a single
   // preparation pass. Gates stay serial there through --max-parallel 1, which
   // keeps the hosted runner's timing budgets honest.
-  const batches = [gates];
   const parallel = target === "ci" ? ["--max-parallel", "1"] : [];
+  const batches = [
+    { gates, command: ["scripts/verify/runner.mjs", "--only", gates.join(","), ...parallel] },
+  ];
+  if (target === "ci" && !group)
+    batches.push({ gates: [], command: ["scripts/verify/test-target.mjs", "ci"] });
   for (const batch of batches) {
     if (interrupted) break;
     const startedAt = new Date().toISOString();
-    console.log(`RUN target=${target} group=${group ?? "all"} gates=${batch.join(",")}`);
+    console.log(`RUN target=${target} group=${group ?? "all"} command=${batch.command.join(" ")}`);
     const result = await new Promise((resolve) => {
-      active = spawn(
-        process.execPath,
-        ["scripts/verify/runner.mjs", "--only", batch.join(","), ...parallel],
-        {
-          cwd: root,
-          stdio: "inherit",
-          env: { ...process.env, SPROUT_VERIFY_TARGET: target },
+      active = spawn(process.execPath, batch.command, {
+        cwd: root,
+        stdio: "inherit",
+        env: {
+          ...process.env,
+          SPROUT_VERIFY_TARGET: target,
+          ...(target === "ci" ? { SPROUT_VERIFY_CI_UNITS: "independent" } : {}),
         },
-      );
+      });
       active.once("error", (error) => resolve({ code: null, signal: null, error: error.message }));
       active.once("exit", (code, signal) => resolve({ code, signal }));
     });
     active = undefined;
-    outcomes.push({ gates: batch, startedAt, finishedAt: new Date().toISOString(), ...result });
+    outcomes.push({
+      gates: batch.gates,
+      command: batch.command,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      ...result,
+    });
   }
   const directory = join(root, ".verify/targets");
   mkdirSync(directory, { recursive: true });
