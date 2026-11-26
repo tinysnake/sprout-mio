@@ -434,7 +434,9 @@ try {
   const toolInstructions = [
     ...(isCrew
       ? []
-      : [`Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`]),
+      : [
+          `Only LiveAlpha: call sprout_lease_acquire once with ${JSON.stringify(leaseParameters)}.`,
+        ]),
     `Only LiveAlpha: call sprout_remote_shell once with ${JSON.stringify(shellParameters)}.`,
     "After the tool replies briefly with your own name and the shell output. Never mention any other agent.",
   ].join("\n");

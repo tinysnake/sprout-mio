@@ -610,7 +610,10 @@ try {
   // sprout_chat_send 不声明给模型：点名与汇报走 run 的最终回答（同一条 sendMessage 路径）。
   const memberMessage = `@LifecycleMember collaborate on ${taskId}. ${instructions(memberSteps, returnMention)}`;
   // Crew 的 lead 没有旧 lease 工具面：每个延迟注册的 Task 工具先由 tool_search 发现。
-  const discover = (name: string) => ({ name: "tool_search", arguments: { query: name, limit: 1 } });
+  const discover = (name: string) => ({
+    name: "tool_search",
+    arguments: { query: name, limit: 1 },
+  });
   const ownerSteps = memberSteps.flatMap((step: any) => [discover(step.name), step]);
   current = await change("updateTaskFn", current, {
     description: instructions(ownerSteps, memberMessage),
