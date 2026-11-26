@@ -91,9 +91,9 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 8
       matrix:
-        group: [api-a, turns, browser-b, api-b, browser-c, browser-a]
+        group: [api-c, turns-b, api-b, browser-b, api-a, turns, browser-a, browser-c]
     env:
       SPROUT_PI_ENABLED: "false"
       SPROUT_VERIFY_CHAT_MODE: model-fixture
