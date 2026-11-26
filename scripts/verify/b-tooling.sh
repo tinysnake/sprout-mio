@@ -134,7 +134,6 @@ install_seconds="$(( $(date +%s) - install_start ))"
 pass "frozen lockfile preparation request took ${install_seconds}s; original producer/reuse details: $log_dir/install.log (pnpm store not cold: COLD store untested)"
 
 run 'format lint and type gate' check pnpm check
-# CI 的 portable suite 由独立 unit jobs 执行；完整本地 verify 仍在这里跑一次全套。
 if [ "${SPROUT_VERIFY_TARGET-all}" != ci ]; then
   run 'contract and tooling tests' test pnpm test
 fi

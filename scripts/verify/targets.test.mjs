@@ -304,10 +304,12 @@ await test("CI unit selection excludes native/Pi files and removes inherited rea
 await test("unit execution report must contain each planned exact path once", () => {
   const files = ["tests/first.test.ts", "tests/second.test.ts"];
   const report = {
+    success: true,
     testResults: files.map((name) => ({ name: join(root, name) })),
     numTotalTests: 3,
     numFailedTests: 0,
     numPendingTests: 0,
+    numTodoTests: 0,
   };
   assert.equal(unitExecution(files, report, root).complete, true);
   assert.equal(
@@ -322,6 +324,9 @@ await test("unit execution report must contain each planned exact path once", ()
     ).complete,
     false,
   );
+  assert.equal(unitExecution(files, report, root).success, true);
+  for (const field of ["numFailedTests", "numPendingTests", "numTodoTests"])
+    assert.equal(unitExecution(files, { ...report, [field]: 1 }, root).success, false);
   assert.equal(
     unitExecution(
       files,
@@ -411,7 +416,7 @@ await test("unit CLI rejects a zero exit that omitted files or execution JSON", 
     const selected=args.slice(6).filter(arg=>!arg.startsWith('--'));
     const destination=args.find(arg=>arg.startsWith('--outputFile.json=')).slice('--outputFile.json='.length);
     if(process.env.FAKE_RESULT!=='absent') {
-      fs.writeFileSync(destination,JSON.stringify({success:true,numTotalTests:selected.length,numFailedTests:0,numPendingTests:0,testResults:(process.env.FAKE_RESULT==='partial'?selected.slice(1):selected).map(name=>({name:path.resolve(name)}))}));
+      fs.writeFileSync(destination,JSON.stringify({success:true,numTotalTests:selected.length,numFailedTests:0,numPendingTests:0,numTodoTests:0,testResults:(process.env.FAKE_RESULT==='partial'?selected.slice(1):selected).map(name=>({name:path.resolve(name)}))}));
     }
   `,
   );

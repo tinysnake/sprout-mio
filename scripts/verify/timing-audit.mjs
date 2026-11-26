@@ -69,7 +69,11 @@ export function timingReport(samples, reports = []) {
     const origin = Object.hasOwn(sample, "feedbackStartedAt")
       ? sample.feedbackStartedAt
       : sample.createdAt;
-    return { ...result, feedbackSeconds: seconds(origin, sample.completedAt) };
+    return {
+      ...result,
+      feedbackSeconds:
+        sample.collection?.jobsComplete === false ? null : seconds(origin, sample.completedAt),
+    };
   });
   for (const sample of normalized) {
     if (!sample.workflow.fingerprint) continue;
@@ -101,12 +105,13 @@ export function timingReport(samples, reports = []) {
         for (const job of run.jobs) {
           const key = JSON.stringify([job.name, job.labels]);
           const group = jobs.get(key) ?? { name: job.name, labels: job.labels, samples: [] };
-          group.samples.push(job);
+          group.samples.push({ ...job, complete: run.collection?.jobsComplete !== false });
           jobs.set(key, group);
         }
       return {
         ...cohort,
         attempts: runs.length,
+        incompleteAttempts: runs.filter((run) => run.collection?.jobsComplete === false).length,
         feedbackSeconds: success ? percentiles(runs.map((run) => run.feedbackSeconds)) : null,
         jobs: [...jobs.values()].map(({ samples: rows, ...job }) => ({
           ...job,
@@ -117,7 +122,7 @@ export function timingReport(samples, reports = []) {
               success
                 ? percentiles(
                     rows
-                      .filter((row) => row.conclusion === "success")
+                      .filter((row) => row.conclusion === "success" && row.complete)
                       .map((row) => row.seconds[metric]),
                   )
                 : null,
@@ -235,14 +240,34 @@ function sampleRun(run, jobs, fingerprint) {
     startedAt: run.run_started_at,
     completedAt,
     feedbackStartedAt,
+    feedbackStartedAtSource:
+      run.run_attempt === 1 ? "run-created-at" : "earliest-job-created-at-proxy",
     jobs,
   };
 }
 
-// Replay the earlier read-only raw capture without fetching the dataset again.
 export function replay(cache) {
-  if (existsSync(join(cache, "samples.json")))
-    return JSON.parse(readFileSync(join(cache, "samples.json"), "utf8"));
+  if (existsSync(join(cache, "samples.json"))) {
+    const source = JSON.parse(readFileSync(join(cache, "source.json"), "utf8"));
+    const samples = JSON.parse(readFileSync(join(cache, "samples.json"), "utf8"));
+    if (
+      !/^[\w.-]+\/[\w.-]+$/.test(source.repo) ||
+      source.workflow !== "ci.yml" ||
+      !Array.isArray(samples) ||
+      samples.some(
+        (sample) =>
+          !Number.isInteger(sample.runId) ||
+          !Number.isInteger(sample.runAttempt) ||
+          sample.runAttempt < 1 ||
+          !sample.workflow ||
+          sample.workflow.path !== ".github/workflows/ci.yml" ||
+          !Array.isArray(sample.jobs) ||
+          sample.jobs.some((job) => job.run_attempt !== sample.runAttempt),
+      )
+    )
+      throw new Error("Invalid audit cache source or attempt data");
+    return samples;
+  }
   const raw = JSON.parse(readFileSync(join(cache, "runs.json"), "utf8"));
   const runs = Array.isArray(raw) ? raw : raw.workflow_runs;
   return runs.map((run) => {
@@ -266,7 +291,6 @@ export function replay(cache) {
   });
 }
 
-// Reports manifest: [{runId, runAttempt, kind: "gate" | "unit", path}]. Only timing/identity fields leave raw reports.
 export function readReports(manifest) {
   return JSON.parse(readFileSync(manifest, "utf8")).map(({ runId, runAttempt, kind, path }) => {
     if (!["gate", "unit"].includes(kind)) throw new Error(`Unknown report kind: ${kind}`);

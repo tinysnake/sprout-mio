@@ -8,6 +8,7 @@ import {
   jobTiming,
   percentiles,
   readReports,
+  replay,
   seconds,
   timingReport,
 } from "./timing-audit.mjs";
@@ -105,6 +106,10 @@ await test("nearest-rank percentiles exclude missing measurements and separate v
   assert.equal(report.cohorts[1].jobs[0].seconds.verifyRunning, null);
   assert.equal(report.cohorts[4].feedbackSeconds, null);
   assert.throws(() => timingReport([sample(1), sample(1)]), /Duplicate run attempt/);
+  const incomplete = timingReport([sample(1, { collection: { jobsComplete: false } })]).cohorts[0];
+  assert.equal(incomplete.incompleteAttempts, 1);
+  assert.equal(incomplete.feedbackSeconds, null);
+  assert.equal(incomplete.jobs[0].seconds.queue, null);
 });
 
 await test("collector paginates 150 runs and all jobs, preserves every attempt, and replays cached API data", (t) => {
@@ -140,6 +145,13 @@ await test("collector paginates 150 runs and all jobs, preserves every attempt, 
   assert.equal(samples[1].runAttempt, 2);
   assert.equal(samples[1].createdAt, stamp(-100));
   assert.equal(samples[1].feedbackStartedAt, stamp(0));
+  assert.equal(samples[1].feedbackStartedAtSource, "earliest-job-created-at-proxy");
+  assert.deepEqual(replay(directory), samples);
+  const invalid = samples.map((sample) => ({ ...sample }));
+  invalid[0].runAttempt = 0;
+  writeFileSync(join(directory, "samples.json"), JSON.stringify(invalid));
+  assert.throws(() => replay(directory), /Invalid audit cache/);
+  writeFileSync(join(directory, "samples.json"), JSON.stringify(samples));
   assert.equal(timingReport([samples[1]]).samples[0].feedbackSeconds, 45);
   assert(samples[0].workflow.fingerprint);
   assert.equal(samples[0].completedAt, stamp(45));

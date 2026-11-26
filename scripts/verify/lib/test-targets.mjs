@@ -241,7 +241,11 @@ export function unitExecution(files, report, root) {
       missingFiles.length === 0 &&
       unexpectedFiles.length === 0 &&
       new Set(executedFiles).size === executedFiles.length,
-    success: report.success === true,
+    success:
+      report.success === true &&
+      report.numFailedTests === 0 &&
+      report.numPendingTests === 0 &&
+      report.numTodoTests === 0,
     tests: report.numTotalTests,
     failed: report.numFailedTests,
     skipped: report.numPendingTests,
