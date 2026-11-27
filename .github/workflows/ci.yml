@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main, "integration/**"]
   pull_request:
   workflow_dispatch:
 
@@ -9,8 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  # push 与 pull_request 对同一分支是同一份代码，但 ref 字符串不同（refs/heads/<branch> 与
-  # refs/pull/<n>/merge），只按 ref 归组会绕过取消，同一次推送跑两遍完整矩阵。按分支名归组。
+  # 同一来源分支的新提交取代旧运行，fork 的同名分支各自独立。
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.head.repo.full_name || github.repository }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
