@@ -51,7 +51,11 @@ async function open({ width, height, colorScheme, scene }) {
   });
   const url = new URL(base);
   url.searchParams.set("scene", scene);
-  await page.goto(url.toString(), { waitUntil: "networkidle" });
+  await page.goto(url.toString(), { waitUntil: "domcontentloaded" });
+  await page
+    .locator("summary")
+    .filter({ hasText: /^开发演示$/ })
+    .waitFor({ state: "visible" });
   return { context, page, errors };
 }
 
