@@ -13,6 +13,7 @@ mkdirSync(directory, { recursive: true });
 mkdirSync(evidence, { recursive: true });
 const results = [];
 const errors = [];
+const navigationFailures = [];
 const requireStart = createRequire(import.meta.resolve("@tanstack/react-start"));
 const { fromCrossJSON, toJSONAsync } = requireStart("seroval");
 function files(path) {
@@ -59,13 +60,23 @@ async function check(name, action) {
   writeFileSync(join(directory, "browser.json"), JSON.stringify(results, null, 2) + "\n");
 }
 const browser = await chromium.launch();
+let traceContext;
 try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
+  traceContext = context;
+  await context.tracing.start({ snapshots: true, screenshots: true });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
+  page.on("requestfailed", (request) => {
+    navigationFailures.push({ url: request.url(), failure: request.failure() });
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      navigationFailures.push({ url: response.url(), status: response.status() });
+  });
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
@@ -387,7 +398,29 @@ try {
         await page.setViewportSize({ width, height: width <= 900 ? 844 : 900 });
         await page.evaluate((value) => localStorage.setItem("sprout:theme", value), theme);
         await goto(`${chatPath}?info=1`);
-        await test("chat-workspace").waitFor();
+        try {
+          await test("chat-workspace").waitFor();
+        } catch (error) {
+          console.log(
+            "Layout readiness failure",
+            JSON.stringify({
+              width,
+              theme,
+              url: page.url(),
+              title: await page.title(),
+              document: await page.evaluate(() => ({
+                readyState: document.readyState,
+                html: document.documentElement.outerHTML,
+                resources: performance.getEntriesByType("resource").map((entry) => entry.toJSON()),
+                serviceWorker: navigator.serviceWorker.controller?.scriptURL ?? null,
+              })),
+              body: await page.locator("body").innerText(),
+              errors,
+              navigationFailures,
+            }),
+          );
+          throw error;
+        }
         const boxes = await geometry();
         assert.equal(boxes.overflow, false, "whole page horizontal overflow");
         assert(boxes.inspector, "opened inspector is reachable");
@@ -697,6 +730,11 @@ try {
     return { errors };
   });
 } finally {
+  await traceContext?.tracing.stop({
+    ...(results.some((result) => !result.passed)
+      ? { path: join(process.env.SPROUT_VERIFY_RUN_DIR ?? directory, "r-ui-layout.trace.zip") }
+      : {}),
+  });
   await browser.close();
 }
 const failed = results.filter((result) => !result.passed);

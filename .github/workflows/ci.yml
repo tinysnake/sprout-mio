@@ -140,6 +140,7 @@ jobs:
           path: |
             .verify/runs/**/report.json
             .verify/runs/**/*.log
+            .verify/runs/**/*.trace.zip
             .verify/targets/*.json
             .verify/sandboxes/**/*.log
 
