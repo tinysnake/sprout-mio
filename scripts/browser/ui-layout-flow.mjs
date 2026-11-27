@@ -13,6 +13,7 @@ mkdirSync(directory, { recursive: true });
 mkdirSync(evidence, { recursive: true });
 const results = [];
 const errors = [];
+const navigationFailures = [];
 const requireStart = createRequire(import.meta.resolve("@tanstack/react-start"));
 const { fromCrossJSON, toJSONAsync } = requireStart("seroval");
 function files(path) {
@@ -66,6 +67,13 @@ try {
   });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
+  page.on("requestfailed", (request) => {
+    navigationFailures.push({ url: request.url(), failure: request.failure() });
+  });
+  page.on("response", (response) => {
+    if (response.status() >= 400)
+      navigationFailures.push({ url: response.url(), status: response.status() });
+  });
   page.on("pageerror", (error) => errors.push(String(error)));
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(message.text());
@@ -387,7 +395,23 @@ try {
         await page.setViewportSize({ width, height: width <= 900 ? 844 : 900 });
         await page.evaluate((value) => localStorage.setItem("sprout:theme", value), theme);
         await goto(`${chatPath}?info=1`);
-        await test("chat-workspace").waitFor();
+        try {
+          await test("chat-workspace").waitFor();
+        } catch (error) {
+          console.log(
+            "Layout readiness failure",
+            JSON.stringify({
+              width,
+              theme,
+              url: page.url(),
+              title: await page.title(),
+              body: await page.locator("body").innerText(),
+              errors,
+              navigationFailures,
+            }),
+          );
+          throw error;
+        }
         const boxes = await geometry();
         assert.equal(boxes.overflow, false, "whole page horizontal overflow");
         assert(boxes.inspector, "opened inspector is reachable");
