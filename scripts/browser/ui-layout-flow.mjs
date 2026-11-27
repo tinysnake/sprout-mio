@@ -405,6 +405,12 @@ try {
               theme,
               url: page.url(),
               title: await page.title(),
+              document: await page.evaluate(() => ({
+                readyState: document.readyState,
+                html: document.documentElement.outerHTML,
+                resources: performance.getEntriesByType("resource").map((entry) => entry.toJSON()),
+                serviceWorker: navigator.serviceWorker.controller?.scriptURL ?? null,
+              })),
               body: await page.locator("body").innerText(),
               errors,
               navigationFailures,
