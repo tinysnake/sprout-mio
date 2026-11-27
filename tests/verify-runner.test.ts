@@ -254,15 +254,21 @@ process.exit(result.status ?? 1);
     );
   });
 
-  it("退出 77 的门禁记为 skipped：既不算失败，也不产生通过结论", () => {
+  it.each([
+    { target: "all", exitCode: 0 },
+    { target: "local", exitCode: 0 },
+    { target: "ci", exitCode: 1 },
+  ])("退出 77 的门禁记为 skipped，$target 模式退出 $exitCode", ({ target, exitCode }) => {
     const fixture = makeFixture();
     fixture.writeScript("a-skip", 'echo "SKIP a-skip 缺少宿主托管 Pi SDK"\nexit 77\n');
     fixture.writeScript("b-pass", 'echo "ok"\n');
 
-    const result = fixture.run([]);
+    const result = fixture.run([], { SPROUT_VERIFY_TARGET: target });
     const output = String(result.stdout);
 
-    expect(result.status).toBe(0);
+    expect(result.status).toBe(exitCode);
+    if (target === "ci")
+      expect(result.stderr).toContain("FAIL CI requires every selected gate to pass");
     expect(output).toContain("SKIP a-skip");
     expect(output).toContain("SKIP a-skip 缺少宿主托管 Pi SDK");
     expect(output).toContain("PASS b-pass");

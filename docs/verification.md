@@ -43,6 +43,8 @@ CI 的执行 job 分为三类：`portable` 跑 tooling、base、contracts、docs
 
 Actions 触发于 push、pull request 或 workflow_dispatch，取消同分支旧运行：`concurrency` 组按分支名聚合，同一分支上 push 与 pull_request 的运行只保留最新一条。Linux 中按 lockfile 安装依赖。需要页面链路的 browser-a/b/c、turns、api-a、api-b 六个组跑在 Playwright 官方镜像容器里，镜像 tag 固定为 `mcr.microsoft.com/playwright:v<package.json 的 playwright 版本>-noble`（`targets.test.mjs` 核对两者一致）：浏览器二进制与系统依赖随镜像提供，不下载浏览器、不装 apt 包、也不缓存浏览器，容器内 `PLAYWRIGHT_BROWSERS_PATH=/ms-playwright` 仍供私有测试树读取同一份浏览器程序。`lsof` 在用到 `port_guard` 的 base、tooling 和沿用原 tooling 单测环境的 unit jobs 安装，因此跑 `pnpm check`（会走 stray-processes 的 lsof 路径）的 `g-identity-data` 归属 tooling，不在容器内的 api-a。可写缓存、数据库与 runtime 状态仍独立。生产生命周期场景直接启动当前 Node 的 `.output/server/index.mjs`，将信号及退出码断言绑定到 server 本身；A/B 的 package start smoke 继续覆盖 `pnpm start` 入口。不安装 Pi、不导入个人认证。仅上传报告及明确列出的 `.log`，不上传整个 `.verify`、数据库、身份或 session；artifact 保留七天。仓库所有者的 Actions 月度计算和存储预算仍适用，多个 job 的耗时分别累计。
 
+每个 CI job 要求所有分配的 gate 通过。缺少先决条件而跳过的 gate 保留 `skipped` 诊断，同时让该 job 失败。
+
 `verify` 汇总 job 使用 `if: always()`，逐项检查 `portable`、`portableBrowser`、`portableUnits` 的 GitHub terminal result；只有全部为 `success` 且当前 workflow 未取消才成功。失败、skipped、cancelled 和缺失结果会全部列出并失败，不通过跳过汇总步骤制造绿色结果。工作流仍取消同分支旧运行，矩阵保留 `fail-fast: false`，报告上传继续使用 `always()`。
 
 CI timing audit 使用无额外依赖的 `scripts/verify/timing-audit.mjs`：

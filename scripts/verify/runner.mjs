@@ -651,6 +651,10 @@ async function main() {
   }
 
   if (interrupted.signal !== null) return interrupted.exitCode;
+  if (report.target === "ci" && passed !== selected.length) {
+    console.error(`FAIL CI requires every selected gate to pass (${passed}/${selected.length})`);
+    return 1;
+  }
   return failed === 0 ? 0 : 1;
 }
 
