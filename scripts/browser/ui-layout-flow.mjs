@@ -60,11 +60,14 @@ async function check(name, action) {
   writeFileSync(join(directory, "browser.json"), JSON.stringify(results, null, 2) + "\n");
 }
 const browser = await chromium.launch();
+let traceContext;
 try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     reducedMotion: "reduce",
   });
+  traceContext = context;
+  await context.tracing.start({ snapshots: true, screenshots: true });
   const page = await context.newPage();
   page.setDefaultTimeout(10000);
   page.on("requestfailed", (request) => {
@@ -727,6 +730,11 @@ try {
     return { errors };
   });
 } finally {
+  await traceContext?.tracing.stop({
+    ...(results.some((result) => !result.passed)
+      ? { path: join(process.env.SPROUT_VERIFY_RUN_DIR ?? directory, "r-ui-layout.trace.zip") }
+      : {}),
+  });
   await browser.close();
 }
 const failed = results.filter((result) => !result.passed);

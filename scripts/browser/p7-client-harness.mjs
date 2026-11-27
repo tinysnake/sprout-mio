@@ -72,6 +72,8 @@ export async function runProduction(check) {
   assert.equal((await build.done).code, 0, `production build: ${directory}/build.log`);
   const server = launch(process.execPath, [".output/server/index.mjs"], env, "server.log");
   let browser;
+  let traceContext;
+  let failed = true;
   try {
     await ready(base, server);
     assert.equal((await fetch(base + "/api/diagnostics?summary=1")).status, 401);
@@ -80,6 +82,8 @@ export async function runProduction(check) {
       viewport: { width: 1440, height: 900 },
       serviceWorkers: "allow",
     });
+    traceContext = context;
+    await context.tracing.start({ snapshots: true, screenshots: true });
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     await page.goto(`${base}/login?next=%2Fmanagement`, { waitUntil: "domcontentloaded" });
@@ -121,7 +125,13 @@ export async function runProduction(check) {
       login: () => login(page, email, password),
       directory,
     });
+    failed = false;
   } finally {
+    await traceContext?.tracing.stop({
+      ...(failed
+        ? { path: join(process.env.SPROUT_VERIFY_RUN_DIR ?? directory, "p7-client.trace.zip") }
+        : {}),
+    });
     await browser?.close();
     if (server.exitCode === null) server.kill("SIGTERM");
     const stopped = await Promise.race([server.done, delay(10000).then(() => null)]);
